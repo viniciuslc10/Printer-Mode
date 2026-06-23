@@ -41,18 +41,12 @@ public partial class App : Application
 
     private static void ConfigureServices(IServiceCollection services)
     {
-        // Infrastructure
         services.AddSingleton<ILogService>(_ => new LogService(LogsPath));
         services.AddSingleton<IDriverRepository>(sp =>
             new DriverRepository(RepositoryPath, sp.GetRequiredService<ILogService>()));
         services.AddSingleton<IWindowsPrinterService, WindowsPrinterService>();
         services.AddSingleton<IPrinterDetector, PrinterDetectorService>();
         services.AddSingleton<IDriverInstaller, DriverInstaller>();
-
-        // ViewModels
-        services.AddTransient<MainViewModel>();
-        services.AddTransient<DashboardViewModel>();
-        services.AddTransient<InstallDriverViewModel>();
-        services.AddTransient<PrinterListViewModel>();
+        services.AddTransient<SimpleViewModel>();
     }
 }

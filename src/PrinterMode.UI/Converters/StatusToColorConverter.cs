@@ -70,10 +70,13 @@ public class ConnectionTypeToIconConverter : IValueConverter
 
 public class BoolToVisibilityConverter : IValueConverter
 {
+    public bool Invert { get; set; }
+
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
+        if (value == DependencyProperty.UnsetValue || value == null) return Visibility.Collapsed;
         var boolValue = value is bool b && b;
-        var invert = parameter?.ToString() == "invert";
+        var invert = Invert || parameter?.ToString() == "invert";
         var visible = invert ? !boolValue : boolValue;
         return visible ? Visibility.Visible : Visibility.Collapsed;
     }

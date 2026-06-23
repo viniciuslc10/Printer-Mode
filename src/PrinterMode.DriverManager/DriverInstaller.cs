@@ -42,10 +42,17 @@ public class DriverInstaller : IDriverInstaller
 
         try
         {
-            // Step 1: Install driver — prefer .exe installer, fallback to pnputil
+            // Step 1: Install driver — skip if already installed or prefer .exe, fallback to pnputil
             bool driverInstalled;
 
-            if (request.Driver.HasInstaller)
+            if (request.SkipDriverInstall)
+            {
+                driverInstalled = true;
+                steps.Add($"Driver já instalado: {request.Driver.DriverName}");
+                _log.Info($"Skipping driver install (already installed): {request.Driver.DriverName}");
+                progress?.Report("Driver já instalado, criando impressora...");
+            }
+            else if (request.Driver.HasInstaller)
             {
                 var exePath = _repository.ResolveInstallerPath(request.Driver)!;
                 progress?.Report($"Instalando driver via instalador oficial ({request.Driver.InstallerExe})...");
