@@ -211,12 +211,13 @@ public class DriverInstaller : IDriverInstaller
 
     private async Task<(bool success, string output)> RunExeInstallerAsync(string exePath, string args, CancellationToken ct)
     {
+        // UseShellExecute=false + CreateNoWindow suppresses the installer window.
+        // Do NOT redirect stdout/stderr — many GUI installers break when their
+        // standard handles are captured (they expect a real console or nothing).
         var psi = new ProcessStartInfo
         {
             FileName = exePath,
             Arguments = args,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
@@ -224,21 +225,18 @@ public class DriverInstaller : IDriverInstaller
         try
         {
             using var process = Process.Start(psi)!;
-            var output = await process.StandardOutput.ReadToEndAsync(ct);
-            var error = await process.StandardError.ReadToEndAsync(ct);
             await process.WaitForExitAsync(ct);
 
             _log.Info($"EXE installer exit code: {process.ExitCode}");
-            _log.Debug($"EXE installer output: {output}");
 
             // 0 = success; 3010 = reboot required but installed; 1641 = reboot initiated
             if (process.ExitCode != 0 && process.ExitCode != 3010 && process.ExitCode != 1641)
             {
-                _log.Error($"EXE installer error: {error}");
-                return (false, string.IsNullOrWhiteSpace(error) ? output : error);
+                _log.Error($"EXE installer failed (exit {process.ExitCode}): {exePath}");
+                return (false, $"Instalador retornou código {process.ExitCode}. Verifique os logs.");
             }
 
-            return (true, output);
+            return (true, $"Instalador concluído (código {process.ExitCode}).");
         }
         catch (Exception ex)
         {
