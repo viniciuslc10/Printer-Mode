@@ -17,5 +17,10 @@ public class DriverInfo
     public List<string> SupportedPorts { get; set; } = [];
     public string? Notes { get; set; }
 
+    // Optional .exe installer (preferred over pnputil when present)
+    public string? InstallerExe { get; set; }
+    public string? InstallerArgs { get; set; }
+
+    public bool HasInstaller => !string.IsNullOrEmpty(InstallerExe);
     public string DisplayName => $"{Manufacturer} {Model}";
 }

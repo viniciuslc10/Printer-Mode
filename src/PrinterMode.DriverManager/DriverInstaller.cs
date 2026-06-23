@@ -42,16 +42,54 @@ public class DriverInstaller : IDriverInstaller
 
         try
         {
-            // Step 1: Install the INF driver via pnputil
-            progress?.Report("Instalando driver via PnPUtil...");
-            var infPath = _repository.ResolveInfPath(request.Driver);
-            var pnpResult = await RunPnpUtilAsync(infPath, ct);
+            // Step 1: Install driver — prefer .exe installer, fallback to pnputil
+            bool driverInstalled;
 
-            if (!pnpResult.success)
-                return InstallResult.Fail("Falha ao instalar driver.", pnpResult.output, steps);
+            if (request.Driver.HasInstaller)
+            {
+                var exePath = _repository.ResolveInstallerPath(request.Driver)!;
+                progress?.Report($"Instalando driver via instalador oficial ({request.Driver.InstallerExe})...");
+                var exeResult = await RunExeInstallerAsync(exePath, request.Driver.InstallerArgs ?? "/S", ct);
 
-            steps.Add($"Driver instalado: {infPath}");
-            _log.Info($"Driver installed via pnputil: {infPath}");
+                if (!exeResult.success)
+                {
+                    // Fallback to pnputil if exe fails and inf exists
+                    var infPath2 = _repository.ResolveInfPath(request.Driver);
+                    if (File.Exists(infPath2))
+                    {
+                        _log.Warning($"EXE installer failed, trying pnputil: {infPath2}");
+                        progress?.Report("Tentando via PnPUtil...");
+                        var fallback = await RunPnpUtilAsync(infPath2, ct);
+                        driverInstalled = fallback.success;
+                        if (!driverInstalled)
+                            return InstallResult.Fail("Falha ao instalar driver.", fallback.output, steps);
+                        steps.Add($"Driver instalado via pnputil (fallback): {infPath2}");
+                    }
+                    else
+                    {
+                        return InstallResult.Fail("Falha ao instalar driver.", exeResult.output, steps);
+                    }
+                }
+                else
+                {
+                    driverInstalled = true;
+                    steps.Add($"Driver instalado via instalador: {request.Driver.InstallerExe}");
+                    _log.Info($"Driver installed via EXE: {exePath}");
+                }
+            }
+            else
+            {
+                progress?.Report("Instalando driver via PnPUtil...");
+                var infPath = _repository.ResolveInfPath(request.Driver);
+                var pnpResult = await RunPnpUtilAsync(infPath, ct);
+
+                if (!pnpResult.success)
+                    return InstallResult.Fail("Falha ao instalar driver.", pnpResult.output, steps);
+
+                driverInstalled = true;
+                steps.Add($"Driver instalado via pnputil: {infPath}");
+                _log.Info($"Driver installed via pnputil: {infPath}");
+            }
 
             // Step 2: Create the port
             progress?.Report("Criando porta de impressão...");
@@ -161,6 +199,44 @@ public class DriverInstaller : IDriverInstaller
         {
             _log.Error("Test print error", ex);
             return InstallResult.Fail(ex.Message, ex.ToString());
+        }
+    }
+
+    private async Task<(bool success, string output)> RunExeInstallerAsync(string exePath, string args, CancellationToken ct)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = exePath,
+            Arguments = args,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        try
+        {
+            using var process = Process.Start(psi)!;
+            var output = await process.StandardOutput.ReadToEndAsync(ct);
+            var error = await process.StandardError.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+
+            _log.Info($"EXE installer exit code: {process.ExitCode}");
+            _log.Debug($"EXE installer output: {output}");
+
+            // 0 = success; 3010 = reboot required but installed; 1641 = reboot initiated
+            if (process.ExitCode != 0 && process.ExitCode != 3010 && process.ExitCode != 1641)
+            {
+                _log.Error($"EXE installer error: {error}");
+                return (false, string.IsNullOrWhiteSpace(error) ? output : error);
+            }
+
+            return (true, output);
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to run EXE installer", ex);
+            return (false, ex.Message);
         }
     }
 

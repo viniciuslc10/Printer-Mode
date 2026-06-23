@@ -97,8 +97,18 @@ public class DriverRepository : IDriverRepository
 
     public bool DriverFilesExist(DriverInfo driver)
     {
-        var infPath = ResolveInfPath(driver);
-        return File.Exists(infPath);
+        if (driver.HasInstaller)
+        {
+            var exePath = ResolveInstallerPath(driver);
+            return exePath != null && File.Exists(exePath);
+        }
+        return File.Exists(ResolveInfPath(driver));
+    }
+
+    public string? ResolveInstallerPath(DriverInfo driver)
+    {
+        if (string.IsNullOrEmpty(driver.InstallerExe)) return null;
+        return Path.Combine(_repositoryRoot, driver.DriverFolder, driver.InstallerExe);
     }
 
     public void InvalidateCache() => _catalog = null;

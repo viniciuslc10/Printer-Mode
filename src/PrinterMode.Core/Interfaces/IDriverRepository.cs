@@ -13,4 +13,5 @@ public interface IDriverRepository
     string ResolveDriverPath(DriverInfo driver);
     string ResolveInfPath(DriverInfo driver);
     bool DriverFilesExist(DriverInfo driver);
+    string? ResolveInstallerPath(DriverInfo driver);
 }
