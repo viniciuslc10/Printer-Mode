@@ -1,0 +1,60 @@
+<UserControl x:Class="PrinterMode.UI.Views.PrinterListView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="clr-namespace:PrinterMode.UI.Converters"
+             Background="Transparent">
+
+  <UserControl.Resources>
+    <conv:BoolToVisibilityConverter x:Key="BoolVis"/>
+  </UserControl.Resources>
+
+  <Grid Margin="30,24,30,24">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <!-- Header -->
+    <Grid Grid.Row="0" Margin="0,0,0,24">
+      <StackPanel>
+        <TextBlock Text="Impressoras Instaladas" FontSize="24" FontWeight="Bold"
+                   Foreground="{StaticResource TextPrimaryBrush}"/>
+        <TextBlock Text="{Binding StatusMessage}" FontSize="13"
+                   Foreground="{StaticResource TextMutedBrush}" Margin="0,4,0,0"/>
+      </StackPanel>
+      <Button HorizontalAlignment="Right" Content="↺  Atualizar"
+              Style="{StaticResource SecondaryButton}"
+              Command="{Binding RefreshCommand}"/>
+    </Grid>
+
+    <!-- List -->
+    <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
+      <ListBox Style="{StaticResource PrinterListBox}"
+               ItemsSource="{Binding InstalledPrinters}"
+               SelectedItem="{Binding SelectedPrinter}"
+               Margin="12,12,12,12">
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="🖨" FontSize="18" Margin="0,0,12,0" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding}" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}"
+                         VerticalAlignment="Center"/>
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Border>
+
+    <!-- Actions -->
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+      <Button Content="🗑 Remover" Style="{StaticResource SecondaryButton}"
+              Command="{Binding DeletePrinterCommand}"
+              IsEnabled="{Binding SelectedPrinter, Converter={StaticResource BoolVis}}"
+              Margin="0,0,8,0"/>
+      <Button Content="🖨 Página de Teste" Style="{StaticResource PrimaryButton}"
+              Command="{Binding TestPrintCommand}"
+              IsEnabled="{Binding SelectedPrinter, Converter={StaticResource BoolVis}}"/>
+    </StackPanel>
+  </Grid>
+</UserControl>

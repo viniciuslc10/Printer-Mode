@@ -1,0 +1,7 @@
+{
+  "repositoryPath": "Repository",
+  "logsPath": "Logs",
+  "scanOnStartup": false,
+  "defaultNetworkPort": 9100,
+  "scanTimeout": 5000
+}

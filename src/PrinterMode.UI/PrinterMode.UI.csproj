@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>PrinterMode.UI</RootNamespace>
+    <AssemblyName>PrinterMode</AssemblyName>
+    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>1.0.0</Version>
+    <Copyright>Copyright © 2024 PrinterMode</Copyright>
+    <Company>PrinterMode</Company>
+    <Product>PrinterMode</Product>
+    <Description>Gerenciador de Impressoras Térmicas para Windows</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PrinterMode.Core\PrinterMode.Core.csproj" />
+    <ProjectReference Include="..\PrinterMode.DriverManager\PrinterMode.DriverManager.csproj" />
+    <ProjectReference Include="..\PrinterMode.WindowsPrinter\PrinterMode.WindowsPrinter.csproj" />
+    <ProjectReference Include="..\PrinterMode.NetworkDiscovery\PrinterMode.NetworkDiscovery.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Assets\icon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Copy Repository and Config folders to output -->
+  <ItemGroup>
+    <None Include="..\..\Repository\**\*" Link="Repository\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\..\Config\**\*" Link="Config\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

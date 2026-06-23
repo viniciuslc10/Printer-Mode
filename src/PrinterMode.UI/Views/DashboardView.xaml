@@ -1,0 +1,166 @@
+<UserControl x:Class="PrinterMode.UI.Views.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="clr-namespace:PrinterMode.UI.Converters"
+             Background="Transparent">
+
+  <UserControl.Resources>
+    <conv:PrinterStatusToColorConverter x:Key="StatusColor"/>
+    <conv:DriverStatusToColorConverter x:Key="DriverColor"/>
+    <conv:ConnectionTypeToIconConverter x:Key="ConnIcon"/>
+    <conv:BoolToVisibilityConverter x:Key="BoolVis"/>
+  </UserControl.Resources>
+
+  <Grid Margin="30,24,30,24">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <!-- Header -->
+    <StackPanel Grid.Row="0" Margin="0,0,0,24">
+      <TextBlock Text="Dashboard" FontSize="24" FontWeight="Bold"
+                 Foreground="{StaticResource TextPrimaryBrush}"/>
+      <TextBlock Text="Detecte impressoras conectadas ao computador"
+                 FontSize="13" Foreground="{StaticResource TextMutedBrush}" Margin="0,4,0,0"/>
+    </StackPanel>
+
+    <!-- Scan Row -->
+    <Grid Grid.Row="1" Margin="0,0,0,20">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="Auto"/>
+      </Grid.ColumnDefinitions>
+
+      <Border Grid.Column="0" Style="{StaticResource Card}" Padding="16,12" Margin="0,0,12,0">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+          <!-- Spinner -->
+          <Border Width="20" Height="20" Margin="0,0,12,0"
+                  Visibility="{Binding IsScanning, Converter={StaticResource BoolVis}}">
+            <TextBlock Text="⟳" FontSize="18" Foreground="{StaticResource AccentBrush}"
+                       RenderTransformOrigin="0.5,0.5">
+              <TextBlock.RenderTransform>
+                <RotateTransform x:Name="SpinnerRotate"/>
+              </TextBlock.RenderTransform>
+              <TextBlock.Triggers>
+                <EventTrigger RoutedEvent="Loaded">
+                  <BeginStoryboard>
+                    <Storyboard RepeatBehavior="Forever">
+                      <DoubleAnimation Storyboard.TargetName="SpinnerRotate"
+                                       Storyboard.TargetProperty="Angle"
+                                       From="0" To="360" Duration="0:0:1"/>
+                    </Storyboard>
+                  </BeginStoryboard>
+                </EventTrigger>
+              </TextBlock.Triggers>
+            </TextBlock>
+          </Border>
+
+          <StackPanel>
+            <TextBlock Text="{Binding ScanStatus}" Foreground="{StaticResource TextPrimaryBrush}"
+                       FontSize="13"/>
+            <TextBlock Text="{Binding LastScanTime}" Foreground="{StaticResource TextMutedBrush}"
+                       FontSize="11" Margin="0,2,0,0"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <StackPanel Grid.Column="1" Orientation="Horizontal">
+        <Button Content="⟳  Escanear" Style="{StaticResource PrimaryButton}"
+                Command="{Binding ScanCommand}" Margin="0,0,8,0"/>
+        <Button Content="✕" Style="{StaticResource SecondaryButton}"
+                Command="{Binding ScanCancelCommand}"
+                Visibility="{Binding IsScanning, Converter={StaticResource BoolVis}}"
+                ToolTip="Cancelar varredura"/>
+      </StackPanel>
+    </Grid>
+
+    <!-- Device List -->
+    <Border Grid.Row="2" Style="{StaticResource Card}" Padding="0">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Text="IMPRESSORAS DETECTADAS"
+                   Style="{StaticResource SectionLabel}" Margin="20,16,20,8"/>
+
+        <!-- Empty state -->
+        <Border DockPanel.Dock="Top"
+                Visibility="{Binding IsScanning, Converter={StaticResource BoolVis}, ConverterParameter=invert}"
+                Padding="40">
+          <TextBlock Foreground="{StaticResource TextMutedBrush}" FontSize="13" TextAlignment="Center"
+                     Visibility="{Binding DetectedDevices.Count, Converter={StaticResource BoolVis}, ConverterParameter=invert}">
+            Nenhuma impressora detectada.&#10;Conecte a impressora e clique em Escanear.
+          </TextBlock>
+        </Border>
+
+        <ListBox Style="{StaticResource PrinterListBox}"
+                 ItemsSource="{Binding DetectedDevices}"
+                 SelectedItem="{Binding SelectedDevice}"
+                 Margin="12,0,12,12">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="40"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Connection icon -->
+                <TextBlock Grid.Column="0" Text="{Binding ConnectionType, Converter={StaticResource ConnIcon}}"
+                           FontSize="22" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+
+                <!-- Name and info -->
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="4,0,12,0">
+                  <TextBlock Text="{Binding DisplayName}" FontSize="14" FontWeight="SemiBold"
+                             Foreground="{StaticResource TextPrimaryBrush}"/>
+                  <TextBlock Text="{Binding ConnectionDescription}" FontSize="11"
+                             Foreground="{StaticResource TextMutedBrush}" Margin="0,2,0,0"/>
+                  <TextBlock FontSize="11" Foreground="{StaticResource TextMutedBrush}" Margin="0,1,0,0">
+                    <Run Text="VID:"/><Run Text="{Binding VendorId}"/>
+                    <Run Text=" PID:"/><Run Text="{Binding ProductId}"/>
+                  </TextBlock>
+                </StackPanel>
+
+                <!-- Status badges -->
+                <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="0,0,12,0">
+                  <Border CornerRadius="4" Padding="8,3" Margin="0,0,0,4"
+                          Background="{Binding Status, Converter={StaticResource StatusColor}, ConverterParameter=bg}">
+                    <StackPanel Orientation="Horizontal">
+                      <Ellipse Style="{StaticResource StatusDot}"
+                               Fill="{Binding Status, Converter={StaticResource StatusColor}}"/>
+                      <TextBlock Text="{Binding StatusDescription}" FontSize="11"
+                                 Foreground="{StaticResource TextPrimaryBrush}"/>
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+
+                <!-- Driver status -->
+                <Border Grid.Column="3" CornerRadius="4" Padding="8,3" VerticalAlignment="Center"
+                        Background="#22000000">
+                  <TextBlock Text="{Binding DriverStatusDescription}" FontSize="11"
+                             Foreground="{Binding DriverStatus, Converter={StaticResource DriverColor}}"/>
+                </Border>
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Border>
+
+    <!-- Action Row -->
+    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+      <TextBlock VerticalAlignment="Center" Margin="0,0,16,0" FontSize="12"
+                 Foreground="{StaticResource TextMutedBrush}"
+                 Visibility="{Binding HasSelectedDevice, Converter={StaticResource BoolVis}}">
+        <Run Text="Selecionado: "/>
+        <Run Text="{Binding SelectedDevice.DisplayName}" Foreground="{StaticResource TextPrimaryBrush}"/>
+      </TextBlock>
+
+      <Button Content="▶  Instalar Driver" Style="{StaticResource PrimaryButton}"
+              Command="{Binding RequestInstallCommand}"
+              IsEnabled="{Binding HasSelectedDevice}"/>
+    </StackPanel>
+  </Grid>
+</UserControl>

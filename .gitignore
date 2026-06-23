@@ -1,0 +1,25 @@
+# .NET build output
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.userprefs
+
+# Publish output
+publish/
+
+# Installer output
+Installer/Output/
+
+# Logs
+Logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Rider / VS
+.idea/
+*.DotSettings.user

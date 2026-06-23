@@ -1,0 +1,261 @@
+{
+  "version": "1.0",
+  "updatedAt": "2024-01-01T00:00:00Z",
+  "drivers": [
+    {
+      "id": "bematech_mp4200",
+      "manufacturer": "Bematech",
+      "model": "MP-4200 TH",
+      "vid": "0FE6",
+      "pid": "811E",
+      "driverFolder": "Bematech\\MP4200",
+      "infFile": "MP4200.inf",
+      "driverName": "Bematech MP-4200 TH",
+      "version": "1.0",
+      "notes": "Impressora térmica 80mm - driver oficial Bematech",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0,
+        "marginBottomMm": 0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        {
+          "name": "Thermal 80mm",
+          "widthMm": 80.0,
+          "printableWidthMm": 72.0,
+          "isAutoLength": true
+        }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB", "COM", "TCP/IP"]
+    },
+    {
+      "id": "bematech_mp2800",
+      "manufacturer": "Bematech",
+      "model": "MP-2800 TH",
+      "vid": "0FE6",
+      "pid": "811F",
+      "driverFolder": "Bematech\\MP2800",
+      "infFile": "MP2800.inf",
+      "driverName": "Bematech MP-2800 TH",
+      "version": "1.0",
+      "notes": "Impressora térmica 58mm",
+      "defaultPaper": {
+        "name": "Thermal 58mm",
+        "widthMm": 58.0,
+        "printableWidthMm": 50.0,
+        "isAutoLength": true,
+        "marginTopMm": 0,
+        "marginBottomMm": 0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        {
+          "name": "Thermal 58mm",
+          "widthMm": 58.0,
+          "printableWidthMm": 50.0,
+          "isAutoLength": true
+        }
+      ],
+      "defaultSerial": {
+        "baudRate": 9600,
+        "dataBits": 8,
+        "parity": "None",
+        "stopBits": "One",
+        "flowControl": "None"
+      },
+      "supportedPorts": ["USB", "COM"]
+    },
+    {
+      "id": "elgin_i9",
+      "manufacturer": "Elgin",
+      "model": "i9",
+      "vid": "0DD4",
+      "pid": "0101",
+      "driverFolder": "Elgin\\i9",
+      "infFile": "ElginI9.inf",
+      "driverName": "Elgin i9",
+      "version": "1.0",
+      "notes": "Impressora térmica Elgin i9 80mm",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true
+      },
+      "supportedPapers": [
+        {
+          "name": "Thermal 80mm",
+          "widthMm": 80.0,
+          "printableWidthMm": 72.0,
+          "isAutoLength": true
+        }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB", "TCP/IP"]
+    },
+    {
+      "id": "elgin_i8",
+      "manufacturer": "Elgin",
+      "model": "i8",
+      "vid": "0DD4",
+      "pid": "0100",
+      "driverFolder": "Elgin\\i8",
+      "infFile": "ElginI8.inf",
+      "driverName": "Elgin i8",
+      "version": "1.0",
+      "notes": "Impressora térmica Elgin i8 80mm",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true
+      },
+      "supportedPapers": [
+        {
+          "name": "Thermal 80mm",
+          "widthMm": 80.0,
+          "printableWidthMm": 72.0,
+          "isAutoLength": true
+        }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB", "TCP/IP"]
+    },
+    {
+      "id": "epson_tmt20x",
+      "manufacturer": "Epson",
+      "model": "TM-T20X",
+      "vid": "04B8",
+      "pid": "0202",
+      "driverFolder": "Epson\\TM-T20X",
+      "infFile": "EPST20X.inf",
+      "driverName": "EPSON TM-T20X",
+      "version": "1.0",
+      "notes": "Impressora Epson TM-T20X térmica 80mm - driver EPSON Advanced Printer Driver",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true
+      },
+      "supportedPapers": [
+        {
+          "name": "Thermal 80mm",
+          "widthMm": 80.0,
+          "printableWidthMm": 72.0,
+          "isAutoLength": true
+        },
+        {
+          "name": "Thermal 58mm",
+          "widthMm": 58.0,
+          "printableWidthMm": 50.0,
+          "isAutoLength": true
+        }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB", "COM", "TCP/IP"]
+    },
+    {
+      "id": "epson_tmt88v",
+      "manufacturer": "Epson",
+      "model": "TM-T88V",
+      "vid": "04B8",
+      "pid": "0202",
+      "driverFolder": "Epson\\TM-T88V",
+      "infFile": "EPST88V.inf",
+      "driverName": "EPSON TM-T88V",
+      "version": "1.0",
+      "notes": "Impressora Epson TM-T88V - alta velocidade",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true
+      },
+      "supportedPapers": [
+        {
+          "name": "Thermal 80mm",
+          "widthMm": 80.0,
+          "printableWidthMm": 72.0,
+          "isAutoLength": true
+        }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB", "COM", "TCP/IP"]
+    },
+    {
+      "id": "daruma_dr800",
+      "manufacturer": "Daruma",
+      "model": "DR800",
+      "vid": null,
+      "pid": null,
+      "driverFolder": "Daruma\\DR800",
+      "infFile": "DR800.inf",
+      "driverName": "Daruma DR800",
+      "version": "1.0",
+      "notes": "Impressora não-térmica Daruma DR800",
+      "defaultPaper": {
+        "name": "A4",
+        "widthMm": 210.0,
+        "printableWidthMm": 200.0,
+        "heightMm": 297.0,
+        "isAutoLength": false
+      },
+      "supportedPapers": [
+        {
+          "name": "A4",
+          "widthMm": 210.0,
+          "printableWidthMm": 200.0,
+          "heightMm": 297.0,
+          "isAutoLength": false
+        }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB", "TCP/IP"]
+    },
+    {
+      "id": "zebra_zd220",
+      "manufacturer": "Zebra",
+      "model": "ZD220",
+      "vid": "0A5F",
+      "pid": "00B3",
+      "driverFolder": "Zebra\\ZD220",
+      "infFile": "ZD220.inf",
+      "driverName": "ZDesigner ZD220-203dpi ZPL",
+      "version": "1.0",
+      "notes": "Impressora de etiquetas Zebra ZD220 - driver ZDesigner",
+      "defaultPaper": {
+        "name": "Label 100x50mm",
+        "widthMm": 100.0,
+        "printableWidthMm": 96.0,
+        "heightMm": 50.0,
+        "isAutoLength": false
+      },
+      "supportedPapers": [
+        {
+          "name": "Label 100x50mm",
+          "widthMm": 100.0,
+          "printableWidthMm": 96.0,
+          "heightMm": 50.0,
+          "isAutoLength": false
+        },
+        {
+          "name": "Label 60x40mm",
+          "widthMm": 60.0,
+          "printableWidthMm": 56.0,
+          "heightMm": 40.0,
+          "isAutoLength": false
+        }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB", "TCP/IP"]
+    }
+  ]
+}
