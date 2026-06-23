@@ -69,8 +69,13 @@
                          Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
               <ComboBox ItemsSource="{Binding Models}"
                         SelectedItem="{Binding SelectedModel}"
-                        DisplayMemberPath="Model"
-                        IsEnabled="{Binding HasManufacturer}"/>
+                        IsEnabled="{Binding HasManufacturer}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding Model}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"/>
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
             </StackPanel>
           </Grid>
 
@@ -140,8 +145,13 @@
             <TextBlock Text="Tamanho do papel" FontSize="12"
                        Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
             <ComboBox ItemsSource="{Binding Papers}"
-                      SelectedItem="{Binding SelectedPaper}"
-                      DisplayMemberPath="DisplayName"/>
+                      SelectedItem="{Binding SelectedPaper}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding DisplayName}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"/>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
           </StackPanel>
 
           <CheckBox Content="Definir como impressora padrão"
