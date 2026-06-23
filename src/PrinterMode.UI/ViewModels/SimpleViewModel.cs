@@ -26,6 +26,7 @@ public partial class SimpleViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanInstall))]
+    [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
     private DriverInfo? _selectedModel;
 
     [ObservableProperty]
@@ -51,13 +52,18 @@ public partial class SimpleViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanInstall))]
+    [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
     private string _printerName = string.Empty;
 
     [ObservableProperty] private PaperConfig? _selectedPaper;
     [ObservableProperty] private bool _setAsDefault;
 
     [ObservableProperty] private string _statusText = "Selecione o fabricante e modelo para continuar.";
-    [ObservableProperty] private bool _isInstalling;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanInstall))]
+    [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
+    private bool _isInstalling;
     [ObservableProperty] private bool _showSuccess;
     [ObservableProperty] private bool _showError;
 

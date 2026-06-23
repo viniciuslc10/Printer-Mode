@@ -83,12 +83,21 @@
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
-              <Setter Property="Background" Value="{StaticResource BgLightBrush}"/>
+              <Setter Property="Background" Value="#FF1A4070"/>
+              <Setter Property="Foreground" Value="White"/>
             </Trigger>
             <Trigger Property="IsSelected" Value="True">
               <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
               <Setter Property="Foreground" Value="White"/>
             </Trigger>
+            <MultiTrigger>
+              <MultiTrigger.Conditions>
+                <Condition Property="IsSelected" Value="True"/>
+                <Condition Property="IsMouseOver" Value="True"/>
+              </MultiTrigger.Conditions>
+              <Setter Property="Background" Value="{StaticResource AccentHoverBrush}"/>
+              <Setter Property="Foreground" Value="White"/>
+            </MultiTrigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
       </Setter.Value>
