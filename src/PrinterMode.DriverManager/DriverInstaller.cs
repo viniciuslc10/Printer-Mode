@@ -131,9 +131,15 @@ public class DriverInstaller : IDriverInstaller
                 return InstallResult.Fail($"Falha ao criar porta {portName}.", null, steps);
 
             // Step 3: Add printer to Windows
+            // Resolve actual installed driver name — catalog name may differ from what the
+            // installer registered (e.g. "Gertec G250" vs "G-250 Thermal Printer")
             progress?.Report("Adicionando impressora ao Windows...");
+            var installedDrivers = await _printerService.GetInstalledDriversAsync(ct);
+            var resolvedDriverName = ResolveActualDriverName(request.Driver, installedDrivers);
+            _log.Info($"Resolved driver name: '{resolvedDriverName}' (catalog: '{request.Driver.DriverName}')");
+
             var printerAdded = await _printerService.AddPrinterAsync(
-                request.PrinterName, request.Driver.DriverName, portName, ct);
+                request.PrinterName, resolvedDriverName, portName, ct);
 
             if (!printerAdded)
                 return InstallResult.Fail("Falha ao criar impressora no Windows.", null, steps);
@@ -211,38 +217,67 @@ public class DriverInstaller : IDriverInstaller
 
     private async Task<(bool success, string output)> RunExeInstallerAsync(string exePath, string args, CancellationToken ct)
     {
-        // UseShellExecute=false + CreateNoWindow suppresses the installer window.
-        // Do NOT redirect stdout/stderr — many GUI installers break when their
-        // standard handles are captured (they expect a real console or nothing).
-        var psi = new ProcessStartInfo
+        // Try the configured args first, then fallback silent flags for different installer types:
+        // /S          = NSIS (Nullsoft)
+        // /VERYSILENT = Inno Setup
+        // /silent     = some custom installers (e.g. Epson APD)
+        // /q          = MSI-wrapped installers
+        var candidates = new[] { args, "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART", "/silent", "/q" }
+            .Where(a => !string.IsNullOrWhiteSpace(a))
+            .Distinct()
+            .ToArray();
+
+        foreach (var currentArgs in candidates)
         {
-            FileName = exePath,
-            Arguments = args,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        try
-        {
-            using var process = Process.Start(psi)!;
-            await process.WaitForExitAsync(ct);
-
-            _log.Info($"EXE installer exit code: {process.ExitCode}");
-
-            // 0 = success; 3010 = reboot required but installed; 1641 = reboot initiated
-            if (process.ExitCode != 0 && process.ExitCode != 3010 && process.ExitCode != 1641)
+            try
             {
-                _log.Error($"EXE installer failed (exit {process.ExitCode}): {exePath}");
-                return (false, $"Instalador retornou código {process.ExitCode}. Verifique os logs.");
-            }
+                var psi = new ProcessStartInfo
+                {
+                    FileName = exePath,
+                    Arguments = currentArgs,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
 
-            return (true, $"Instalador concluído (código {process.ExitCode}).");
+                _log.Info($"Trying EXE installer with args: '{currentArgs}'");
+                using var process = Process.Start(psi)!;
+                await process.WaitForExitAsync(ct);
+                _log.Info($"EXE installer exit code: {process.ExitCode} (args: '{currentArgs}')");
+
+                // 0 = success; 3010 = reboot required but installed; 1641 = reboot initiated
+                if (process.ExitCode == 0 || process.ExitCode == 3010 || process.ExitCode == 1641)
+                    return (true, $"Instalador concluído (código {process.ExitCode}).");
+
+                _log.Warning($"EXE installer exited {process.ExitCode} with args '{currentArgs}', trying next...");
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"EXE installer error with args '{currentArgs}': {ex.Message}");
+            }
         }
-        catch (Exception ex)
-        {
-            _log.Error("Failed to run EXE installer", ex);
-            return (false, ex.Message);
-        }
+
+        _log.Error($"All silent flags failed for: {exePath}");
+        return (false, "Instalador não respondeu a nenhum flag silencioso. Verifique os logs.");
+    }
+
+    private string ResolveActualDriverName(DriverInfo driver, IReadOnlyList<string> installedDrivers)
+    {
+        // Exact match first
+        if (installedDrivers.Any(d => d.Equals(driver.DriverName, StringComparison.OrdinalIgnoreCase)))
+            return driver.DriverName;
+
+        // Match by model name within the driver string
+        var byModel = installedDrivers.FirstOrDefault(d =>
+            d.Contains(driver.Model, StringComparison.OrdinalIgnoreCase));
+        if (byModel != null) return byModel;
+
+        // Match by manufacturer name
+        var byManufacturer = installedDrivers.FirstOrDefault(d =>
+            d.Contains(driver.Manufacturer, StringComparison.OrdinalIgnoreCase));
+        if (byManufacturer != null) return byManufacturer;
+
+        // Fallback to catalog name (will use whatever was registered)
+        return driver.DriverName;
     }
 
     private async Task<(bool success, string output)> RunPnpUtilAsync(string infPath, CancellationToken ct)
