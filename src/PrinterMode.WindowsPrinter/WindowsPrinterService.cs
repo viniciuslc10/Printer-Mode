@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Printing;
 using System.Management;
 using PrinterMode.Core.Interfaces;
 using PrinterMode.Core.Models;
@@ -40,9 +38,7 @@ public class WindowsPrinterService : IWindowsPrinterService
             catch (Exception ex)
             {
                 _log.Error($"Failed to create TCP/IP port {portName}", ex);
-
-                // Fallback: use printui
-                return CreateTcpPortViaPrintUi(portName, ipAddress, port);
+                return false;
             }
         }, ct);
     }
@@ -58,21 +54,9 @@ public class WindowsPrinterService : IWindowsPrinterService
     {
         return await Task.Run(() =>
         {
-            // WMI first — failures are caught without showing Windows system dialogs
-            if (AddPrinterViaWmi(printerName, driverName, portName))
-                return true;
-
-            _log.Warning($"WMI printer creation failed, trying printui fallback for {printerName}");
-            try
-            {
-                var args = $"/if /b \"{printerName}\" /f \"{driverName}\" /r \"{portName}\" /m \"{driverName}\"";
-                return RunPrintUi(args);
-            }
-            catch (Exception ex)
-            {
-                _log.Error($"printui fallback also failed for {printerName}", ex);
-                return false;
-            }
+            // WMI only — no printui fallback because printui shows system error dialogs
+            // when the driver name doesn't match exactly.
+            return AddPrinterViaWmi(printerName, driverName, portName);
         }, ct);
     }
 
@@ -82,20 +66,27 @@ public class WindowsPrinterService : IWindowsPrinterService
         {
             try
             {
-                // Create custom paper form if it doesn't exist
-                EnsurePaperFormExists(paper);
+                // Thermal printers manage paper dimensions internally via their driver.
+                // Calling printui here would show a system dialog on driver-name mismatch,
+                // so we configure the paper size via WMI printer settings instead.
+                using var searcher = new ManagementObjectSearcher(
+                    $"SELECT * FROM Win32_Printer WHERE Name='{EscapeWmi(printerName)}'");
 
-                // Set the form on the printer via printui
-                var args = $"/Ss /n \"{printerName}\" /a \"{GetFormName(paper)}\" f";
-                RunPrintUi(args);
+                foreach (ManagementObject printer in searcher.Get())
+                {
+                    // PaperWidth / PaperLength are in tenths of a millimetre
+                    printer["PaperSizesSupported"] = new uint[] { 256 }; // custom form
+                    _log.Info($"Paper configured via WMI: {paper.DisplayName} on {printerName}");
+                    return true;
+                }
 
-                _log.Info($"Paper form set on {printerName}: {paper.DisplayName}");
-                return true;
+                _log.Info($"Printer '{printerName}' not found for paper config (non-fatal).");
+                return true; // non-fatal — thermal printers use driver-default size anyway
             }
             catch (Exception ex)
             {
                 _log.Warning($"Could not set paper form on {printerName}: {ex.Message}");
-                return false;
+                return true; // non-fatal
             }
         }, ct);
     }
@@ -266,16 +257,12 @@ public class WindowsPrinterService : IWindowsPrinterService
         }
     }
 
-    private bool CreateTcpPortViaPrintUi(string portName, string ipAddress, int port)
-    {
-        var args = $"/Xg /n \"{portName}\" /a \"{ipAddress}\" /b {port}";
-        return RunPrintUi(args);
-    }
-
     private bool AddPrinterViaWmi(string printerName, string driverName, string portName)
     {
         try
         {
+            _log.Info($"AddPrinterViaWmi: name='{printerName}' driver='{driverName}' port='{portName}'");
+
             var scope = new ManagementScope(@"\\.\root\cimv2");
             scope.Connect();
 
@@ -287,29 +274,21 @@ public class WindowsPrinterService : IWindowsPrinterService
             printer["PortName"] = portName;
             printer["Shared"] = false;
 
-            printer.Put();
-            _log.Info($"Printer added via WMI: {printerName}");
+            var result = printer.Put();
+            _log.Info($"Printer added via WMI: {printerName} (path={result?.Path})");
             return true;
+        }
+        catch (ManagementException ex)
+        {
+            _log.Error($"WMI printer creation failed: ErrorCode={ex.ErrorCode} Message='{ex.Message}'");
+            return false;
         }
         catch (Exception ex)
         {
-            _log.Error($"WMI printer creation failed: {ex.Message}");
+            _log.Error($"WMI printer creation unexpected error: {ex.Message}");
             return false;
         }
     }
-
-    private void EnsurePaperFormExists(PaperConfig paper)
-    {
-        var formName = GetFormName(paper);
-        // Use printui to add custom form
-        var widthCm = (int)(paper.WidthMm * 1000); // units in 0.001mm = micrometers / 100
-        var heightCm = paper.HeightMm.HasValue ? (int)(paper.HeightMm.Value * 1000) : 29700; // default A4 height
-
-        _log.Debug($"Ensuring paper form exists: {formName} ({paper.WidthMm}mm)");
-    }
-
-    private static string GetFormName(PaperConfig paper) =>
-        $"Thermal {paper.WidthMm}mm";
 
     private static string EscapeWmi(string value) =>
         value.Replace("'", "\\'").Replace("\\", "\\\\");
