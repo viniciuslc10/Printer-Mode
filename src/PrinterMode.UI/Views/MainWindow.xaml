@@ -122,12 +122,9 @@
                       Visibility="{Binding ShowSerialFields, Converter={StaticResource BoolVis}}">
             <TextBlock Text="Porta Serial" FontSize="12"
                        Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
-            <ComboBox Text="{Binding ComPort}" IsEditable="True" Width="150" HorizontalAlignment="Left">
-              <ComboBoxItem Content="COM1"/>
-              <ComboBoxItem Content="COM2"/>
-              <ComboBoxItem Content="COM3"/>
-              <ComboBoxItem Content="COM4"/>
-            </ComboBox>
+            <ComboBox ItemsSource="{Binding ComPorts}"
+                      SelectedItem="{Binding ComPort}"
+                      Width="150" HorizontalAlignment="Left"/>
           </StackPanel>
 
           <Border Height="1" Background="{StaticResource BorderBrush2}" Margin="0,4,0,16"/>

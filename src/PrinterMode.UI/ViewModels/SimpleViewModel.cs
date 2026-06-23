@@ -47,6 +47,8 @@ public partial class SimpleViewModel : ObservableObject
     [ObservableProperty] private int _networkPort = 9100;
     [ObservableProperty] private string _comPort = "COM1";
 
+    public List<string> ComPorts { get; } = ["COM1", "COM2", "COM3", "COM4", "COM5", "COM6"];
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanInstall))]
     private string _printerName = string.Empty;
