@@ -1,3 +1,4 @@
+using System.IO;
 using PrinterMode.Core.Interfaces;
 
 namespace PrinterMode.UI.Services;
