@@ -99,6 +99,10 @@ public class DriverInstaller : IDriverInstaller
                     driverInstalled = true;
                     steps.Add($"Driver instalado via instalador: {request.Driver.InstallerExe}");
                     _log.Info($"Driver installed via EXE: {exePath}");
+
+                    // Brief pause to let Windows fully register the driver before querying/adding printer
+                    progress?.Report("Aguardando registro do driver...");
+                    await Task.Delay(3000, ct);
                 }
             }
             else
@@ -113,6 +117,9 @@ public class DriverInstaller : IDriverInstaller
                 driverInstalled = true;
                 steps.Add($"Driver instalado via pnputil: {infPath}");
                 _log.Info($"Driver installed via pnputil: {infPath}");
+
+                // Brief pause to let Windows fully register the driver
+                await Task.Delay(1000, ct);
             }
 
             // Step 2: Create the port

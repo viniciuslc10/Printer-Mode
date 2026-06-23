@@ -58,6 +58,11 @@ public class WindowsPrinterService : IWindowsPrinterService
     {
         return await Task.Run(() =>
         {
+            // WMI first — failures are caught without showing Windows system dialogs
+            if (AddPrinterViaWmi(printerName, driverName, portName))
+                return true;
+
+            _log.Warning($"WMI printer creation failed, trying printui fallback for {printerName}");
             try
             {
                 var args = $"/if /b \"{printerName}\" /f \"{driverName}\" /r \"{portName}\" /m \"{driverName}\"";
@@ -65,8 +70,8 @@ public class WindowsPrinterService : IWindowsPrinterService
             }
             catch (Exception ex)
             {
-                _log.Error($"Failed to add printer {printerName}", ex);
-                return AddPrinterViaWmi(printerName, driverName, portName);
+                _log.Error($"printui fallback also failed for {printerName}", ex);
+                return false;
             }
         }, ct);
     }
