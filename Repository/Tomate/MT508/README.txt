@@ -1,20 +1,20 @@
-DRIVER: Daruma DR800
+DRIVER: Tomate MT-508
 ============================================================
 
-PAPEL PADRÃO : A4 / matricial / não-térmica
-CONEXÕES     : USB · TCP/IP
-VID/PID      : N/A:N/A
-ARQUIVO INF  : DR800.inf
-NOME DRIVER  : Daruma DR800
+PAPEL PADRÃO : 58mm / área imprimível 48mm
+CONEXÕES     : USB
+VID/PID      : 0416:5011
+ARQUIVO INF  : TomateMT508.inf
+NOME DRIVER  : Tomate MT-508
 
 COMO OBTER O DRIVER OFICIAL
 ----------------------------
-https://daruma.com.br → Suporte → Impressoras → DR-800 → Downloads → Driver
-Daruma_DR800_Driver_v1.0_Win10.zip. Não é térmica — usa fita/cartucho.
+https://www.multilaser.com.br → Suporte → Impressoras → MT-508 → Drivers
+Tomate_MT508_Driver_Win10.zip. Chip Winbond VID=0416.
 
 ARQUIVOS NECESSÁRIOS NESTA PASTA
 ----------------------------------
-  DR800.inf          ← obrigatório (INF principal)
+  TomateMT508.inf          ← obrigatório (INF principal)
   *.cat                   ← catálogo de assinaturas digitais
   *.dll / *.sys           ← binários do driver (se existirem)
   *.gpd / *.ppd / *.cfg  ← perfis de configuração

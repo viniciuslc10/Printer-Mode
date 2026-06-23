@@ -1,0 +1,64 @@
+; =============================================================================
+; TEMPLATE DE REFERÊNCIA — NÃO É O DRIVER REAL
+; =============================================================================
+; Fabricante : Gertec
+; Modelo     : G250
+; Driver     : Gertec G250
+; VID/PID    : USB\VID_20D1&PID_7008
+;
+; ATENÇÃO: Este arquivo é apenas um TEMPLATE estrutural.
+; Substitua-o pelo arquivo .INF OFICIAL do fabricante.
+; Veja README.txt para instruções de onde baixar o driver real.
+; =============================================================================
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = Printer
+ClassGUID   = {4D36E979-E325-11CE-BFC1-08002BE10318}
+Provider    = %Mfg%
+CatalogFile = GertecG250.cat
+DriverVer   = 01/01/2024,1.0.0.0
+
+[Manufacturer]
+%Mfg% = Models,NTamd64
+
+[Models.NTamd64]
+%PrinterName% = INSTALL_SECTION, USB\VID_20D1&PID_7008
+%PrinterName% = INSTALL_SECTION, USBPRINT\VID_20D1&PID_7008
+
+[INSTALL_SECTION]
+CopyFiles = @GertecG250.dll
+
+[INSTALL_SECTION.HW]
+AddReg = HardwareDeviceSettings
+
+[HardwareDeviceSettings]
+HKR,,"BusType",0x00010001,1
+
+[INSTALL_SECTION.Services]
+AddService = usbprint,0x00000002,usbprint_service_inst
+
+[usbprint_service_inst]
+ServiceType   = 1
+StartType     = 3
+ErrorControl  = 1
+ServiceBinary = %12%\usbprint.sys
+
+[SourceDisksNames]
+1 = %DiskName%,,,"."
+
+[SourceDisksFiles]
+GertecG250.dll = 1
+
+[DestinationDirs]
+DefaultDestDir = 11
+
+[Strings]
+Mfg         = "Gertec"
+PrinterName = "Gertec G250"
+DiskName    = "Driver Disk"
+
+; =============================================================================
+; FIM DO TEMPLATE
+; Substitua pelo driver oficial do fabricante.
+; =============================================================================

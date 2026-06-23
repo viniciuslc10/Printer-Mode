@@ -1,6 +1,6 @@
 {
-  "version": "1.0",
-  "updatedAt": "2024-01-01T00:00:00Z",
+  "version": "1.1",
+  "updatedAt": "2024-06-23T00:00:00Z",
   "drivers": [
     {
       "id": "bematech_mp4200",
@@ -11,25 +11,20 @@
       "driverFolder": "Bematech\\MP4200",
       "infFile": "MP4200.inf",
       "driverName": "Bematech MP-4200 TH",
-      "version": "1.0",
-      "notes": "Impressora térmica 80mm - driver oficial Bematech",
+      "version": "1.9",
+      "notes": "Térmica 80mm. Driver disponível no site Bematech.",
       "defaultPaper": {
         "name": "Thermal 80mm",
         "widthMm": 80.0,
         "printableWidthMm": 72.0,
         "isAutoLength": true,
-        "marginTopMm": 0,
-        "marginBottomMm": 0,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
         "marginLeftMm": 4.0,
         "marginRightMm": 4.0
       },
       "supportedPapers": [
-        {
-          "name": "Thermal 80mm",
-          "widthMm": 80.0,
-          "printableWidthMm": 72.0,
-          "isAutoLength": true
-        }
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true }
       ],
       "defaultSerial": null,
       "supportedPorts": ["USB", "COM", "TCP/IP"]
@@ -43,34 +38,109 @@
       "driverFolder": "Bematech\\MP2800",
       "infFile": "MP2800.inf",
       "driverName": "Bematech MP-2800 TH",
-      "version": "1.0",
-      "notes": "Impressora térmica 58mm",
+      "version": "1.9",
+      "notes": "Térmica 58mm.",
       "defaultPaper": {
         "name": "Thermal 58mm",
         "widthMm": 58.0,
         "printableWidthMm": 50.0,
         "isAutoLength": true,
-        "marginTopMm": 0,
-        "marginBottomMm": 0,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
         "marginLeftMm": 4.0,
         "marginRightMm": 4.0
       },
       "supportedPapers": [
-        {
-          "name": "Thermal 58mm",
-          "widthMm": 58.0,
-          "printableWidthMm": 50.0,
-          "isAutoLength": true
-        }
+        { "name": "Thermal 58mm", "widthMm": 58.0, "printableWidthMm": 50.0, "isAutoLength": true }
       ],
       "defaultSerial": {
-        "baudRate": 9600,
-        "dataBits": 8,
-        "parity": "None",
-        "stopBits": "One",
-        "flowControl": "None"
+        "baudRate": 9600, "dataBits": 8, "parity": "None", "stopBits": "One", "flowControl": "None"
       },
       "supportedPorts": ["USB", "COM"]
+    },
+    {
+      "id": "bematech_mp4000",
+      "manufacturer": "Bematech",
+      "model": "MP-4000 TH",
+      "vid": "0FE6",
+      "pid": "8120",
+      "driverFolder": "Bematech\\MP4000",
+      "infFile": "MP4000.inf",
+      "driverName": "Bematech MP-4000 TH",
+      "version": "1.9",
+      "notes": "Térmica 80mm, corte parcial/total. Porta USB e Serial.",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true },
+        { "name": "Thermal 58mm", "widthMm": 58.0, "printableWidthMm": 50.0, "isAutoLength": true }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB", "COM", "TCP/IP"]
+    },
+    {
+      "id": "bematech_mp5100",
+      "manufacturer": "Bematech",
+      "model": "MP-5100 TH",
+      "vid": "0FE6",
+      "pid": "8121",
+      "driverFolder": "Bematech\\MP5100",
+      "infFile": "MP5100.inf",
+      "driverName": "Bematech MP-5100 TH",
+      "version": "2.0",
+      "notes": "Térmica 80mm alta velocidade, Bluetooth/USB/Ethernet.",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB", "TCP/IP", "BT"]
+    },
+    {
+      "id": "bematech_mp100s",
+      "manufacturer": "Bematech",
+      "model": "MP-100S TH",
+      "vid": "0FE6",
+      "pid": "8100",
+      "driverFolder": "Bematech\\MP100S",
+      "infFile": "MP100S.inf",
+      "driverName": "Bematech MP-100S TH",
+      "version": "1.5",
+      "notes": "Térmica 58mm, porta serial RS-232.",
+      "defaultPaper": {
+        "name": "Thermal 58mm",
+        "widthMm": 58.0,
+        "printableWidthMm": 50.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 58mm", "widthMm": 58.0, "printableWidthMm": 50.0, "isAutoLength": true }
+      ],
+      "defaultSerial": {
+        "baudRate": 9600, "dataBits": 8, "parity": "None", "stopBits": "One", "flowControl": "None"
+      },
+      "supportedPorts": ["COM"]
     },
     {
       "id": "elgin_i9",
@@ -81,21 +151,20 @@
       "driverFolder": "Elgin\\i9",
       "infFile": "ElginI9.inf",
       "driverName": "Elgin i9",
-      "version": "1.0",
-      "notes": "Impressora térmica Elgin i9 80mm",
+      "version": "3.0",
+      "notes": "Térmica 80mm, 250mm/s.",
       "defaultPaper": {
         "name": "Thermal 80mm",
         "widthMm": 80.0,
         "printableWidthMm": 72.0,
-        "isAutoLength": true
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
       },
       "supportedPapers": [
-        {
-          "name": "Thermal 80mm",
-          "widthMm": 80.0,
-          "printableWidthMm": 72.0,
-          "isAutoLength": true
-        }
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true }
       ],
       "defaultSerial": null,
       "supportedPorts": ["USB", "TCP/IP"]
@@ -109,24 +178,216 @@
       "driverFolder": "Elgin\\i8",
       "infFile": "ElginI8.inf",
       "driverName": "Elgin i8",
-      "version": "1.0",
-      "notes": "Impressora térmica Elgin i8 80mm",
+      "version": "2.5",
+      "notes": "Térmica 80mm.",
       "defaultPaper": {
         "name": "Thermal 80mm",
         "widthMm": 80.0,
         "printableWidthMm": 72.0,
-        "isAutoLength": true
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
       },
       "supportedPapers": [
-        {
-          "name": "Thermal 80mm",
-          "widthMm": 80.0,
-          "printableWidthMm": 72.0,
-          "isAutoLength": true
-        }
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true }
       ],
       "defaultSerial": null,
       "supportedPorts": ["USB", "TCP/IP"]
+    },
+    {
+      "id": "elgin_i7",
+      "manufacturer": "Elgin",
+      "model": "i7",
+      "vid": "0DD4",
+      "pid": "00FF",
+      "driverFolder": "Elgin\\i7",
+      "infFile": "ElginI7.inf",
+      "driverName": "Elgin i7",
+      "version": "2.0",
+      "notes": "Térmica 80mm, USB+Serial.",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true }
+      ],
+      "defaultSerial": {
+        "baudRate": 115200, "dataBits": 8, "parity": "None", "stopBits": "One", "flowControl": "None"
+      },
+      "supportedPorts": ["USB", "COM"]
+    },
+    {
+      "id": "elgin_i5",
+      "manufacturer": "Elgin",
+      "model": "i5",
+      "vid": "0DD4",
+      "pid": "00FE",
+      "driverFolder": "Elgin\\i5",
+      "infFile": "ElginI5.inf",
+      "driverName": "Elgin i5",
+      "version": "2.0",
+      "notes": "Térmica 58mm compacta.",
+      "defaultPaper": {
+        "name": "Thermal 58mm",
+        "widthMm": 58.0,
+        "printableWidthMm": 50.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 58mm", "widthMm": 58.0, "printableWidthMm": 50.0, "isAutoLength": true }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB"]
+    },
+    {
+      "id": "elgin_i3",
+      "manufacturer": "Elgin",
+      "model": "i3",
+      "vid": "0DD4",
+      "pid": "00FD",
+      "driverFolder": "Elgin\\i3",
+      "infFile": "ElginI3.inf",
+      "driverName": "Elgin i3",
+      "version": "1.5",
+      "notes": "Térmica 58mm entrada.",
+      "defaultPaper": {
+        "name": "Thermal 58mm",
+        "widthMm": 58.0,
+        "printableWidthMm": 50.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 58mm", "widthMm": 58.0, "printableWidthMm": 50.0, "isAutoLength": true }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB"]
+    },
+    {
+      "id": "gertec_g250",
+      "manufacturer": "Gertec",
+      "model": "G250",
+      "vid": "20D1",
+      "pid": "7008",
+      "driverFolder": "Gertec\\G250",
+      "infFile": "GertecG250.inf",
+      "driverName": "Gertec G250",
+      "version": "1.0",
+      "notes": "Térmica 80mm, ESC/POS.",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB", "TCP/IP"]
+    },
+    {
+      "id": "gertec_g500",
+      "manufacturer": "Gertec",
+      "model": "G500",
+      "vid": "20D1",
+      "pid": "7009",
+      "driverFolder": "Gertec\\G500",
+      "infFile": "GertecG500.inf",
+      "driverName": "Gertec G500",
+      "version": "1.0",
+      "notes": "Térmica 80mm alta velocidade, USB+Ethernet.",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB", "TCP/IP"]
+    },
+    {
+      "id": "tanca_tp550",
+      "manufacturer": "Tanca",
+      "model": "TP-550",
+      "vid": "0493",
+      "pid": "8760",
+      "driverFolder": "Tanca\\TP550",
+      "infFile": "TancaTP550.inf",
+      "driverName": "Tanca TP-550",
+      "version": "1.0",
+      "notes": "Térmica 80mm, 200mm/s, USB/Serial/Ethernet.",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true }
+      ],
+      "defaultSerial": {
+        "baudRate": 115200, "dataBits": 8, "parity": "None", "stopBits": "One", "flowControl": "None"
+      },
+      "supportedPorts": ["USB", "COM", "TCP/IP"]
+    },
+    {
+      "id": "tanca_tp650",
+      "manufacturer": "Tanca",
+      "model": "TP-650",
+      "vid": "0493",
+      "pid": "8761",
+      "driverFolder": "Tanca\\TP650",
+      "infFile": "TancaTP650.inf",
+      "driverName": "Tanca TP-650",
+      "version": "1.2",
+      "notes": "Térmica 80mm, guilhotina automática, Bluetooth opcional.",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB", "TCP/IP", "BT"]
     },
     {
       "id": "epson_tmt20x",
@@ -137,27 +398,21 @@
       "driverFolder": "Epson\\TM-T20X",
       "infFile": "EPST20X.inf",
       "driverName": "EPSON TM-T20X",
-      "version": "1.0",
-      "notes": "Impressora Epson TM-T20X térmica 80mm - driver EPSON Advanced Printer Driver",
+      "version": "8.00",
+      "notes": "Térmica 80mm, driver APD (Advanced Printer Driver).",
       "defaultPaper": {
         "name": "Thermal 80mm",
         "widthMm": 80.0,
         "printableWidthMm": 72.0,
-        "isAutoLength": true
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
       },
       "supportedPapers": [
-        {
-          "name": "Thermal 80mm",
-          "widthMm": 80.0,
-          "printableWidthMm": 72.0,
-          "isAutoLength": true
-        },
-        {
-          "name": "Thermal 58mm",
-          "widthMm": 58.0,
-          "printableWidthMm": 50.0,
-          "isAutoLength": true
-        }
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true },
+        { "name": "Thermal 58mm", "widthMm": 58.0, "printableWidthMm": 50.0, "isAutoLength": true }
       ],
       "defaultSerial": null,
       "supportedPorts": ["USB", "COM", "TCP/IP"]
@@ -171,24 +426,267 @@
       "driverFolder": "Epson\\TM-T88V",
       "infFile": "EPST88V.inf",
       "driverName": "EPSON TM-T88V",
-      "version": "1.0",
-      "notes": "Impressora Epson TM-T88V - alta velocidade",
+      "version": "8.00",
+      "notes": "Térmica 80mm, 300mm/s.",
       "defaultPaper": {
         "name": "Thermal 80mm",
         "widthMm": 80.0,
         "printableWidthMm": 72.0,
-        "isAutoLength": true
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
       },
       "supportedPapers": [
-        {
-          "name": "Thermal 80mm",
-          "widthMm": 80.0,
-          "printableWidthMm": 72.0,
-          "isAutoLength": true
-        }
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true }
       ],
       "defaultSerial": null,
       "supportedPorts": ["USB", "COM", "TCP/IP"]
+    },
+    {
+      "id": "epson_tmt88vi",
+      "manufacturer": "Epson",
+      "model": "TM-T88VI",
+      "vid": "04B8",
+      "pid": "0E28",
+      "driverFolder": "Epson\\TM-T88VI",
+      "infFile": "EPST88VI.inf",
+      "driverName": "EPSON TM-T88VI",
+      "version": "8.00",
+      "notes": "Térmica 80mm, 350mm/s, NFC, impressão simultânea.",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB", "TCP/IP"]
+    },
+    {
+      "id": "epson_tmt20iii",
+      "manufacturer": "Epson",
+      "model": "TM-T20III",
+      "vid": "04B8",
+      "pid": "0232",
+      "driverFolder": "Epson\\TM-T20III",
+      "infFile": "EPST20III.inf",
+      "driverName": "EPSON TM-T20III",
+      "version": "8.00",
+      "notes": "Térmica 80mm, sucessora da TM-T20X, USB/Ethernet.",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true },
+        { "name": "Thermal 58mm", "widthMm": 58.0, "printableWidthMm": 50.0, "isAutoLength": true }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB", "TCP/IP"]
+    },
+    {
+      "id": "epson_tmt82x",
+      "manufacturer": "Epson",
+      "model": "TM-T82X",
+      "vid": "04B8",
+      "pid": "0218",
+      "driverFolder": "Epson\\TM-T82X",
+      "infFile": "EPST82X.inf",
+      "driverName": "EPSON TM-T82X",
+      "version": "8.00",
+      "notes": "Térmica 80mm, Latinoamérica, substituta da TM-T82II.",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB", "COM", "TCP/IP"]
+    },
+    {
+      "id": "tomate_mt508",
+      "manufacturer": "Tomate",
+      "model": "MT-508",
+      "vid": "0416",
+      "pid": "5011",
+      "driverFolder": "Tomate\\MT508",
+      "infFile": "TomateMT508.inf",
+      "driverName": "Tomate MT-508",
+      "version": "1.0",
+      "notes": "Térmica 58mm compacta, USB.",
+      "defaultPaper": {
+        "name": "Thermal 58mm",
+        "widthMm": 58.0,
+        "printableWidthMm": 48.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 5.0,
+        "marginRightMm": 5.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 58mm", "widthMm": 58.0, "printableWidthMm": 48.0, "isAutoLength": true }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB"]
+    },
+    {
+      "id": "tomate_mt609",
+      "manufacturer": "Tomate",
+      "model": "MT-609",
+      "vid": "0416",
+      "pid": "5012",
+      "driverFolder": "Tomate\\MT609",
+      "infFile": "TomateMT609.inf",
+      "driverName": "Tomate MT-609",
+      "version": "1.0",
+      "notes": "Térmica 80mm, USB+Bluetooth.",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB", "BT"]
+    },
+    {
+      "id": "diebold_im453",
+      "manufacturer": "Diebold",
+      "model": "IM453",
+      "vid": "05F9",
+      "pid": "4100",
+      "driverFolder": "Diebold\\IM453",
+      "infFile": "DieboldIM453.inf",
+      "driverName": "Diebold IM453",
+      "version": "1.0",
+      "notes": "Térmica 80mm, PDVs Diebold, ESC/POS.",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB", "TCP/IP"]
+    },
+    {
+      "id": "diebold_im333",
+      "manufacturer": "Diebold",
+      "model": "IM333",
+      "vid": "05F9",
+      "pid": "4101",
+      "driverFolder": "Diebold\\IM333",
+      "infFile": "DieboldIM333.inf",
+      "driverName": "Diebold IM333",
+      "version": "1.0",
+      "notes": "Térmica 58mm para PDVs compactos.",
+      "defaultPaper": {
+        "name": "Thermal 58mm",
+        "widthMm": 58.0,
+        "printableWidthMm": 50.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 58mm", "widthMm": 58.0, "printableWidthMm": 50.0, "isAutoLength": true }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB"]
+    },
+    {
+      "id": "pos58_generic",
+      "manufacturer": "POS-58",
+      "model": "POS-58 USB",
+      "vid": "0483",
+      "pid": "5720",
+      "driverFolder": "POS58",
+      "infFile": "POS58.inf",
+      "driverName": "POS-58 Printer",
+      "version": "1.0",
+      "notes": "Genérica 58mm. Chip STM32 (VID=0483). Driver USB CDC ou WinUSB.",
+      "defaultPaper": {
+        "name": "Thermal 58mm",
+        "widthMm": 58.0,
+        "printableWidthMm": 48.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 5.0,
+        "marginRightMm": 5.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 58mm", "widthMm": 58.0, "printableWidthMm": 48.0, "isAutoLength": true }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB"]
+    },
+    {
+      "id": "pos80_generic",
+      "manufacturer": "POS-80",
+      "model": "POS-80 USB",
+      "vid": "0483",
+      "pid": "5750",
+      "driverFolder": "POS80",
+      "infFile": "POS80.inf",
+      "driverName": "POS-80 Printer",
+      "version": "1.0",
+      "notes": "Genérica 80mm. ESC/POS. Driver padrão USB de impressora.",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": ["USB"]
     },
     {
       "id": "daruma_dr800",
@@ -200,25 +698,81 @@
       "infFile": "DR800.inf",
       "driverName": "Daruma DR800",
       "version": "1.0",
-      "notes": "Impressora não-térmica Daruma DR800",
+      "notes": "Matricial/não-térmica. Driver oficial Daruma.",
       "defaultPaper": {
         "name": "A4",
         "widthMm": 210.0,
         "printableWidthMm": 200.0,
         "heightMm": 297.0,
-        "isAutoLength": false
+        "isAutoLength": false,
+        "marginTopMm": 5.0,
+        "marginBottomMm": 5.0,
+        "marginLeftMm": 5.0,
+        "marginRightMm": 5.0
       },
       "supportedPapers": [
-        {
-          "name": "A4",
-          "widthMm": 210.0,
-          "printableWidthMm": 200.0,
-          "heightMm": 297.0,
-          "isAutoLength": false
-        }
+        { "name": "A4", "widthMm": 210.0, "printableWidthMm": 200.0, "heightMm": 297.0, "isAutoLength": false }
       ],
       "defaultSerial": null,
       "supportedPorts": ["USB", "TCP/IP"]
+    },
+    {
+      "id": "daruma_dr700",
+      "manufacturer": "Daruma",
+      "model": "DR700",
+      "vid": null,
+      "pid": null,
+      "driverFolder": "Daruma\\DR700",
+      "infFile": "DR700.inf",
+      "driverName": "Daruma DR700",
+      "version": "1.0",
+      "notes": "Compacta 80 colunas, USB/Serial.",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true }
+      ],
+      "defaultSerial": {
+        "baudRate": 9600, "dataBits": 8, "parity": "None", "stopBits": "One", "flowControl": "None"
+      },
+      "supportedPorts": ["USB", "COM"]
+    },
+    {
+      "id": "daruma_dr600",
+      "manufacturer": "Daruma",
+      "model": "DR600",
+      "vid": null,
+      "pid": null,
+      "driverFolder": "Daruma\\DR600",
+      "infFile": "DR600.inf",
+      "driverName": "Daruma DR600",
+      "version": "1.0",
+      "notes": "ECF fiscal/não-fiscal Daruma, Serial RS-232.",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        { "name": "Thermal 80mm", "widthMm": 80.0, "printableWidthMm": 72.0, "isAutoLength": true }
+      ],
+      "defaultSerial": {
+        "baudRate": 9600, "dataBits": 8, "parity": "None", "stopBits": "One", "flowControl": "None"
+      },
+      "supportedPorts": ["USB", "COM"]
     },
     {
       "id": "zebra_zd220",
@@ -229,8 +783,8 @@
       "driverFolder": "Zebra\\ZD220",
       "infFile": "ZD220.inf",
       "driverName": "ZDesigner ZD220-203dpi ZPL",
-      "version": "1.0",
-      "notes": "Impressora de etiquetas Zebra ZD220 - driver ZDesigner",
+      "version": "8.7",
+      "notes": "Etiquetas ZPL/EPL, driver ZDesigner oficial Zebra.",
       "defaultPaper": {
         "name": "Label 100x50mm",
         "widthMm": 100.0,
@@ -239,20 +793,8 @@
         "isAutoLength": false
       },
       "supportedPapers": [
-        {
-          "name": "Label 100x50mm",
-          "widthMm": 100.0,
-          "printableWidthMm": 96.0,
-          "heightMm": 50.0,
-          "isAutoLength": false
-        },
-        {
-          "name": "Label 60x40mm",
-          "widthMm": 60.0,
-          "printableWidthMm": 56.0,
-          "heightMm": 40.0,
-          "isAutoLength": false
-        }
+        { "name": "Label 100x50mm", "widthMm": 100.0, "printableWidthMm": 96.0, "heightMm": 50.0, "isAutoLength": false },
+        { "name": "Label 60x40mm",  "widthMm": 60.0,  "printableWidthMm": 56.0,  "heightMm": 40.0,  "isAutoLength": false }
       ],
       "defaultSerial": null,
       "supportedPorts": ["USB", "TCP/IP"]

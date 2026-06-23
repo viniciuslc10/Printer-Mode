@@ -1,20 +1,20 @@
-DRIVER: Daruma DR800
+DRIVER: Tanca TP-550
 ============================================================
 
-PAPEL PADRÃO : A4 / matricial / não-térmica
-CONEXÕES     : USB · TCP/IP
-VID/PID      : N/A:N/A
-ARQUIVO INF  : DR800.inf
-NOME DRIVER  : Daruma DR800
+PAPEL PADRÃO : 80mm / área imprimível 72mm
+CONEXÕES     : USB · Serial · TCP/IP
+VID/PID      : 0493:8760
+ARQUIVO INF  : TancaTP550.inf
+NOME DRIVER  : Tanca TP-550
 
 COMO OBTER O DRIVER OFICIAL
 ----------------------------
-https://daruma.com.br → Suporte → Impressoras → DR-800 → Downloads → Driver
-Daruma_DR800_Driver_v1.0_Win10.zip. Não é térmica — usa fita/cartucho.
+https://tanca.com.br → Suporte → Downloads → TP-550 → Driver
+Tanca_TP550_Driver_v1.0_Win10.zip. Serial: 115200,8,N,1
 
 ARQUIVOS NECESSÁRIOS NESTA PASTA
 ----------------------------------
-  DR800.inf          ← obrigatório (INF principal)
+  TancaTP550.inf          ← obrigatório (INF principal)
   *.cat                   ← catálogo de assinaturas digitais
   *.dll / *.sys           ← binários do driver (se existirem)
   *.gpd / *.ppd / *.cfg  ← perfis de configuração

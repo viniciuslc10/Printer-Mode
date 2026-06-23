@@ -1,16 +1,29 @@
-PASTA DE DRIVER: Elgin i8
-=======================================
+DRIVER: Elgin i8
+============================================================
 
-Coloque aqui os arquivos do driver oficial do fabricante:
+PAPEL PADRÃO : 80mm / área imprimível 72mm
+CONEXÕES     : USB · TCP/IP
+VID/PID      : 0DD4:0100
+ARQUIVO INF  : ElginI8.inf
+NOME DRIVER  : Elgin i8
 
-  - Arquivo .INF (obrigatório)
-  - Arquivos .CAT (catálogo de assinaturas)
-  - Arquivos .DLL do driver
-  - Arquivos .GPD ou .PPD de configuração
+COMO OBTER O DRIVER OFICIAL
+----------------------------
+https://elgin.com.br → Impressoras → i8 → Downloads → Driver Windows
+Elgin_Driver_i8_v2.5_x64.zip
 
-Como obter o driver oficial:
-- Elgin: Acesse o site oficial do fabricante e baixe o driver para Windows 10/11.
-- Extraia os arquivos e copie para esta pasta.
-- Certifique-se que o arquivo .INF está nomeado conforme configurado em Repository/drivers.json.
+ARQUIVOS NECESSÁRIOS NESTA PASTA
+----------------------------------
+  ElginI8.inf          ← obrigatório (INF principal)
+  *.cat                   ← catálogo de assinaturas digitais
+  *.dll / *.sys           ← binários do driver (se existirem)
+  *.gpd / *.ppd / *.cfg  ← perfis de configuração
 
-IMPORTANTE: Nunca utilize drivers genéricos do Windows.
+INSTALAÇÃO MANUAL (PowerShell como Administrador)
+--------------------------------------------------
+  pnputil /add-driver "/home/user/Printer-Mode/Repository$folder$inf" /install
+
+ATENÇÃO
+--------
+  Não utilize drivers genéricos do Windows.
+  Sempre use o driver oficial do fabricante listado acima.

@@ -1,20 +1,20 @@
-DRIVER: Daruma DR800
+DRIVER: Epson TM-T82X
 ============================================================
 
-PAPEL PADRÃO : A4 / matricial / não-térmica
-CONEXÕES     : USB · TCP/IP
-VID/PID      : N/A:N/A
-ARQUIVO INF  : DR800.inf
-NOME DRIVER  : Daruma DR800
+PAPEL PADRÃO : 80mm / área imprimível 72mm
+CONEXÕES     : USB · Serial · TCP/IP
+VID/PID      : 04B8:0218
+ARQUIVO INF  : EPST82X.inf
+NOME DRIVER  : EPSON TM-T82X
 
 COMO OBTER O DRIVER OFICIAL
 ----------------------------
-https://daruma.com.br → Suporte → Impressoras → DR-800 → Downloads → Driver
-Daruma_DR800_Driver_v1.0_Win10.zip. Não é térmica — usa fita/cartucho.
+https://epson.com.br → Suporte → Impressoras → TM-T82X → Drivers
+EPSON APD v4.x. Arquivo: APD_451EU.exe.
 
 ARQUIVOS NECESSÁRIOS NESTA PASTA
 ----------------------------------
-  DR800.inf          ← obrigatório (INF principal)
+  EPST82X.inf          ← obrigatório (INF principal)
   *.cat                   ← catálogo de assinaturas digitais
   *.dll / *.sys           ← binários do driver (se existirem)
   *.gpd / *.ppd / *.cfg  ← perfis de configuração

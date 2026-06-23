@@ -1,20 +1,20 @@
-DRIVER: Daruma DR800
+DRIVER: Epson TM-T20III
 ============================================================
 
-PAPEL PADRÃO : A4 / matricial / não-térmica
+PAPEL PADRÃO : 80mm / área imprimível 72mm
 CONEXÕES     : USB · TCP/IP
-VID/PID      : N/A:N/A
-ARQUIVO INF  : DR800.inf
-NOME DRIVER  : Daruma DR800
+VID/PID      : 04B8:0232
+ARQUIVO INF  : EPST20III.inf
+NOME DRIVER  : EPSON TM-T20III
 
 COMO OBTER O DRIVER OFICIAL
 ----------------------------
-https://daruma.com.br → Suporte → Impressoras → DR-800 → Downloads → Driver
-Daruma_DR800_Driver_v1.0_Win10.zip. Não é térmica — usa fita/cartucho.
+https://epson.com.br → Suporte → Impressoras → TM-T20III → Drivers
+EPSON APD v4.5x. Arquivo: APD_454EU.exe. Sucessora da TM-T20X.
 
 ARQUIVOS NECESSÁRIOS NESTA PASTA
 ----------------------------------
-  DR800.inf          ← obrigatório (INF principal)
+  EPST20III.inf          ← obrigatório (INF principal)
   *.cat                   ← catálogo de assinaturas digitais
   *.dll / *.sys           ← binários do driver (se existirem)
   *.gpd / *.ppd / *.cfg  ← perfis de configuração

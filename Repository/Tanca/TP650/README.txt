@@ -1,20 +1,20 @@
-DRIVER: Daruma DR800
+DRIVER: Tanca TP-650
 ============================================================
 
-PAPEL PADRÃO : A4 / matricial / não-térmica
-CONEXÕES     : USB · TCP/IP
-VID/PID      : N/A:N/A
-ARQUIVO INF  : DR800.inf
-NOME DRIVER  : Daruma DR800
+PAPEL PADRÃO : 80mm / área imprimível 72mm
+CONEXÕES     : USB · TCP/IP · Bluetooth
+VID/PID      : 0493:8761
+ARQUIVO INF  : TancaTP650.inf
+NOME DRIVER  : Tanca TP-650
 
 COMO OBTER O DRIVER OFICIAL
 ----------------------------
-https://daruma.com.br → Suporte → Impressoras → DR-800 → Downloads → Driver
-Daruma_DR800_Driver_v1.0_Win10.zip. Não é térmica — usa fita/cartucho.
+https://tanca.com.br → Suporte → Downloads → TP-650 → Driver
+Inclui driver Bluetooth. Tanca_TP650_Driver_v1.2_Win10.zip
 
 ARQUIVOS NECESSÁRIOS NESTA PASTA
 ----------------------------------
-  DR800.inf          ← obrigatório (INF principal)
+  TancaTP650.inf          ← obrigatório (INF principal)
   *.cat                   ← catálogo de assinaturas digitais
   *.dll / *.sys           ← binários do driver (se existirem)
   *.gpd / *.ppd / *.cfg  ← perfis de configuração

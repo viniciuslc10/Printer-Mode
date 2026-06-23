@@ -1,20 +1,20 @@
-DRIVER: Daruma DR800
+DRIVER: Bematech MP-4000 TH
 ============================================================
 
-PAPEL PADRÃO : A4 / matricial / não-térmica
-CONEXÕES     : USB · TCP/IP
-VID/PID      : N/A:N/A
-ARQUIVO INF  : DR800.inf
-NOME DRIVER  : Daruma DR800
+PAPEL PADRÃO : 80mm / área imprimível 72mm
+CONEXÕES     : USB · Serial · TCP/IP
+VID/PID      : 0FE6:8120
+ARQUIVO INF  : MP4000.inf
+NOME DRIVER  : Bematech MP-4000 TH
 
 COMO OBTER O DRIVER OFICIAL
 ----------------------------
-https://daruma.com.br → Suporte → Impressoras → DR-800 → Downloads → Driver
-Daruma_DR800_Driver_v1.0_Win10.zip. Não é térmica — usa fita/cartucho.
+https://bematech.com.br → Suporte → Downloads → MP-4000 TH
+Suporta guilhotina parcial e total.
 
 ARQUIVOS NECESSÁRIOS NESTA PASTA
 ----------------------------------
-  DR800.inf          ← obrigatório (INF principal)
+  MP4000.inf          ← obrigatório (INF principal)
   *.cat                   ← catálogo de assinaturas digitais
   *.dll / *.sys           ← binários do driver (se existirem)
   *.gpd / *.ppd / *.cfg  ← perfis de configuração

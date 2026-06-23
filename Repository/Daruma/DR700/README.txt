@@ -1,20 +1,20 @@
-DRIVER: Daruma DR800
+DRIVER: Daruma DR700
 ============================================================
 
-PAPEL PADRÃO : A4 / matricial / não-térmica
-CONEXÕES     : USB · TCP/IP
+PAPEL PADRÃO : 80mm / 80 colunas
+CONEXÕES     : USB · Serial
 VID/PID      : N/A:N/A
-ARQUIVO INF  : DR800.inf
-NOME DRIVER  : Daruma DR800
+ARQUIVO INF  : DR700.inf
+NOME DRIVER  : Daruma DR700
 
 COMO OBTER O DRIVER OFICIAL
 ----------------------------
-https://daruma.com.br → Suporte → Impressoras → DR-800 → Downloads → Driver
-Daruma_DR800_Driver_v1.0_Win10.zip. Não é térmica — usa fita/cartucho.
+https://daruma.com.br → Suporte → Impressoras → DR-700 → Downloads → Driver
+Daruma_DR700_Driver_v1.0_Win10.zip. Serial: 9600,8,N,1
 
 ARQUIVOS NECESSÁRIOS NESTA PASTA
 ----------------------------------
-  DR800.inf          ← obrigatório (INF principal)
+  DR700.inf          ← obrigatório (INF principal)
   *.cat                   ← catálogo de assinaturas digitais
   *.dll / *.sys           ← binários do driver (se existirem)
   *.gpd / *.ppd / *.cfg  ← perfis de configuração

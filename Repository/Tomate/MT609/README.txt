@@ -1,20 +1,20 @@
-DRIVER: Daruma DR800
+DRIVER: Tomate MT-609
 ============================================================
 
-PAPEL PADRÃO : A4 / matricial / não-térmica
-CONEXÕES     : USB · TCP/IP
-VID/PID      : N/A:N/A
-ARQUIVO INF  : DR800.inf
-NOME DRIVER  : Daruma DR800
+PAPEL PADRÃO : 80mm / área imprimível 72mm
+CONEXÕES     : USB · Bluetooth
+VID/PID      : 0416:5012
+ARQUIVO INF  : TomateMT609.inf
+NOME DRIVER  : Tomate MT-609
 
 COMO OBTER O DRIVER OFICIAL
 ----------------------------
-https://daruma.com.br → Suporte → Impressoras → DR-800 → Downloads → Driver
-Daruma_DR800_Driver_v1.0_Win10.zip. Não é térmica — usa fita/cartucho.
+https://www.multilaser.com.br → Suporte → Impressoras → MT-609 → Drivers
+Tomate_MT609_Driver_Win10.zip. Inclui driver BT (Serial over BT).
 
 ARQUIVOS NECESSÁRIOS NESTA PASTA
 ----------------------------------
-  DR800.inf          ← obrigatório (INF principal)
+  TomateMT609.inf          ← obrigatório (INF principal)
   *.cat                   ← catálogo de assinaturas digitais
   *.dll / *.sys           ← binários do driver (se existirem)
   *.gpd / *.ppd / *.cfg  ← perfis de configuração

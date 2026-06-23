@@ -1,16 +1,29 @@
-PASTA DE DRIVER: Bematech MP2800
-=======================================
+DRIVER: Bematech MP-2800 TH
+============================================================
 
-Coloque aqui os arquivos do driver oficial do fabricante:
+PAPEL PADRÃO : 58mm / área imprimível 50mm
+CONEXÕES     : USB · Serial
+VID/PID      : 0FE6:811F
+ARQUIVO INF  : MP2800.inf
+NOME DRIVER  : Bematech MP-2800 TH
 
-  - Arquivo .INF (obrigatório)
-  - Arquivos .CAT (catálogo de assinaturas)
-  - Arquivos .DLL do driver
-  - Arquivos .GPD ou .PPD de configuração
+COMO OBTER O DRIVER OFICIAL
+----------------------------
+https://bematech.com.br → Suporte → Downloads → MP-2800 TH
+Baud rate padrão: 9600,8,N,1
 
-Como obter o driver oficial:
-- Bematech: Acesse o site oficial do fabricante e baixe o driver para Windows 10/11.
-- Extraia os arquivos e copie para esta pasta.
-- Certifique-se que o arquivo .INF está nomeado conforme configurado em Repository/drivers.json.
+ARQUIVOS NECESSÁRIOS NESTA PASTA
+----------------------------------
+  MP2800.inf          ← obrigatório (INF principal)
+  *.cat                   ← catálogo de assinaturas digitais
+  *.dll / *.sys           ← binários do driver (se existirem)
+  *.gpd / *.ppd / *.cfg  ← perfis de configuração
 
-IMPORTANTE: Nunca utilize drivers genéricos do Windows.
+INSTALAÇÃO MANUAL (PowerShell como Administrador)
+--------------------------------------------------
+  pnputil /add-driver "/home/user/Printer-Mode/Repository$folder$inf" /install
+
+ATENÇÃO
+--------
+  Não utilize drivers genéricos do Windows.
+  Sempre use o driver oficial do fabricante listado acima.

@@ -1,20 +1,20 @@
-DRIVER: Daruma DR800
+DRIVER: Bematech MP-100S TH
 ============================================================
 
-PAPEL PADRÃO : A4 / matricial / não-térmica
-CONEXÕES     : USB · TCP/IP
-VID/PID      : N/A:N/A
-ARQUIVO INF  : DR800.inf
-NOME DRIVER  : Daruma DR800
+PAPEL PADRÃO : 58mm / área imprimível 50mm
+CONEXÕES     : Serial RS-232
+VID/PID      : 0FE6:8100
+ARQUIVO INF  : MP100S.inf
+NOME DRIVER  : Bematech MP-100S TH
 
 COMO OBTER O DRIVER OFICIAL
 ----------------------------
-https://daruma.com.br → Suporte → Impressoras → DR-800 → Downloads → Driver
-Daruma_DR800_Driver_v1.0_Win10.zip. Não é térmica — usa fita/cartucho.
+https://bematech.com.br → Suporte → Downloads → MP-100S TH
+Apenas serial. Configure: 9600,8,N,1 via Gerenciador de Dispositivos.
 
 ARQUIVOS NECESSÁRIOS NESTA PASTA
 ----------------------------------
-  DR800.inf          ← obrigatório (INF principal)
+  MP100S.inf          ← obrigatório (INF principal)
   *.cat                   ← catálogo de assinaturas digitais
   *.dll / *.sys           ← binários do driver (se existirem)
   *.gpd / *.ppd / *.cfg  ← perfis de configuração

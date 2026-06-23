@@ -1,20 +1,20 @@
-DRIVER: Daruma DR800
+DRIVER: Epson TM-T88VI
 ============================================================
 
-PAPEL PADRÃO : A4 / matricial / não-térmica
+PAPEL PADRÃO : 80mm / área imprimível 72mm
 CONEXÕES     : USB · TCP/IP
-VID/PID      : N/A:N/A
-ARQUIVO INF  : DR800.inf
-NOME DRIVER  : Daruma DR800
+VID/PID      : 04B8:0E28
+ARQUIVO INF  : EPST88VI.inf
+NOME DRIVER  : EPSON TM-T88VI
 
 COMO OBTER O DRIVER OFICIAL
 ----------------------------
-https://daruma.com.br → Suporte → Impressoras → DR-800 → Downloads → Driver
-Daruma_DR800_Driver_v1.0_Win10.zip. Não é térmica — usa fita/cartucho.
+https://epson.com.br → Suporte → Impressoras → TM-T88VI → Drivers
+EPSON APD v4.54 ou superior. Arquivo: APD_454EU.exe. Suporta NFC e impressão simultânea.
 
 ARQUIVOS NECESSÁRIOS NESTA PASTA
 ----------------------------------
-  DR800.inf          ← obrigatório (INF principal)
+  EPST88VI.inf          ← obrigatório (INF principal)
   *.cat                   ← catálogo de assinaturas digitais
   *.dll / *.sys           ← binários do driver (se existirem)
   *.gpd / *.ppd / *.cfg  ← perfis de configuração

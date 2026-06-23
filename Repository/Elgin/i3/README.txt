@@ -1,20 +1,20 @@
-DRIVER: Daruma DR800
+DRIVER: Elgin i3
 ============================================================
 
-PAPEL PADRÃO : A4 / matricial / não-térmica
-CONEXÕES     : USB · TCP/IP
-VID/PID      : N/A:N/A
-ARQUIVO INF  : DR800.inf
-NOME DRIVER  : Daruma DR800
+PAPEL PADRÃO : 58mm / área imprimível 50mm
+CONEXÕES     : USB
+VID/PID      : 0DD4:00FD
+ARQUIVO INF  : ElginI3.inf
+NOME DRIVER  : Elgin i3
 
 COMO OBTER O DRIVER OFICIAL
 ----------------------------
-https://daruma.com.br → Suporte → Impressoras → DR-800 → Downloads → Driver
-Daruma_DR800_Driver_v1.0_Win10.zip. Não é térmica — usa fita/cartucho.
+https://elgin.com.br → Impressoras → i3 → Downloads → Driver Windows
+Modelo entrada 58mm.
 
 ARQUIVOS NECESSÁRIOS NESTA PASTA
 ----------------------------------
-  DR800.inf          ← obrigatório (INF principal)
+  ElginI3.inf          ← obrigatório (INF principal)
   *.cat                   ← catálogo de assinaturas digitais
   *.dll / *.sys           ← binários do driver (se existirem)
   *.gpd / *.ppd / *.cfg  ← perfis de configuração

@@ -1,20 +1,20 @@
-DRIVER: Daruma DR800
+DRIVER: Gertec G250
 ============================================================
 
-PAPEL PADRÃO : A4 / matricial / não-térmica
+PAPEL PADRÃO : 80mm / área imprimível 72mm
 CONEXÕES     : USB · TCP/IP
-VID/PID      : N/A:N/A
-ARQUIVO INF  : DR800.inf
-NOME DRIVER  : Daruma DR800
+VID/PID      : 20D1:7008
+ARQUIVO INF  : GertecG250.inf
+NOME DRIVER  : Gertec G250
 
 COMO OBTER O DRIVER OFICIAL
 ----------------------------
-https://daruma.com.br → Suporte → Impressoras → DR-800 → Downloads → Driver
-Daruma_DR800_Driver_v1.0_Win10.zip. Não é térmica — usa fita/cartucho.
+https://gertec.com.br → Suporte → Softwares → G250 → Driver Windows
+ESC/POS compatível. Baixe o pacote G250_Driver_Win10.zip
 
 ARQUIVOS NECESSÁRIOS NESTA PASTA
 ----------------------------------
-  DR800.inf          ← obrigatório (INF principal)
+  GertecG250.inf          ← obrigatório (INF principal)
   *.cat                   ← catálogo de assinaturas digitais
   *.dll / *.sys           ← binários do driver (se existirem)
   *.gpd / *.ppd / *.cfg  ← perfis de configuração

@@ -1,20 +1,20 @@
-DRIVER: Daruma DR800
+DRIVER: Gertec G500
 ============================================================
 
-PAPEL PADRÃO : A4 / matricial / não-térmica
+PAPEL PADRÃO : 80mm / área imprimível 72mm
 CONEXÕES     : USB · TCP/IP
-VID/PID      : N/A:N/A
-ARQUIVO INF  : DR800.inf
-NOME DRIVER  : Daruma DR800
+VID/PID      : 20D1:7009
+ARQUIVO INF  : GertecG500.inf
+NOME DRIVER  : Gertec G500
 
 COMO OBTER O DRIVER OFICIAL
 ----------------------------
-https://daruma.com.br → Suporte → Impressoras → DR-800 → Downloads → Driver
-Daruma_DR800_Driver_v1.0_Win10.zip. Não é térmica — usa fita/cartucho.
+https://gertec.com.br → Suporte → Softwares → G500 → Driver Windows
+Alta velocidade. Pacote G500_Driver_Win10.zip
 
 ARQUIVOS NECESSÁRIOS NESTA PASTA
 ----------------------------------
-  DR800.inf          ← obrigatório (INF principal)
+  GertecG500.inf          ← obrigatório (INF principal)
   *.cat                   ← catálogo de assinaturas digitais
   *.dll / *.sys           ← binários do driver (se existirem)
   *.gpd / *.ppd / *.cfg  ← perfis de configuração

@@ -1,20 +1,20 @@
-DRIVER: Daruma DR800
+DRIVER: Daruma DR600
 ============================================================
 
-PAPEL PADRÃO : A4 / matricial / não-térmica
-CONEXÕES     : USB · TCP/IP
+PAPEL PADRÃO : 80mm / fiscal/não-fiscal ECF
+CONEXÕES     : USB · Serial RS-232
 VID/PID      : N/A:N/A
-ARQUIVO INF  : DR800.inf
-NOME DRIVER  : Daruma DR800
+ARQUIVO INF  : DR600.inf
+NOME DRIVER  : Daruma DR600
 
 COMO OBTER O DRIVER OFICIAL
 ----------------------------
-https://daruma.com.br → Suporte → Impressoras → DR-800 → Downloads → Driver
-Daruma_DR800_Driver_v1.0_Win10.zip. Não é térmica — usa fita/cartucho.
+https://daruma.com.br → Suporte → ECF → DR-600 → Downloads → Driver
+ECF: use também o SAT Daruma. Serial: 9600,8,N,1
 
 ARQUIVOS NECESSÁRIOS NESTA PASTA
 ----------------------------------
-  DR800.inf          ← obrigatório (INF principal)
+  DR600.inf          ← obrigatório (INF principal)
   *.cat                   ← catálogo de assinaturas digitais
   *.dll / *.sys           ← binários do driver (se existirem)
   *.gpd / *.ppd / *.cfg  ← perfis de configuração

@@ -1,20 +1,20 @@
-DRIVER: Daruma DR800
+DRIVER: Diebold IM333
 ============================================================
 
-PAPEL PADRÃO : A4 / matricial / não-térmica
-CONEXÕES     : USB · TCP/IP
-VID/PID      : N/A:N/A
-ARQUIVO INF  : DR800.inf
-NOME DRIVER  : Daruma DR800
+PAPEL PADRÃO : 58mm / área imprimível 50mm
+CONEXÕES     : USB
+VID/PID      : 05F9:4101
+ARQUIVO INF  : DieboldIM333.inf
+NOME DRIVER  : Diebold IM333
 
 COMO OBTER O DRIVER OFICIAL
 ----------------------------
-https://daruma.com.br → Suporte → Impressoras → DR-800 → Downloads → Driver
-Daruma_DR800_Driver_v1.0_Win10.zip. Não é térmica — usa fita/cartucho.
+https://dieboldnixdorf.com → Support → POS Printers → IM333 → Windows Driver
+Driver: Diebold_IM333_WinDrv.zip.
 
 ARQUIVOS NECESSÁRIOS NESTA PASTA
 ----------------------------------
-  DR800.inf          ← obrigatório (INF principal)
+  DieboldIM333.inf          ← obrigatório (INF principal)
   *.cat                   ← catálogo de assinaturas digitais
   *.dll / *.sys           ← binários do driver (se existirem)
   *.gpd / *.ppd / *.cfg  ← perfis de configuração
