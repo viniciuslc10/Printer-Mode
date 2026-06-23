@@ -101,8 +101,6 @@ public class WindowsPrinterService : IWindowsPrinterService
         {
             try
             {
-                using var ps = new PrinterSettings();
-                // Use WMI to set default printer
                 using var searcher = new ManagementObjectSearcher(
                     $"SELECT * FROM Win32_Printer WHERE Name='{EscapeWmi(printerName)}'");
 
