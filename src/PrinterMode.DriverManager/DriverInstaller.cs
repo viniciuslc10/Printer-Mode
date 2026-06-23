@@ -55,8 +55,8 @@ public class DriverInstaller : IDriverInstaller
             else if (request.Driver.HasInstaller)
             {
                 var exePath = _repository.ResolveInstallerPath(request.Driver)!;
-                progress?.Report($"Instalando driver via instalador oficial ({request.Driver.InstallerExe})...");
-                var exeResult = await RunExeInstallerAsync(exePath, request.Driver.InstallerArgs ?? "/S", ct);
+                progress?.Report($"Instalando driver ({request.Driver.InstallerExe})...");
+                var exeResult = await RunExeInstallerAsync(exePath, request.Driver.InstallerArgs ?? "/S", ct, progress);
 
                 if (!exeResult.success)
                 {
@@ -79,6 +79,23 @@ public class DriverInstaller : IDriverInstaller
                 }
                 else
                 {
+                    // Verify the driver actually landed in Windows after the installer ran
+                    progress?.Report("Verificando instalação do driver...");
+                    var drivers = await _printerService.GetInstalledDriversAsync(ct);
+                    var found = drivers.Any(d =>
+                        d.Contains(request.Driver.Manufacturer, StringComparison.OrdinalIgnoreCase) ||
+                        d.Contains(request.Driver.Model, StringComparison.OrdinalIgnoreCase) ||
+                        d.Equals(request.Driver.DriverName, StringComparison.OrdinalIgnoreCase));
+
+                    if (!found)
+                    {
+                        _log.Warning($"Installer ran but driver '{request.Driver.DriverName}' not found in system.");
+                        return InstallResult.Fail(
+                            "O instalador foi executado, mas o driver não foi encontrado no Windows.",
+                            "Conclua a instalação manualmente e tente novamente. O PrinterMode irá detectar que o driver já está instalado.",
+                            steps);
+                    }
+
                     driverInstalled = true;
                     steps.Add($"Driver instalado via instalador: {request.Driver.InstallerExe}");
                     _log.Info($"Driver installed via EXE: {exePath}");
@@ -215,19 +232,20 @@ public class DriverInstaller : IDriverInstaller
         }
     }
 
-    private async Task<(bool success, string output)> RunExeInstallerAsync(string exePath, string args, CancellationToken ct)
+    private async Task<(bool success, string output)> RunExeInstallerAsync(
+        string exePath, string args, CancellationToken ct, IProgress<string>? progress = null)
     {
-        // Try the configured args first, then fallback silent flags for different installer types:
-        // /S          = NSIS (Nullsoft)
-        // /VERYSILENT = Inno Setup
-        // /silent     = some custom installers (e.g. Epson APD)
-        // /q          = MSI-wrapped installers
-        var candidates = new[] { args, "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART", "/silent", "/q" }
+        // Try silent flags in order — stop at first success.
+        // /S                              = NSIS (Nullsoft)
+        // /VERYSILENT /SUPPRESSMSGBOXES   = Inno Setup
+        // /silent                         = Epson APD and others
+        // /q                              = MSI-wrapped installers
+        var silentCandidates = new[] { args, "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART", "/silent", "/q" }
             .Where(a => !string.IsNullOrWhiteSpace(a))
             .Distinct()
             .ToArray();
 
-        foreach (var currentArgs in candidates)
+        foreach (var currentArgs in silentCandidates)
         {
             try
             {
@@ -239,16 +257,15 @@ public class DriverInstaller : IDriverInstaller
                     CreateNoWindow = true
                 };
 
-                _log.Info($"Trying EXE installer with args: '{currentArgs}'");
+                _log.Info($"Trying EXE installer (silent) args: '{currentArgs}'");
                 using var process = Process.Start(psi)!;
                 await process.WaitForExitAsync(ct);
-                _log.Info($"EXE installer exit code: {process.ExitCode} (args: '{currentArgs}')");
+                _log.Info($"EXE exit {process.ExitCode} with args '{currentArgs}'");
 
-                // 0 = success; 3010 = reboot required but installed; 1641 = reboot initiated
                 if (process.ExitCode == 0 || process.ExitCode == 3010 || process.ExitCode == 1641)
-                    return (true, $"Instalador concluído (código {process.ExitCode}).");
+                    return (true, $"Instalador concluído silenciosamente (código {process.ExitCode}).");
 
-                _log.Warning($"EXE installer exited {process.ExitCode} with args '{currentArgs}', trying next...");
+                _log.Warning($"Silent flag '{currentArgs}' failed (exit {process.ExitCode}), trying next...");
             }
             catch (Exception ex)
             {
@@ -256,8 +273,32 @@ public class DriverInstaller : IDriverInstaller
             }
         }
 
-        _log.Error($"All silent flags failed for: {exePath}");
-        return (false, "Instalador não respondeu a nenhum flag silencioso. Verifique os logs.");
+        // All silent flags failed — open the installer with UI and wait for the user to finish.
+        _log.Warning($"No silent flag worked. Opening installer with UI: {exePath}");
+        progress?.Report("⚠ Conclua a instalação do driver na janela que abriu e clique em OK ao terminar...");
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = exePath,
+                UseShellExecute = true
+            };
+
+            using var process = Process.Start(psi)!;
+            await process.WaitForExitAsync(ct);
+            _log.Info($"UI installer exit code: {process.ExitCode}");
+
+            if (process.ExitCode == 0 || process.ExitCode == 3010 || process.ExitCode == 1641)
+                return (true, "Instalação concluída pelo usuário.");
+
+            return (false, $"Instalador retornou código {process.ExitCode}.");
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to run EXE installer with UI", ex);
+            return (false, ex.Message);
+        }
     }
 
     private string ResolveActualDriverName(DriverInfo driver, IReadOnlyList<string> installedDrivers)
