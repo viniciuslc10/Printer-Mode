@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
 using PrinterMode.Core.Enums;
@@ -9,6 +10,7 @@ public class PrinterStatusToColorConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
+        if (value == DependencyProperty.UnsetValue || value == null) return Brushes.Gray;
         return value is PrinterStatus status
             ? status switch
             {
@@ -28,6 +30,7 @@ public class DriverStatusToColorConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
+        if (value == DependencyProperty.UnsetValue || value == null) return Brushes.Gray;
         return value is DriverStatus status
             ? status switch
             {
@@ -48,6 +51,7 @@ public class ConnectionTypeToIconConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
+        if (value == DependencyProperty.UnsetValue || value == null) return "❓";
         return value is ConnectionType type
             ? type switch
             {
@@ -71,7 +75,7 @@ public class BoolToVisibilityConverter : IValueConverter
         var boolValue = value is bool b && b;
         var invert = parameter?.ToString() == "invert";
         var visible = invert ? !boolValue : boolValue;
-        return visible ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        return visible ? Visibility.Visible : Visibility.Collapsed;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
