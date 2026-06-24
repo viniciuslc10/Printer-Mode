@@ -14,4 +14,5 @@ public interface IWindowsPrinterService
     Task<IReadOnlyList<string>> GetInstalledPrintersAsync(CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetInstalledDriversAsync(CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetAvailablePortsAsync(CancellationToken ct = default);
+    Task<string?> FindBestUsbPortAsync(CancellationToken ct = default);
 }

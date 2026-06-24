@@ -54,9 +54,45 @@ public class WindowsPrinterService : IWindowsPrinterService
     {
         return await Task.Run(() =>
         {
-            // WMI only — no printui fallback because printui shows system error dialogs
-            // when the driver name doesn't match exactly.
+            // PowerShell Add-Printer is the most reliable method on Windows 10/11.
+            // WMI is kept as fallback. Neither shows system error dialogs on failure.
+            if (AddPrinterViaPowerShell(printerName, driverName, portName))
+                return true;
+
+            _log.Warning("PowerShell Add-Printer failed, trying WMI fallback.");
             return AddPrinterViaWmi(printerName, driverName, portName);
+        }, ct);
+    }
+
+    public async Task<string?> FindBestUsbPortAsync(CancellationToken ct = default)
+    {
+        return await Task.Run(() =>
+        {
+            try
+            {
+                // USB ports registered with the print spooler (USB001, USB002, …)
+                using var searcher = new ManagementObjectSearcher(
+                    "SELECT Name FROM Win32_PrinterPort WHERE Name LIKE 'USB%'");
+
+                string? best = null;
+                foreach (ManagementObject obj in searcher.Get())
+                {
+                    var name = obj["Name"]?.ToString();
+                    if (!string.IsNullOrEmpty(name))
+                    {
+                        best = name; // take last in enumeration; USB001 usually comes first
+                        break;
+                    }
+                }
+
+                _log.Info($"FindBestUsbPortAsync: '{best ?? "none"}'");
+                return best;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Could not query USB printer ports: {ex.Message}");
+                return null;
+            }
         }, ct);
     }
 
@@ -260,6 +296,42 @@ public class WindowsPrinterService : IWindowsPrinterService
         catch (Exception ex)
         {
             _log.Error($"printui failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    private bool AddPrinterViaPowerShell(string printerName, string driverName, string portName)
+    {
+        try
+        {
+            // Use -EncodedCommand to avoid shell-escaping issues with special characters.
+            var script = $"Add-Printer -Name '{printerName.Replace("'", "''")}'" +
+                         $" -DriverName '{driverName.Replace("'", "''")}'" +
+                         $" -PortName '{portName.Replace("'", "''")}'";
+
+            var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            _log.Info($"AddPrinterViaPowerShell: script='{script}'");
+            using var process = Process.Start(psi)!;
+            var stderr = process.StandardError.ReadToEnd();
+            process.WaitForExit(30_000);
+
+            _log.Info($"PowerShell Add-Printer exit={process.ExitCode} stderr='{stderr.Trim()}'");
+            return process.ExitCode == 0;
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"PowerShell Add-Printer exception: {ex.Message}");
             return false;
         }
     }

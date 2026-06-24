@@ -141,9 +141,13 @@ public class DriverInstaller : IDriverInstaller
 
                 case ConnectionType.USB:
                 default:
-                    portName = request.PortName ?? "USB001";
+                    // Find the actual USB port Windows registered for this printer.
+                    // Windows creates USB001/USB002/… only when the device is detected.
+                    var usbPort = await _printerService.FindBestUsbPortAsync(ct);
+                    portName = request.PortName ?? usbPort ?? "USB001";
                     portCreated = true;
                     steps.Add($"Porta USB: {portName}");
+                    _log.Info($"USB port selected: {portName} (discovered: {usbPort ?? "none"})");
                     break;
             }
 
