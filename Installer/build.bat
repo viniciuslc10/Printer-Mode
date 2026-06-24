@@ -1,11 +1,9 @@
 @echo off
 setlocal
-chcp 65001 > nul
 
 :: ============================================================
-:: build.bat — Gera o instalador PrinterModeSetup_x.x.x.exe
-:: Execute como Administrador não é necessário aqui,
-:: mas o dotnet e o Inno Setup devem estar instalados.
+:: build.bat — Gera o instalador PrinterModeSetup_1.0.0.exe
+:: Coloque dentro da pasta Installer\ e execute como Administrador
 :: ============================================================
 
 set "PROJECT=..\src\PrinterMode.UI\PrinterMode.UI.csproj"
@@ -14,64 +12,79 @@ set "ISCC=C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 
 echo.
 echo  ================================================
-echo   PrinterMode ^| Build do Instalador
+echo   PrinterMode - Build do Instalador
 echo  ================================================
 echo.
 
-:: ── 1. Verificar dependências ─────────────────────────────
-where dotnet >nul 2>&1
+:: ── 1. Verificar .NET SDK ─────────────────────────────────
+echo Verificando .NET SDK...
+dotnet --version
 if %ERRORLEVEL% NEQ 0 (
-    echo [ERRO] .NET SDK nao encontrado.
+    echo.
+    echo [ERRO] .NET SDK nao encontrado no PATH.
+    echo        Reinicie o computador apos instalar o SDK e tente novamente.
     echo        Baixe em: https://dotnet.microsoft.com/download
-    pause & exit /b 1
+    echo.
+    pause
+    exit /b 1
 )
 
+:: ── 2. Verificar Inno Setup ───────────────────────────────
+echo Verificando Inno Setup...
 if not exist "%ISCC%" (
+    echo.
     echo [ERRO] Inno Setup 6 nao encontrado em:
     echo        %ISCC%
     echo        Baixe em: https://jrsoftware.org/isinfo.php
-    pause & exit /b 1
+    echo.
+    pause
+    exit /b 1
 )
-
-:: ── 2. Publicar o projeto ─────────────────────────────────
-echo [1/2] Publicando aplicacao (self-contained, win-x64)...
+echo Inno Setup encontrado.
 echo.
 
-dotnet publish "%PROJECT%" ^
-  -c Release ^
-  -r win-x64 ^
-  --self-contained true ^
-  -p:PublishSingleFile=false ^
-  -p:PublishReadyToRun=true ^
-  -o "%PUBLISH_DIR%"
+:: ── 3. Publicar o projeto ─────────────────────────────────
+echo [1/2] Publicando aplicacao (self-contained, win-x64)...
+echo       Destino: %PUBLISH_DIR%
+echo.
+
+dotnet publish "%PROJECT%" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o "%PUBLISH_DIR%"
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo [ERRO] Falha ao publicar. Veja mensagens acima.
-    pause & exit /b 1
+    echo.
+    pause
+    exit /b 1
 )
 
 echo.
-echo  Publicacao concluida em: %PUBLISH_DIR%
+echo  Publicacao concluida. Verificando arquivos...
+if not exist "%PUBLISH_DIR%\PrinterMode.exe" (
+    echo [ERRO] PrinterMode.exe nao encontrado em %PUBLISH_DIR%
+    echo        O publish pode ter falhado silenciosamente.
+    pause
+    exit /b 1
+)
+echo  PrinterMode.exe encontrado. OK.
 echo.
 
-:: ── 3. Compilar o instalador ──────────────────────────────
+:: ── 4. Compilar o instalador ──────────────────────────────
 echo [2/2] Compilando instalador com Inno Setup...
 echo.
 
 "%ISCC%" "PrinterMode.iss"
-
-if %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo [ERRO] Falha ao criar o instalador. Veja mensagens acima.
-    pause & exit /b 1
-)
+set ISCC_EXIT=%ERRORLEVEL%
 
 echo.
-echo  ================================================
-echo   Instalador gerado com sucesso!
-echo   Pasta:   Installer\Output\
-echo   Arquivo: PrinterModeSetup_1.0.0.exe
-echo  ================================================
+if %ISCC_EXIT% NEQ 0 (
+    echo [ERRO] Inno Setup retornou erro %ISCC_EXIT%.
+    echo        Abra PrinterMode.iss no Inno Setup Compiler para ver o erro detalhado.
+) else (
+    echo  ================================================
+    echo   Instalador gerado com sucesso!
+    echo   Arquivo: Installer\Output\PrinterModeSetup_1.0.0.exe
+    echo  ================================================
+)
 echo.
 pause

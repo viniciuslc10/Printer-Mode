@@ -47,15 +47,15 @@ PrivilegesRequired=admin
 
 ; Apenas Windows 10/11 de 64 bits
 MinVersion=10.0.17763
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64
+ArchitecturesInstallIn64BitMode=x64
 
 [Languages]
-Name: "portuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
+Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; \
-  GroupDescription: "Ícones adicionais:"; Flags: unchecked
+Name: "desktopicon"; Description: "Desktop shortcut"; \
+  GroupDescription: "Additional icons:"; Flags: unchecked
 
 [Files]
 ; Todos os arquivos publicados (inclui .NET runtime, DLLs, Repository, Config)
