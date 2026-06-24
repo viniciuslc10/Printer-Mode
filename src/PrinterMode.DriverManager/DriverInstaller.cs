@@ -42,7 +42,11 @@ public class DriverInstaller : IDriverInstaller
 
         try
         {
-            // Step 1: Install driver — skip if already installed or prefer .exe, fallback to pnputil
+            // Step 1: Install driver
+            // Strategy (in order):
+            //   1. pnputil /add-driver <inf> /install  — always silent, works for most drivers
+            //   2. EXE installer with silent flags      — for drivers that need the EXE
+            //   3. EXE installer with UI visible        — last resort when silent flags are ignored
             bool driverInstalled;
 
             if (request.SkipDriverInstall)
@@ -52,97 +56,105 @@ public class DriverInstaller : IDriverInstaller
                 _log.Info($"Skipping driver install (already installed): {request.Driver.DriverName}");
                 progress?.Report("Driver já instalado, criando impressora...");
             }
-            else if (request.Driver.HasInstaller)
+            else
             {
-                var exePath = _repository.ResolveInstallerPath(request.Driver)!;
-                progress?.Report($"Instalando driver ({request.Driver.InstallerExe})...");
-                var exeResult = await RunExeInstallerAsync(exePath, request.Driver.InstallerArgs ?? "/S", ct, progress);
+                driverInstalled = false;
 
-                if (!exeResult.success)
+                // ── 1. Try pnputil first (always silent, no wizard) ──────────────────────
+                var infPath = _repository.ResolveInfPath(request.Driver);
+                if (File.Exists(infPath))
                 {
-                    // Fallback to pnputil if exe fails and inf exists
-                    var infPath2 = _repository.ResolveInfPath(request.Driver);
-                    if (File.Exists(infPath2))
+                    progress?.Report("Instalando driver silenciosamente...");
+                    var pnpResult = await RunPnpUtilAsync(infPath, ct);
+
+                    if (pnpResult.success)
                     {
-                        _log.Warning($"EXE installer failed, trying pnputil: {infPath2}");
-                        progress?.Report("Tentando via PnPUtil...");
-                        var fallback = await RunPnpUtilAsync(infPath2, ct);
-                        driverInstalled = fallback.success;
-                        if (!driverInstalled)
-                            return InstallResult.Fail("Falha ao instalar driver.", fallback.output, steps);
-                        steps.Add($"Driver instalado via pnputil (fallback): {infPath2}");
+                        await Task.Delay(1500, ct);
+                        var driversAfterPnp = await _printerService.GetInstalledDriversAsync(ct);
+                        var resolvedPnp = ResolveActualDriverName(request.Driver, driversAfterPnp);
+
+                        if (resolvedPnp != null)
+                        {
+                            driverInstalled = true;
+                            steps.Add($"Driver instalado via pnputil: {infPath}");
+                            _log.Info($"Driver installed silently via pnputil. Name: '{resolvedPnp}'");
+                        }
+                        else
+                        {
+                            _log.Warning("pnputil succeeded but driver name not found in Win32_PrinterDriver. Will try EXE.");
+                        }
+                    }
+                    else
+                    {
+                        _log.Warning($"pnputil failed ({pnpResult.output}). Will try EXE installer.");
+                    }
+                }
+
+                // ── 2. Try EXE installer (silent flags) if pnputil didn't work ───────────
+                if (!driverInstalled && request.Driver.HasInstaller)
+                {
+                    var exePath = _repository.ResolveInstallerPath(request.Driver)!;
+                    progress?.Report($"Instalando driver ({request.Driver.InstallerExe})...");
+                    var exeResult = await RunExeInstallerAsync(exePath, request.Driver.InstallerArgs ?? "/S", ct, progress);
+
+                    if (exeResult.success)
+                    {
+                        await Task.Delay(3000, ct);
+                        var driversAfterExe = await _printerService.GetInstalledDriversAsync(ct);
+                        var resolvedExe = ResolveActualDriverName(request.Driver, driversAfterExe);
+
+                        if (resolvedExe != null)
+                        {
+                            driverInstalled = true;
+                            steps.Add($"Driver instalado via instalador: {request.Driver.InstallerExe}");
+                            _log.Info($"Driver installed via EXE. Name: '{resolvedExe}'");
+                        }
+                        else
+                        {
+                            // ── 3. EXE ran but driver not found → open with UI as last resort ──
+                            _log.Warning("EXE silent install succeeded but driver not found. Opening UI...");
+                            progress?.Report("⚠ Conclua a instalação do driver na janela que abriu...");
+
+                            try
+                            {
+                                using var uiProc = Process.Start(new ProcessStartInfo { FileName = exePath, UseShellExecute = true })!;
+                                await uiProc.WaitForExitAsync(ct);
+                                _log.Info($"UI installer exit: {uiProc.ExitCode}");
+                            }
+                            catch (Exception ex)
+                            {
+                                _log.Warning($"UI installer failed to launch: {ex.Message}");
+                            }
+
+                            progress?.Report("Verificando driver após instalação...");
+                            await Task.Delay(3000, ct);
+
+                            var driversAfterUi = await _printerService.GetInstalledDriversAsync(ct);
+                            var resolvedUi = ResolveActualDriverName(request.Driver, driversAfterUi);
+
+                            if (resolvedUi == null)
+                            {
+                                var list = string.Join(", ", driversAfterUi.Take(10));
+                                _log.Error($"Driver not found after UI install. Installed: [{list}]");
+                                return InstallResult.Fail(
+                                    "O instalador foi executado, mas o driver não foi encontrado no Windows.",
+                                    $"Drivers instalados: {list}",
+                                    steps);
+                            }
+
+                            driverInstalled = true;
+                            steps.Add($"Driver instalado via instalador (UI): {request.Driver.InstallerExe}");
+                            _log.Info($"Driver installed via UI. Name: '{resolvedUi}'");
+                        }
                     }
                     else
                     {
                         return InstallResult.Fail("Falha ao instalar driver.", exeResult.output, steps);
                     }
                 }
-                else
-                {
-                    // Verify the driver actually landed in Windows after the installer ran
-                    progress?.Report("Verificando instalação do driver...");
-                    await Task.Delay(3000, ct); // give Windows time to register driver
 
-                    var drivers = await _printerService.GetInstalledDriversAsync(ct);
-                    var resolvedCheck = ResolveActualDriverName(request.Driver, drivers);
-
-                    if (resolvedCheck == null)
-                    {
-                        // Silent install returned success but driver is not in Windows yet.
-                        // Some installers ignore silent flags and need user interaction.
-                        // Fall back to visible UI — user completes it, we wait and re-verify.
-                        _log.Warning("Silent install succeeded but driver not found. Opening UI installer...");
-                        progress?.Report("⚠ Conclua a instalação do driver na janela que abriu...");
-
-                        try
-                        {
-                            var uiPsi = new ProcessStartInfo { FileName = exePath, UseShellExecute = true };
-                            using var uiProc = Process.Start(uiPsi)!;
-                            await uiProc.WaitForExitAsync(ct);
-                            _log.Info($"UI installer exit: {uiProc.ExitCode}");
-                        }
-                        catch (Exception ex)
-                        {
-                            _log.Warning($"UI installer failed to launch: {ex.Message}");
-                        }
-
-                        progress?.Report("Verificando driver após instalação...");
-                        await Task.Delay(3000, ct);
-
-                        drivers = await _printerService.GetInstalledDriversAsync(ct);
-                        resolvedCheck = ResolveActualDriverName(request.Driver, drivers);
-
-                        if (resolvedCheck == null)
-                        {
-                            var driverList = string.Join(", ", drivers.Take(10));
-                            _log.Error($"Driver still not found after UI install. Installed: [{driverList}]");
-                            return InstallResult.Fail(
-                                "O instalador foi executado, mas o driver não foi encontrado no Windows.",
-                                $"Drivers instalados: {driverList}",
-                                steps);
-                        }
-                    }
-
-                    driverInstalled = true;
-                    steps.Add($"Driver instalado via instalador: {request.Driver.InstallerExe}");
-                    _log.Info($"Driver installed via EXE: {exePath}. Resolved name: '{resolvedCheck}'");
-                }
-            }
-            else
-            {
-                progress?.Report("Instalando driver via PnPUtil...");
-                var infPath = _repository.ResolveInfPath(request.Driver);
-                var pnpResult = await RunPnpUtilAsync(infPath, ct);
-
-                if (!pnpResult.success)
-                    return InstallResult.Fail("Falha ao instalar driver.", pnpResult.output, steps);
-
-                driverInstalled = true;
-                steps.Add($"Driver instalado via pnputil: {infPath}");
-                _log.Info($"Driver installed via pnputil: {infPath}");
-
-                // Brief pause to let Windows fully register the driver
-                await Task.Delay(1000, ct);
+                if (!driverInstalled)
+                    return InstallResult.Fail("Nenhum arquivo de driver encontrado (INF ou EXE).", null, steps);
             }
 
             // Step 2: Create the port
