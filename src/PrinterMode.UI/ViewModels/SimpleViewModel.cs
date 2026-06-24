@@ -11,11 +11,14 @@ public partial class SimpleViewModel : ObservableObject
 {
     private readonly IDriverRepository _repository;
     private readonly IDriverInstaller _installer;
+    private readonly IWindowsPrinterService _printerService;
     private readonly ILogService _log;
 
     public ObservableCollection<string> Manufacturers { get; } = [];
     public ObservableCollection<DriverInfo> Models { get; } = [];
     public ObservableCollection<PaperConfig> Papers { get; } = [];
+    public ObservableCollection<PortEntry> ComPorts { get; } = [];
+    public ObservableCollection<PortEntry> UsbPorts { get; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanInstall))]
@@ -32,23 +35,29 @@ public partial class SimpleViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowNetworkFields))]
     [NotifyPropertyChangedFor(nameof(ShowSerialFields))]
+    [NotifyPropertyChangedFor(nameof(ShowUsbPortSelector))]
     private bool _connectionUsb = true;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowNetworkFields))]
     [NotifyPropertyChangedFor(nameof(ShowSerialFields))]
+    [NotifyPropertyChangedFor(nameof(ShowUsbPortSelector))]
     private bool _connectionNetwork;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowNetworkFields))]
     [NotifyPropertyChangedFor(nameof(ShowSerialFields))]
+    [NotifyPropertyChangedFor(nameof(ShowUsbPortSelector))]
     private bool _connectionSerial;
 
     [ObservableProperty] private string _ipAddress = string.Empty;
     [ObservableProperty] private int _networkPort = 9100;
-    [ObservableProperty] private string _comPort = "COM1";
+    [ObservableProperty] private PortEntry? _selectedComPort;
+    [ObservableProperty] private PortEntry? _selectedUsbPort;
 
-    public List<string> ComPorts { get; } = ["COM1", "COM2", "COM3", "COM4", "COM5", "COM6"];
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowUsbPortSelector))]
+    private bool _hasUsbPorts;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanInstall))]
@@ -70,11 +79,13 @@ public partial class SimpleViewModel : ObservableObject
     public bool CanInstall => SelectedModel != null && !string.IsNullOrWhiteSpace(PrinterName) && !IsInstalling;
     public bool ShowNetworkFields => ConnectionNetwork;
     public bool ShowSerialFields => ConnectionSerial;
+    public bool ShowUsbPortSelector => ConnectionUsb && HasUsbPorts;
 
-    public SimpleViewModel(IDriverRepository repository, IDriverInstaller installer, ILogService log)
+    public SimpleViewModel(IDriverRepository repository, IDriverInstaller installer, IWindowsPrinterService printerService, ILogService log)
     {
         _repository = repository;
         _installer = installer;
+        _printerService = printerService;
         _log = log;
     }
 
@@ -83,6 +94,26 @@ public partial class SimpleViewModel : ObservableObject
         var manufacturers = await _repository.GetManufacturersAsync();
         foreach (var m in manufacturers)
             Manufacturers.Add(m);
+
+        await RefreshPortsAsync();
+    }
+
+    [RelayCommand]
+    private async Task RefreshPortsAsync()
+    {
+        ComPorts.Clear();
+        UsbPorts.Clear();
+
+        var comPorts = await _printerService.GetSerialPortsWithNamesAsync();
+        foreach (var p in comPorts)
+            ComPorts.Add(p);
+        SelectedComPort = ComPorts.FirstOrDefault();
+
+        var usbPorts = await _printerService.GetUsbPrinterPortsWithNamesAsync();
+        foreach (var p in usbPorts)
+            UsbPorts.Add(p);
+        HasUsbPorts = UsbPorts.Count > 0;
+        SelectedUsbPort = UsbPorts.FirstOrDefault();
     }
 
     partial void OnSelectedManufacturerChanged(string? value)
@@ -159,7 +190,9 @@ public partial class SimpleViewModel : ObservableObject
                 ConnectionType = connType,
                 IpAddress = ConnectionNetwork ? IpAddress : null,
                 NetworkPort = ConnectionNetwork ? NetworkPort : 9100,
-                PortName = ConnectionSerial ? ComPort : null,
+                PortName = ConnectionSerial ? SelectedComPort?.PortName
+                         : ConnectionUsb && SelectedUsbPort != null ? SelectedUsbPort.PortName
+                         : null,
                 Paper = paper,
                 SetAsDefault = SetAsDefault,
                 SkipDriverInstall = alreadyInstalled
@@ -174,6 +207,8 @@ public partial class SimpleViewModel : ObservableObject
             {
                 ShowSuccess = true;
                 StatusText = result.Message;
+                // Refresh ports after install — a new USB port may have been registered
+                _ = RefreshPortsAsync();
             }
             else
             {

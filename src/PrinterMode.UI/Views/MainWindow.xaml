@@ -82,9 +82,20 @@
           <Border Height="1" Background="{StaticResource BorderBrush2}" Margin="0,16,0,16"/>
 
           <!-- Conexão -->
-          <TextBlock Text="CONEXÃO" Style="{StaticResource SectionLabel}"/>
+          <Grid Margin="0,0,0,4">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="CONEXÃO" Style="{StaticResource SectionLabel}"
+                       VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Content="↺ Atualizar" FontSize="11"
+                    Command="{Binding RefreshPortsCommand}"
+                    Style="{StaticResource SecondaryButton}"
+                    Height="26" Padding="10,0"/>
+          </Grid>
 
-          <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+          <StackPanel Orientation="Horizontal" Margin="0,8,0,12">
             <RadioButton Content="USB" IsChecked="{Binding ConnectionUsb}"
                          Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
                          Margin="0,0,24,0" VerticalContentAlignment="Center"/>
@@ -94,6 +105,22 @@
             <RadioButton Content="Serial (COM)" IsChecked="{Binding ConnectionSerial}"
                          Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
                          VerticalContentAlignment="Center"/>
+          </StackPanel>
+
+          <!-- USB port selector (only when USB ports are detected) -->
+          <StackPanel Margin="0,0,0,12"
+                      Visibility="{Binding ShowUsbPortSelector, Converter={StaticResource BoolVis}}">
+            <TextBlock Text="Porta USB" FontSize="12"
+                       Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
+            <ComboBox ItemsSource="{Binding UsbPorts}"
+                      SelectedItem="{Binding SelectedUsbPort}"
+                      Width="280" HorizontalAlignment="Left">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding DisplayName}" FontSize="13"/>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
           </StackPanel>
 
           <!-- Network fields -->
@@ -123,8 +150,14 @@
             <TextBlock Text="Porta Serial" FontSize="12"
                        Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
             <ComboBox ItemsSource="{Binding ComPorts}"
-                      SelectedItem="{Binding ComPort}"
-                      Width="150" HorizontalAlignment="Left"/>
+                      SelectedItem="{Binding SelectedComPort}"
+                      Width="280" HorizontalAlignment="Left">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding DisplayName}" FontSize="13"/>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
           </StackPanel>
 
           <Border Height="1" Background="{StaticResource BorderBrush2}" Margin="0,4,0,16"/>

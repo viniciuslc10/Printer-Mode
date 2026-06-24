@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Management;
+using System.Text.RegularExpressions;
 using PrinterMode.Core.Interfaces;
 using PrinterMode.Core.Models;
 
@@ -272,6 +273,83 @@ public class WindowsPrinterService : IWindowsPrinterService
             }
 
             return (IReadOnlyList<string>)ports;
+        }, ct);
+    }
+
+    public async Task<IReadOnlyList<PortEntry>> GetSerialPortsWithNamesAsync(CancellationToken ct = default)
+    {
+        return await Task.Run(() =>
+        {
+            var result = new List<PortEntry>();
+            try
+            {
+                // Win32_PnPEntity returns entries like "Daruma DR700 (COM5)" for serial devices
+                using var searcher = new ManagementObjectSearcher(
+                    "SELECT Name FROM Win32_PnPEntity WHERE Name LIKE '%(COM%)' AND Status = 'OK'");
+
+                foreach (ManagementObject obj in searcher.Get())
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var wmiName = obj["Name"]?.ToString();
+                    if (string.IsNullOrEmpty(wmiName)) continue;
+
+                    var m = Regex.Match(wmiName, @"\((COM\d+)\)$");
+                    if (!m.Success) continue;
+
+                    var portName = m.Groups[1].Value;
+                    var deviceName = wmiName[..^(m.Length)].Trim();
+                    var displayName = string.IsNullOrEmpty(deviceName) ? portName : $"{portName} ({deviceName})";
+                    result.Add(new PortEntry(portName, displayName));
+                }
+
+                result.Sort((a, b) => string.Compare(a.PortName, b.PortName, StringComparison.OrdinalIgnoreCase));
+                _log.Info($"Serial ports detected: [{string.Join(", ", result.Select(p => p.DisplayName))}]");
+            }
+            catch (Exception ex)
+            {
+                _log.Error("Failed to enumerate serial ports with names", ex);
+            }
+            return (IReadOnlyList<PortEntry>)result;
+        }, ct);
+    }
+
+    public async Task<IReadOnlyList<PortEntry>> GetUsbPrinterPortsWithNamesAsync(CancellationToken ct = default)
+    {
+        return await Task.Run(() =>
+        {
+            var result = new List<PortEntry>();
+            try
+            {
+                using var portSearcher = new ManagementObjectSearcher(
+                    "SELECT Name FROM Win32_PrinterPort WHERE Name LIKE 'USB%'");
+
+                foreach (ManagementObject portObj in portSearcher.Get())
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var portName = portObj["Name"]?.ToString();
+                    if (string.IsNullOrEmpty(portName)) continue;
+
+                    // Look for a printer already using this port
+                    string? deviceName = null;
+                    using var printerSearcher = new ManagementObjectSearcher(
+                        $"SELECT Name FROM Win32_Printer WHERE PortName='{portName}'");
+                    foreach (ManagementObject printerObj in printerSearcher.Get())
+                    {
+                        deviceName = printerObj["Name"]?.ToString();
+                        break;
+                    }
+
+                    var displayName = string.IsNullOrEmpty(deviceName) ? portName : $"{portName} ({deviceName})";
+                    result.Add(new PortEntry(portName, displayName));
+                }
+
+                _log.Info($"USB printer ports detected: [{string.Join(", ", result.Select(p => p.DisplayName))}]");
+            }
+            catch (Exception ex)
+            {
+                _log.Error("Failed to enumerate USB printer ports with names", ex);
+            }
+            return (IReadOnlyList<PortEntry>)result;
         }, ct);
     }
 
