@@ -195,8 +195,14 @@ public class WindowsPrinterService : IWindowsPrinterService
                 foreach (ManagementObject obj in searcher.Get())
                 {
                     ct.ThrowIfCancellationRequested();
-                    var name = obj["Name"]?.ToString();
-                    if (name != null) drivers.Add(name);
+                    var raw = obj["Name"]?.ToString();
+                    if (raw == null) continue;
+
+                    // Win32_PrinterDriver.Name is a compound key: "DriverName,Version,Environment"
+                    // e.g. "G250,3,Windows x64" — we only want the first segment.
+                    var name = raw.Split(',')[0].Trim();
+                    if (!string.IsNullOrEmpty(name) && !drivers.Contains(name, StringComparer.OrdinalIgnoreCase))
+                        drivers.Add(name);
                 }
             }
             catch (Exception ex)
@@ -204,6 +210,7 @@ public class WindowsPrinterService : IWindowsPrinterService
                 _log.Error("Failed to list printer drivers", ex);
             }
 
+            _log.Info($"Installed printer drivers: [{string.Join(", ", drivers)}]");
             return (IReadOnlyList<string>)drivers;
         }, ct);
     }
