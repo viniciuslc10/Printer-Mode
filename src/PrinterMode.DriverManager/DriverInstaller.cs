@@ -88,12 +88,39 @@ public class DriverInstaller : IDriverInstaller
 
                     if (resolvedCheck == null)
                     {
-                        var driverList = string.Join(", ", drivers.Take(10));
-                        _log.Warning($"Installer ran but driver not found. Installed: [{driverList}]");
-                        return InstallResult.Fail(
-                            "O instalador foi executado, mas o driver não foi encontrado no Windows.",
-                            $"Drivers instalados: {driverList}\n\nConclua a instalação manualmente e tente novamente.",
-                            steps);
+                        // Silent install returned success but driver is not in Windows yet.
+                        // Some installers ignore silent flags and need user interaction.
+                        // Fall back to visible UI — user completes it, we wait and re-verify.
+                        _log.Warning("Silent install succeeded but driver not found. Opening UI installer...");
+                        progress?.Report("⚠ Conclua a instalação do driver na janela que abriu...");
+
+                        try
+                        {
+                            var uiPsi = new ProcessStartInfo { FileName = exePath, UseShellExecute = true };
+                            using var uiProc = Process.Start(uiPsi)!;
+                            await uiProc.WaitForExitAsync(ct);
+                            _log.Info($"UI installer exit: {uiProc.ExitCode}");
+                        }
+                        catch (Exception ex)
+                        {
+                            _log.Warning($"UI installer failed to launch: {ex.Message}");
+                        }
+
+                        progress?.Report("Verificando driver após instalação...");
+                        await Task.Delay(3000, ct);
+
+                        drivers = await _printerService.GetInstalledDriversAsync(ct);
+                        resolvedCheck = ResolveActualDriverName(request.Driver, drivers);
+
+                        if (resolvedCheck == null)
+                        {
+                            var driverList = string.Join(", ", drivers.Take(10));
+                            _log.Error($"Driver still not found after UI install. Installed: [{driverList}]");
+                            return InstallResult.Fail(
+                                "O instalador foi executado, mas o driver não foi encontrado no Windows.",
+                                $"Drivers instalados: {driverList}",
+                                steps);
+                        }
                     }
 
                     driverInstalled = true;
