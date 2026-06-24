@@ -406,7 +406,8 @@
       "infFile": "GertecG250.inf",
       "installerExe": "Gertec_G250_Driver_v1.1.exe",
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
-      "driverName": "Gertec G250",
+      "driverName": "GA-Printer",
+      "windowsDriverNames": ["GA-Printer", "GA Printer", "Gertec G250", "Gertec G-250"],
       "version": "1.1",
       "notes": "Térmica 80mm, ESC/POS.",
       "defaultPaper": {
@@ -443,7 +444,8 @@
       "infFile": "GertecG500.inf",
       "installerExe": "Gertec_G500_Driver_v1.1.exe",
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
-      "driverName": "Gertec G500",
+      "driverName": "GA-Printer",
+      "windowsDriverNames": ["GA-Printer", "GA Printer", "Gertec G500", "Gertec G-500"],
       "version": "1.1",
       "notes": "Térmica 80mm alta velocidade. Usa mesmo pacote do G250.",
       "defaultPaper": {

@@ -81,28 +81,24 @@ public class DriverInstaller : IDriverInstaller
                 {
                     // Verify the driver actually landed in Windows after the installer ran
                     progress?.Report("Verificando instalação do driver...");
-                    var drivers = await _printerService.GetInstalledDriversAsync(ct);
-                    var found = drivers.Any(d =>
-                        d.Contains(request.Driver.Manufacturer, StringComparison.OrdinalIgnoreCase) ||
-                        d.Contains(request.Driver.Model, StringComparison.OrdinalIgnoreCase) ||
-                        d.Equals(request.Driver.DriverName, StringComparison.OrdinalIgnoreCase));
+                    await Task.Delay(3000, ct); // give Windows time to register driver
 
-                    if (!found)
+                    var drivers = await _printerService.GetInstalledDriversAsync(ct);
+                    var resolvedCheck = ResolveActualDriverName(request.Driver, drivers);
+
+                    if (resolvedCheck == null)
                     {
-                        _log.Warning($"Installer ran but driver '{request.Driver.DriverName}' not found in system.");
+                        var driverList = string.Join(", ", drivers.Take(10));
+                        _log.Warning($"Installer ran but driver not found. Installed: [{driverList}]");
                         return InstallResult.Fail(
                             "O instalador foi executado, mas o driver não foi encontrado no Windows.",
-                            "Conclua a instalação manualmente e tente novamente. O PrinterMode irá detectar que o driver já está instalado.",
+                            $"Drivers instalados: {driverList}\n\nConclua a instalação manualmente e tente novamente.",
                             steps);
                     }
 
                     driverInstalled = true;
                     steps.Add($"Driver instalado via instalador: {request.Driver.InstallerExe}");
-                    _log.Info($"Driver installed via EXE: {exePath}");
-
-                    // Brief pause to let Windows fully register the driver before querying/adding printer
-                    progress?.Report("Aguardando registro do driver...");
-                    await Task.Delay(3000, ct);
+                    _log.Info($"Driver installed via EXE: {exePath}. Resolved name: '{resolvedCheck}'");
                 }
             }
             else
@@ -155,18 +151,33 @@ public class DriverInstaller : IDriverInstaller
                 return InstallResult.Fail($"Falha ao criar porta {portName}.", null, steps);
 
             // Step 3: Add printer to Windows
-            // Resolve actual installed driver name — catalog name may differ from what the
-            // installer registered (e.g. "Gertec G250" vs "G-250 Thermal Printer")
             progress?.Report("Adicionando impressora ao Windows...");
             var installedDrivers = await _printerService.GetInstalledDriversAsync(ct);
             var resolvedDriverName = ResolveActualDriverName(request.Driver, installedDrivers);
+
+            if (resolvedDriverName == null)
+            {
+                var list = string.Join(", ", installedDrivers.Take(10));
+                _log.Error($"Cannot resolve driver name. Installed drivers: [{list}]");
+                return InstallResult.Fail(
+                    "Driver não encontrado no Windows para criar a impressora.",
+                    $"Drivers instalados: {list}",
+                    steps);
+            }
+
             _log.Info($"Resolved driver name: '{resolvedDriverName}' (catalog: '{request.Driver.DriverName}')");
 
             var printerAdded = await _printerService.AddPrinterAsync(
                 request.PrinterName, resolvedDriverName, portName, ct);
 
             if (!printerAdded)
-                return InstallResult.Fail("Falha ao criar impressora no Windows.", null, steps);
+            {
+                _log.Error($"AddPrinterAsync failed. driver='{resolvedDriverName}' port='{portName}'");
+                return InstallResult.Fail(
+                    $"Falha ao criar impressora no Windows (driver: '{resolvedDriverName}').",
+                    "Verifique se o driver está instalado e tente novamente.",
+                    steps);
+            }
 
             steps.Add($"Impressora criada: {request.PrinterName}");
             _log.Info($"Printer created: {request.PrinterName}");
@@ -216,10 +227,14 @@ public class DriverInstaller : IDriverInstaller
         }
     }
 
-    public async Task<bool> IsDriverInstalledAsync(string driverName, CancellationToken ct = default)
+    public async Task<bool> IsDriverInstalledAsync(DriverInfo driver, CancellationToken ct = default)
     {
-        var drivers = await _printerService.GetInstalledDriversAsync(ct);
-        return drivers.Any(d => d.Equals(driverName, StringComparison.OrdinalIgnoreCase));
+        var installed = await _printerService.GetInstalledDriversAsync(ct);
+        _log.Info($"Installed drivers: {string.Join(", ", installed)}");
+        // Match against every known name (primary driverName + WindowsDriverNames aliases)
+        return installed.Any(d =>
+            driver.AllDriverNames().Any(known =>
+                d.Equals(known, StringComparison.OrdinalIgnoreCase)));
     }
 
     public async Task<InstallResult> TestPrintAsync(string printerName, CancellationToken ct = default)
@@ -308,24 +323,28 @@ public class DriverInstaller : IDriverInstaller
         }
     }
 
-    private string ResolveActualDriverName(DriverInfo driver, IReadOnlyList<string> installedDrivers)
+    private string? ResolveActualDriverName(DriverInfo driver, IReadOnlyList<string> installedDrivers)
     {
-        // Exact match first
-        if (installedDrivers.Any(d => d.Equals(driver.DriverName, StringComparison.OrdinalIgnoreCase)))
-            return driver.DriverName;
+        // 1. Exact match against every known driver name (primary + aliases)
+        foreach (var known in driver.AllDriverNames())
+        {
+            var exact = installedDrivers.FirstOrDefault(d =>
+                d.Equals(known, StringComparison.OrdinalIgnoreCase));
+            if (exact != null) return exact;
+        }
 
-        // Match by model name within the driver string
+        // 2. Any installed driver whose name contains the model string
         var byModel = installedDrivers.FirstOrDefault(d =>
             d.Contains(driver.Model, StringComparison.OrdinalIgnoreCase));
         if (byModel != null) return byModel;
 
-        // Match by manufacturer name
+        // 3. Any installed driver whose name contains the manufacturer string
         var byManufacturer = installedDrivers.FirstOrDefault(d =>
             d.Contains(driver.Manufacturer, StringComparison.OrdinalIgnoreCase));
         if (byManufacturer != null) return byManufacturer;
 
-        // Fallback to catalog name (will use whatever was registered)
-        return driver.DriverName;
+        // Not found — caller decides what to do
+        return null;
     }
 
     private async Task<(bool success, string output)> RunPnpUtilAsync(string infPath, CancellationToken ct)

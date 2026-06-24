@@ -21,6 +21,19 @@ public class DriverInfo
     public string? InstallerExe { get; set; }
     public string? InstallerArgs { get; set; }
 
+    // All driver names the installer may register in Win32_PrinterDriver.
+    // The first entry is the preferred name; extras are fallback aliases.
+    public List<string> WindowsDriverNames { get; set; } = [];
+
     public bool HasInstaller => !string.IsNullOrEmpty(InstallerExe);
     public string DisplayName => $"{Manufacturer} {Model}";
+
+    /// <summary>Returns all names to try when matching or creating the printer driver.</summary>
+    public IEnumerable<string> AllDriverNames()
+    {
+        yield return DriverName;
+        foreach (var n in WindowsDriverNames)
+            if (!string.Equals(n, DriverName, StringComparison.OrdinalIgnoreCase))
+                yield return n;
+    }
 }
