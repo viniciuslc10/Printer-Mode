@@ -2,12 +2,12 @@
 setlocal
 
 :: ============================================================
-:: build.bat — Gera o instalador PrinterModeSetup_1.0.0.exe
-:: Coloque dentro da pasta Installer\ e execute como Administrador
+:: build.bat — Gera PrinterModeSetup_1.0.0.exe
+:: Execute dentro da pasta Installer\ (duplo clique ou cmd)
 :: ============================================================
 
 set "PROJECT=..\src\PrinterMode.UI\PrinterMode.UI.csproj"
-set "PUBLISH_DIR=..\src\PrinterMode.UI\bin\Release\net8.0-windows\win-x64\publish"
+set "PUBLISH_DIR=%~dp0publish"
 set "ISCC=C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 
 echo.
@@ -15,75 +15,74 @@ echo  ================================================
 echo   PrinterMode - Build do Instalador
 echo  ================================================
 echo.
-
-:: ── 1. Verificar .NET SDK ─────────────────────────────────
-echo Verificando .NET SDK...
-dotnet --version
-if %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo [ERRO] .NET SDK nao encontrado no PATH.
-    echo        Reinicie o computador apos instalar o SDK e tente novamente.
-    echo        Baixe em: https://dotnet.microsoft.com/download
-    echo.
-    pause
-    exit /b 1
-)
-
-:: ── 2. Verificar Inno Setup ───────────────────────────────
-echo Verificando Inno Setup...
-if not exist "%ISCC%" (
-    echo.
-    echo [ERRO] Inno Setup 6 nao encontrado em:
-    echo        %ISCC%
-    echo        Baixe em: https://jrsoftware.org/isinfo.php
-    echo.
-    pause
-    exit /b 1
-)
-echo Inno Setup encontrado.
+echo  Pasta de trabalho: %~dp0
+echo  Publicando para:   %PUBLISH_DIR%
 echo.
 
-:: ── 3. Publicar o projeto ─────────────────────────────────
-echo [1/2] Publicando aplicacao (self-contained, win-x64)...
-echo       Destino: %PUBLISH_DIR%
+:: ── 1. Verificar .NET SDK ─────────────────────────────────
+dotnet --version >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo [ERRO] .NET SDK nao encontrado.
+    echo        Reinicie o computador e tente novamente.
+    echo        Download: https://dotnet.microsoft.com/download
+    pause & exit /b 1
+)
+for /f "tokens=*" %%v in ('dotnet --version') do echo .NET SDK: %%v
+
+:: ── 2. Verificar Inno Setup ───────────────────────────────
+if not exist "%ISCC%" (
+    echo.
+    echo [ERRO] Inno Setup nao encontrado em:
+    echo        %ISCC%
+    echo        Download: https://jrsoftware.org/isinfo.php
+    pause & exit /b 1
+)
+echo Inno Setup: encontrado
+echo.
+
+:: ── 3. Limpar publish anterior ────────────────────────────
+if exist "%PUBLISH_DIR%" (
+    echo Limpando publish anterior...
+    rmdir /s /q "%PUBLISH_DIR%"
+)
+
+:: ── 4. Publicar o projeto ─────────────────────────────────
+echo [1/2] Publicando aplicacao...
 echo.
 
 dotnet publish "%PROJECT%" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o "%PUBLISH_DIR%"
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo [ERRO] Falha ao publicar. Veja mensagens acima.
-    echo.
-    pause
-    exit /b 1
+    echo [ERRO] Falha no dotnet publish.
+    pause & exit /b 1
 )
 
-echo.
-echo  Publicacao concluida. Verificando arquivos...
 if not exist "%PUBLISH_DIR%\PrinterMode.exe" (
-    echo [ERRO] PrinterMode.exe nao encontrado em %PUBLISH_DIR%
-    echo        O publish pode ter falhado silenciosamente.
-    pause
-    exit /b 1
+    echo.
+    echo [ERRO] PrinterMode.exe nao gerado em %PUBLISH_DIR%
+    pause & exit /b 1
 )
-echo  PrinterMode.exe encontrado. OK.
+echo.
+echo  Publicacao OK: %PUBLISH_DIR%
 echo.
 
-:: ── 4. Compilar o instalador ──────────────────────────────
+:: ── 5. Compilar instalador ────────────────────────────────
 echo [2/2] Compilando instalador com Inno Setup...
 echo.
 
+cd /d "%~dp0"
 "%ISCC%" "PrinterMode.iss"
-set ISCC_EXIT=%ERRORLEVEL%
+set "EXIT=%ERRORLEVEL%"
 
 echo.
-if %ISCC_EXIT% NEQ 0 (
-    echo [ERRO] Inno Setup retornou erro %ISCC_EXIT%.
-    echo        Abra PrinterMode.iss no Inno Setup Compiler para ver o erro detalhado.
+if %EXIT% NEQ 0 (
+    echo [ERRO] Inno Setup falhou com codigo %EXIT%.
+    echo        Abra PrinterMode.iss no Inno Setup Compiler para ver o erro.
 ) else (
     echo  ================================================
-    echo   Instalador gerado com sucesso!
-    echo   Arquivo: Installer\Output\PrinterModeSetup_1.0.0.exe
+    echo   SUCESSO! Arquivo gerado em:
+    echo   %~dp0Output\PrinterModeSetup_1.0.0.exe
     echo  ================================================
 )
 echo.

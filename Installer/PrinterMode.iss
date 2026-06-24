@@ -10,7 +10,7 @@
 #define AppPublisher "PrinterMode"
 #define AppURL       "https://github.com/viniciuslc10/printer-mode"
 #define AppExeName   "PrinterMode.exe"
-#define BuildDir     "..\src\PrinterMode.UI\bin\Release\net8.0-windows\win-x64\publish"
+#define BuildDir     "publish"
 
 [Setup]
 ; Altere o GUID abaixo se criar outro produto (gere um novo em https://www.guidgenerator.com)

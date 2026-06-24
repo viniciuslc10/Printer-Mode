@@ -11,6 +11,7 @@ publish/
 
 # Installer output
 Installer/Output/
+Installer/publish/
 
 # Logs
 Logs/
