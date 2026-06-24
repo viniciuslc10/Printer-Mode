@@ -80,16 +80,3 @@ Filename: "{app}\{#AppExeName}"; \
 [UninstallDelete]
 ; Remove a pasta de logs ao desinstalar
 Type: filesandordirs; Name: "{app}\Logs"
-
-[Code]
-function InitializeSetup(): Boolean;
-begin
-  // Windows 10 build 17763 (1809) ou superior
-  if not CheckWin32Version(10, 0) then
-  begin
-    MsgBox('PrinterMode requer Windows 10 ou superior.', mbError, MB_OK);
-    Result := False;
-  end
-  else
-    Result := True;
-end;
