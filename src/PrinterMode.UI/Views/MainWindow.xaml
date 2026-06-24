@@ -98,11 +98,14 @@
           <StackPanel Orientation="Horizontal" Margin="0,8,0,12">
             <RadioButton Content="USB" IsChecked="{Binding ConnectionUsb}"
                          Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
-                         Margin="0,0,24,0" VerticalContentAlignment="Center"/>
+                         Margin="0,0,20,0" VerticalContentAlignment="Center"/>
             <RadioButton Content="Rede (TCP/IP)" IsChecked="{Binding ConnectionNetwork}"
                          Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
-                         Margin="0,0,24,0" VerticalContentAlignment="Center"/>
+                         Margin="0,0,20,0" VerticalContentAlignment="Center"/>
             <RadioButton Content="Serial (COM)" IsChecked="{Binding ConnectionSerial}"
+                         Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
+                         Margin="0,0,20,0" VerticalContentAlignment="Center"/>
+            <RadioButton Content="Compartilhada" IsChecked="{Binding ConnectionShared}"
                          Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
                          VerticalContentAlignment="Center"/>
           </StackPanel>
@@ -121,6 +124,18 @@
                 </DataTemplate>
               </ComboBox.ItemTemplate>
             </ComboBox>
+          </StackPanel>
+
+          <!-- Shared printer fields -->
+          <StackPanel Margin="0,0,0,12"
+                      Visibility="{Binding ShowSharedFields, Converter={StaticResource BoolVis}}">
+            <TextBlock Text="Computador ou IP do host" FontSize="12"
+                       Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
+            <TextBox Text="{Binding SharedHost, UpdateSourceTrigger=PropertyChanged}"
+                     Tag="Ex: DESKTOP-PC ou 192.168.1.50"/>
+            <TextBlock FontSize="11" Foreground="{StaticResource TextMutedBrush}"
+                       Margin="0,5,0,0" TextWrapping="Wrap"
+                       Text="A impressora deve estar compartilhada no computador host com o mesmo nome definido no campo 'Nome da impressora' abaixo."/>
           </StackPanel>
 
           <!-- Network fields -->

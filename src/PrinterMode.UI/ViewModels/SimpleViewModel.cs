@@ -35,23 +35,34 @@ public partial class SimpleViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowNetworkFields))]
     [NotifyPropertyChangedFor(nameof(ShowSerialFields))]
+    [NotifyPropertyChangedFor(nameof(ShowSharedFields))]
     [NotifyPropertyChangedFor(nameof(ShowUsbPortSelector))]
     private bool _connectionUsb = true;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowNetworkFields))]
     [NotifyPropertyChangedFor(nameof(ShowSerialFields))]
+    [NotifyPropertyChangedFor(nameof(ShowSharedFields))]
     [NotifyPropertyChangedFor(nameof(ShowUsbPortSelector))]
     private bool _connectionNetwork;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowNetworkFields))]
     [NotifyPropertyChangedFor(nameof(ShowSerialFields))]
+    [NotifyPropertyChangedFor(nameof(ShowSharedFields))]
     [NotifyPropertyChangedFor(nameof(ShowUsbPortSelector))]
     private bool _connectionSerial;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowNetworkFields))]
+    [NotifyPropertyChangedFor(nameof(ShowSerialFields))]
+    [NotifyPropertyChangedFor(nameof(ShowSharedFields))]
+    [NotifyPropertyChangedFor(nameof(ShowUsbPortSelector))]
+    private bool _connectionShared;
+
     [ObservableProperty] private string _ipAddress = string.Empty;
     [ObservableProperty] private int _networkPort = 9100;
+    [ObservableProperty] private string _sharedHost = string.Empty;
     [ObservableProperty] private PortEntry? _selectedComPort;
     [ObservableProperty] private PortEntry? _selectedUsbPort;
 
@@ -79,6 +90,7 @@ public partial class SimpleViewModel : ObservableObject
     public bool CanInstall => SelectedModel != null && !string.IsNullOrWhiteSpace(PrinterName) && !IsInstalling;
     public bool ShowNetworkFields => ConnectionNetwork;
     public bool ShowSerialFields => ConnectionSerial;
+    public bool ShowSharedFields => ConnectionShared;
     public bool ShowUsbPortSelector => ConnectionUsb && HasUsbPorts;
 
     public SimpleViewModel(IDriverRepository repository, IDriverInstaller installer, IWindowsPrinterService printerService, ILogService log)
@@ -154,11 +166,11 @@ public partial class SimpleViewModel : ObservableObject
 
         // Auto-select connection type from driver capabilities
         if (value.SupportedPorts.Any(p => p.StartsWith("COM", StringComparison.OrdinalIgnoreCase) || p.Equals("Serial", StringComparison.OrdinalIgnoreCase)))
-        { ConnectionUsb = false; ConnectionNetwork = false; ConnectionSerial = true; }
+        { ConnectionUsb = false; ConnectionNetwork = false; ConnectionSerial = true; ConnectionShared = false; }
         else if (value.SupportedPorts.Any(p => p.Contains("TCP", StringComparison.OrdinalIgnoreCase) || p.Contains("Network", StringComparison.OrdinalIgnoreCase) || p.Contains("IP", StringComparison.OrdinalIgnoreCase)))
-        { ConnectionUsb = false; ConnectionNetwork = true; ConnectionSerial = false; }
+        { ConnectionUsb = false; ConnectionNetwork = true; ConnectionSerial = false; ConnectionShared = false; }
         else
-        { ConnectionUsb = true; ConnectionNetwork = false; ConnectionSerial = false; }
+        { ConnectionUsb = true; ConnectionNetwork = false; ConnectionSerial = false; ConnectionShared = false; }
 
         StatusText = $"Modelo: {value.DisplayName}. Clique em Instalar para continuar.";
     }
@@ -181,6 +193,7 @@ public partial class SimpleViewModel : ObservableObject
 
             var connType = ConnectionNetwork ? ConnectionType.Network
                          : ConnectionSerial ? ConnectionType.Serial
+                         : ConnectionShared ? ConnectionType.Shared
                          : ConnectionType.USB;
 
             var request = new InstallRequest
@@ -190,6 +203,7 @@ public partial class SimpleViewModel : ObservableObject
                 ConnectionType = connType,
                 IpAddress = ConnectionNetwork ? IpAddress : null,
                 NetworkPort = ConnectionNetwork ? NetworkPort : 9100,
+                SharedHost = ConnectionShared ? SharedHost : null,
                 PortName = ConnectionSerial ? SelectedComPort?.PortName
                          : ConnectionUsb && SelectedUsbPort != null ? SelectedUsbPort.PortName
                          : null,

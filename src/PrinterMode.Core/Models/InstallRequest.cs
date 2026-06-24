@@ -15,4 +15,5 @@ public class InstallRequest
     public SerialConfig? SerialConfig { get; set; }
     public bool SetAsDefault { get; set; } = false;
     public bool SkipDriverInstall { get; set; } = false;
+    public string? SharedHost { get; set; }
 }

@@ -33,6 +33,10 @@ public class DriverInstaller : IDriverInstaller
                 "Execute o PrinterMode como Administrador.");
         }
 
+        // Shared printer: no driver install, no port — just connect via UNC path
+        if (request.ConnectionType == ConnectionType.Shared)
+            return await ConnectSharedPrinterAsync(request, progress, ct);
+
         if (!_repository.DriverFilesExist(request.Driver))
         {
             return InstallResult.Fail(
@@ -350,6 +354,42 @@ public class DriverInstaller : IDriverInstaller
             _log.Error("Test print error", ex);
             return InstallResult.Fail(ex.Message, ex.ToString());
         }
+    }
+
+    private async Task<InstallResult> ConnectSharedPrinterAsync(
+        InstallRequest request, IProgress<string>? progress, CancellationToken ct)
+    {
+        var steps = new List<string>();
+
+        var host = (request.SharedHost ?? "").Trim().TrimStart('\\');
+        if (string.IsNullOrEmpty(host))
+            return InstallResult.Fail(
+                "Informe o nome ou IP do computador que compartilha a impressora.", null, steps);
+
+        var connectionName = $@"\\{host}\{request.PrinterName}";
+        progress?.Report($"Conectando à impressora compartilhada {connectionName}...");
+        _log.Info($"Connecting shared printer: {connectionName}");
+
+        var ok = await _printerService.AddSharedPrinterAsync(connectionName, ct);
+        if (!ok)
+            return InstallResult.Fail(
+                $"Não foi possível conectar a '{connectionName}'.",
+                "Verifique o nome/IP do computador host, o nome do compartilhamento e as permissões de rede.",
+                steps);
+
+        steps.Add($"Conectado: {connectionName}");
+        _log.Info($"Shared printer connected: {connectionName}");
+
+        if (request.SetAsDefault)
+        {
+            await _printerService.SetDefaultPrinterAsync(request.PrinterName, ct);
+            steps.Add("Definida como impressora padrão.");
+        }
+
+        progress?.Report("Impressora compartilhada conectada com sucesso!");
+        return InstallResult.Ok(
+            $"Impressora conectada: {connectionName}",
+            request.PrinterName, steps);
     }
 
     private async Task<(bool success, string output)> InstallWinRarSfxAsync(

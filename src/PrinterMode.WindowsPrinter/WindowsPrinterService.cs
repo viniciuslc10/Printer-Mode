@@ -276,6 +276,37 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    public async Task<bool> AddSharedPrinterAsync(string connectionName, CancellationToken ct = default)
+    {
+        return await Task.Run(() =>
+        {
+            try
+            {
+                var script = $"Add-Printer -ConnectionName '{connectionName.Replace("'", "''")}'";
+                var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardError = true
+                };
+                _log.Info($"AddSharedPrinterAsync: '{connectionName}'");
+                using var process = Process.Start(psi)!;
+                var stderr = process.StandardError.ReadToEnd();
+                process.WaitForExit(30_000);
+                _log.Info($"Add-Printer -ConnectionName exit={process.ExitCode} stderr='{stderr.Trim()}'");
+                return process.ExitCode == 0;
+            }
+            catch (Exception ex)
+            {
+                _log.Error($"AddSharedPrinterAsync exception: {ex.Message}");
+                return false;
+            }
+        }, ct);
+    }
+
     public async Task<bool> PrinterExistsAsync(string printerName, CancellationToken ct = default)
     {
         return await Task.Run(() =>
