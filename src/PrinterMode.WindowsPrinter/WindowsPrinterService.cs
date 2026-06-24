@@ -276,6 +276,38 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    public async Task<bool> PrinterExistsAsync(string printerName, CancellationToken ct = default)
+    {
+        return await Task.Run(() =>
+        {
+            try
+            {
+                using var searcher = new ManagementObjectSearcher(
+                    $"SELECT Name FROM Win32_Printer WHERE Name='{EscapeWmi(printerName)}'");
+                foreach (ManagementObject _ in searcher.Get())
+                    return true;
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"PrinterExistsAsync failed: {ex.Message}");
+                return false;
+            }
+        }, ct);
+    }
+
+    public async Task<bool> UpdatePrinterPortAsync(string printerName, string newPortName, CancellationToken ct = default)
+    {
+        return await Task.Run(() =>
+        {
+            if (UpdatePrinterPortViaPowerShell(printerName, newPortName))
+                return true;
+
+            _log.Warning("PowerShell Set-Printer failed, trying WMI fallback.");
+            return UpdatePrinterPortViaWmi(printerName, newPortName);
+        }, ct);
+    }
+
     public async Task<IReadOnlyList<PortEntry>> GetSerialPortsWithNamesAsync(CancellationToken ct = default)
     {
         return await Task.Run(() =>
@@ -443,6 +475,58 @@ public class WindowsPrinterService : IWindowsPrinterService
         catch (Exception ex)
         {
             _log.Error($"WMI printer creation unexpected error: {ex.Message}");
+            return false;
+        }
+    }
+
+    private bool UpdatePrinterPortViaPowerShell(string printerName, string newPortName)
+    {
+        try
+        {
+            var script = $"Set-Printer -Name '{printerName.Replace("'", "''")}'" +
+                         $" -PortName '{newPortName.Replace("'", "''")}'";
+            var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+            var psi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true
+            };
+            _log.Info($"UpdatePrinterPortViaPowerShell: '{printerName}' → '{newPortName}'");
+            using var process = Process.Start(psi)!;
+            var stderr = process.StandardError.ReadToEnd();
+            process.WaitForExit(30_000);
+            _log.Info($"Set-Printer exit={process.ExitCode} stderr='{stderr.Trim()}'");
+            return process.ExitCode == 0;
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"PowerShell Set-Printer exception: {ex.Message}");
+            return false;
+        }
+    }
+
+    private bool UpdatePrinterPortViaWmi(string printerName, string newPortName)
+    {
+        try
+        {
+            using var searcher = new ManagementObjectSearcher(
+                $"SELECT * FROM Win32_Printer WHERE Name='{EscapeWmi(printerName)}'");
+            foreach (ManagementObject printer in searcher.Get())
+            {
+                printer["PortName"] = newPortName;
+                printer.Put();
+                _log.Info($"UpdatePrinterPortViaWmi: '{printerName}' → '{newPortName}'");
+                return true;
+            }
+            _log.Warning($"UpdatePrinterPortViaWmi: printer '{printerName}' not found.");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"WMI Set-Printer port failed: {ex.Message}");
             return false;
         }
     }

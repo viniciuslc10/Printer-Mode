@@ -7,6 +7,8 @@ public interface IWindowsPrinterService
     Task<bool> CreateTcpIpPortAsync(string portName, string ipAddress, int port, CancellationToken ct = default);
     Task<bool> CreateUsbPortAsync(string portName, CancellationToken ct = default);
     Task<bool> AddPrinterAsync(string printerName, string driverName, string portName, CancellationToken ct = default);
+    Task<bool> PrinterExistsAsync(string printerName, CancellationToken ct = default);
+    Task<bool> UpdatePrinterPortAsync(string printerName, string newPortName, CancellationToken ct = default);
     Task<bool> SetPaperFormAsync(string printerName, PaperConfig paper, CancellationToken ct = default);
     Task<bool> SetDefaultPrinterAsync(string printerName, CancellationToken ct = default);
     Task<bool> DeletePrinterAsync(string printerName, CancellationToken ct = default);

@@ -224,37 +224,61 @@ public class DriverInstaller : IDriverInstaller
             if (!portCreated)
                 return InstallResult.Fail($"Falha ao criar porta {portName}.", null, steps);
 
-            // Step 3: Add printer to Windows
-            progress?.Report("Adicionando impressora ao Windows...");
-            var installedDrivers = await _printerService.GetInstalledDriversAsync(ct);
-            var resolvedDriverName = ResolveActualDriverName(request.Driver, installedDrivers);
+            // Step 3: Add printer or update port if it already exists
+            progress?.Report("Configurando impressora no Windows...");
 
-            if (resolvedDriverName == null)
+            var printerExists = await _printerService.PrinterExistsAsync(request.PrinterName, ct);
+
+            if (printerExists)
             {
-                var list = string.Join(", ", installedDrivers.Take(10));
-                _log.Error($"Cannot resolve driver name. Installed drivers: [{list}]");
-                return InstallResult.Fail(
-                    "Driver não encontrado no Windows para criar a impressora.",
-                    $"Drivers instalados: {list}",
-                    steps);
+                // Printer already registered — just redirect it to the new port
+                _log.Info($"Printer '{request.PrinterName}' already exists, updating port to '{portName}'.");
+                progress?.Report($"Impressora já existe, atualizando porta para '{portName}'...");
+
+                var updated = await _printerService.UpdatePrinterPortAsync(request.PrinterName, portName, ct);
+                if (!updated)
+                {
+                    return InstallResult.Fail(
+                        $"Falha ao atualizar a porta da impressora '{request.PrinterName}'.",
+                        "Verifique as permissões e tente novamente.",
+                        steps);
+                }
+
+                steps.Add($"Porta atualizada: {request.PrinterName} → {portName}");
+                _log.Info($"Printer port updated: {request.PrinterName} → {portName}");
             }
-
-            _log.Info($"Resolved driver name: '{resolvedDriverName}' (catalog: '{request.Driver.DriverName}')");
-
-            var printerAdded = await _printerService.AddPrinterAsync(
-                request.PrinterName, resolvedDriverName, portName, ct);
-
-            if (!printerAdded)
+            else
             {
-                _log.Error($"AddPrinterAsync failed. driver='{resolvedDriverName}' port='{portName}'");
-                return InstallResult.Fail(
-                    $"Falha ao criar impressora no Windows (driver: '{resolvedDriverName}').",
-                    "Verifique se o driver está instalado e tente novamente.",
-                    steps);
-            }
+                var installedDrivers = await _printerService.GetInstalledDriversAsync(ct);
+                var resolvedDriverName = ResolveActualDriverName(request.Driver, installedDrivers);
 
-            steps.Add($"Impressora criada: {request.PrinterName}");
-            _log.Info($"Printer created: {request.PrinterName}");
+                if (resolvedDriverName == null)
+                {
+                    var list = string.Join(", ", installedDrivers.Take(10));
+                    _log.Error($"Cannot resolve driver name. Installed drivers: [{list}]");
+                    return InstallResult.Fail(
+                        "Driver não encontrado no Windows para criar a impressora.",
+                        $"Drivers instalados: {list}",
+                        steps);
+                }
+
+                _log.Info($"Resolved driver name: '{resolvedDriverName}' (catalog: '{request.Driver.DriverName}')");
+
+                var printerAdded = await _printerService.AddPrinterAsync(
+                    request.PrinterName, resolvedDriverName, portName, ct);
+
+                if (!printerAdded)
+                {
+                    _log.Error($"AddPrinterAsync failed. driver='{resolvedDriverName}' port='{portName}'");
+                    return InstallResult.Fail(
+                        $"Falha ao criar impressora no Windows (driver: '{resolvedDriverName}').",
+                        "Verifique se o driver está instalado e tente novamente.",
+                        steps);
+                }
+
+                steps.Add($"Impressora criada: {request.PrinterName}");
+                _log.Info($"Printer created: {request.PrinterName}");
+            }
 
             // Step 4: Configure paper
             progress?.Report("Configurando tamanho de papel...");
