@@ -43,10 +43,10 @@ public class DriverInstaller : IDriverInstaller
         try
         {
             // Step 1: Install driver
-            // Strategy (in order):
-            //   1. pnputil /add-driver <inf> /install  — always silent, works for most drivers
-            //   2. EXE installer with silent flags      — for drivers that need the EXE
-            //   3. EXE installer with UI visible        — last resort when silent flags are ignored
+            // installerType controls the strategy:
+            //   "innosetup" / "epson-apd" / default → single silent EXE run using installerArgs
+            //   "winrar-sfx"  → extract SFX to temp, run Silent_Setup.exe inside
+            //   "ui-only"     → open installer with UI (Daruma and similar proprietary setups)
             bool driverInstalled;
 
             if (request.SkipDriverInstall)
@@ -59,102 +59,133 @@ public class DriverInstaller : IDriverInstaller
             else
             {
                 driverInstalled = false;
+                var exePath = _repository.ResolveInstallerPath(request.Driver);
+                var installerType = request.Driver.InstallerType ?? "exe";
 
-                // ── 1. Try pnputil first (always silent, no wizard) ──────────────────────
-                var infPath = _repository.ResolveInfPath(request.Driver);
-                if (File.Exists(infPath))
+                if (!request.Driver.HasInstaller || exePath == null)
+                    return InstallResult.Fail("Nenhum instalador encontrado para este driver.", null, steps);
+
+                bool needsUiInstall = installerType == "ui-only";
+
+                // ── WinRAR SFX: extract to temp, kill auto-launched setup, run Silent_Setup.exe ──
+                if (installerType == "winrar-sfx" && !string.IsNullOrEmpty(request.Driver.SilentSetupExe))
                 {
-                    progress?.Report("Instalando driver silenciosamente...");
-                    var pnpResult = await RunPnpUtilAsync(infPath, ct);
-
-                    if (pnpResult.success)
+                    var sfxResult = await InstallWinRarSfxAsync(exePath, request.Driver.SilentSetupExe!, ct, progress);
+                    if (sfxResult.success)
                     {
-                        await Task.Delay(1500, ct);
-                        var driversAfterPnp = await _printerService.GetInstalledDriversAsync(ct);
-                        var resolvedPnp = ResolveActualDriverName(request.Driver, driversAfterPnp);
-
-                        if (resolvedPnp != null)
+                        await Task.Delay(2000, ct);
+                        var driversAfterSfx = await _printerService.GetInstalledDriversAsync(ct);
+                        var resolvedSfx = ResolveActualDriverName(request.Driver, driversAfterSfx);
+                        if (resolvedSfx != null)
                         {
                             driverInstalled = true;
-                            steps.Add($"Driver instalado via pnputil: {infPath}");
-                            _log.Info($"Driver installed silently via pnputil. Name: '{resolvedPnp}'");
+                            steps.Add($"Driver instalado via WinRAR SFX: {request.Driver.InstallerExe}");
+                            _log.Info($"Driver installed via WinRAR SFX. Name: '{resolvedSfx}'");
                         }
                         else
                         {
-                            _log.Warning("pnputil succeeded but driver name not found in Win32_PrinterDriver. Will try EXE.");
+                            _log.Warning("WinRAR SFX ran but driver not found, falling back to UI install.");
+                            needsUiInstall = true;
                         }
                     }
                     else
                     {
-                        _log.Warning($"pnputil failed ({pnpResult.output}). Will try EXE installer.");
+                        _log.Warning($"WinRAR SFX extraction failed ({sfxResult.output}), falling back to UI install.");
+                        needsUiInstall = true;
+                    }
+                }
+                // ── Silent EXE (innosetup / epson-apd / default) ──────────────────────────
+                else if (installerType != "ui-only" && installerType != "winrar-sfx")
+                {
+                    var silentArgs = request.Driver.InstallerArgs;
+                    if (string.IsNullOrEmpty(silentArgs))
+                        silentArgs = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART";
+
+                    progress?.Report("Instalando driver silenciosamente...");
+                    _log.Info($"Running silent EXE installer: '{exePath}' args='{silentArgs}'");
+
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = exePath,
+                        Arguments = silentArgs,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+
+                    try
+                    {
+                        using var proc = Process.Start(psi)!;
+                        await proc.WaitForExitAsync(ct);
+                        _log.Info($"Silent installer exit: {proc.ExitCode}");
+
+                        if (proc.ExitCode != 0 && proc.ExitCode != 3010 && proc.ExitCode != 1641)
+                        {
+                            return InstallResult.Fail(
+                                $"Instalador retornou código de erro {proc.ExitCode}.",
+                                $"Tente instalar manualmente: {request.Driver.InstallerExe}", steps);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        return InstallResult.Fail($"Falha ao executar instalador: {ex.Message}", null, steps);
+                    }
+
+                    await Task.Delay(2500, ct);
+                    var driversAfterSilent = await _printerService.GetInstalledDriversAsync(ct);
+                    var resolvedSilent = ResolveActualDriverName(request.Driver, driversAfterSilent);
+                    if (resolvedSilent != null)
+                    {
+                        driverInstalled = true;
+                        steps.Add($"Driver instalado silenciosamente: {request.Driver.InstallerExe}");
+                        _log.Info($"Driver installed silently. Name: '{resolvedSilent}'");
+                    }
+                    else
+                    {
+                        var list = string.Join(", ", driversAfterSilent.Take(10));
+                        _log.Error($"Silent install exited 0 but driver not found. Installed: [{list}]");
+                        return InstallResult.Fail(
+                            "O instalador foi executado, mas o driver não foi encontrado no Windows.",
+                            $"Drivers instalados: {list}", steps);
                     }
                 }
 
-                // ── 2. Try EXE installer (silent flags) if pnputil didn't work ───────────
-                if (!driverInstalled && request.Driver.HasInstaller)
+                // ── UI installer: open with wizard, wait for user to complete ─────────────
+                if (!driverInstalled && needsUiInstall)
                 {
-                    var exePath = _repository.ResolveInstallerPath(request.Driver)!;
-                    progress?.Report($"Instalando driver ({request.Driver.InstallerExe})...");
-                    var exeResult = await RunExeInstallerAsync(exePath, request.Driver.InstallerArgs ?? "/S", ct, progress);
+                    progress?.Report($"⚠ Siga as instruções do instalador {request.Driver.DisplayName} na janela que abrir...");
+                    _log.Info($"Opening UI installer for {request.Driver.DisplayName}: {exePath}");
 
-                    if (exeResult.success)
+                    try
                     {
-                        await Task.Delay(3000, ct);
-                        var driversAfterExe = await _printerService.GetInstalledDriversAsync(ct);
-                        var resolvedExe = ResolveActualDriverName(request.Driver, driversAfterExe);
-
-                        if (resolvedExe != null)
-                        {
-                            driverInstalled = true;
-                            steps.Add($"Driver instalado via instalador: {request.Driver.InstallerExe}");
-                            _log.Info($"Driver installed via EXE. Name: '{resolvedExe}'");
-                        }
-                        else
-                        {
-                            // ── 3. EXE ran but driver not found → open with UI as last resort ──
-                            _log.Warning("EXE silent install succeeded but driver not found. Opening UI...");
-                            progress?.Report("⚠ Conclua a instalação do driver na janela que abriu...");
-
-                            try
-                            {
-                                using var uiProc = Process.Start(new ProcessStartInfo { FileName = exePath, UseShellExecute = true })!;
-                                await uiProc.WaitForExitAsync(ct);
-                                _log.Info($"UI installer exit: {uiProc.ExitCode}");
-                            }
-                            catch (Exception ex)
-                            {
-                                _log.Warning($"UI installer failed to launch: {ex.Message}");
-                            }
-
-                            progress?.Report("Verificando driver após instalação...");
-                            await Task.Delay(3000, ct);
-
-                            var driversAfterUi = await _printerService.GetInstalledDriversAsync(ct);
-                            var resolvedUi = ResolveActualDriverName(request.Driver, driversAfterUi);
-
-                            if (resolvedUi == null)
-                            {
-                                var list = string.Join(", ", driversAfterUi.Take(10));
-                                _log.Error($"Driver not found after UI install. Installed: [{list}]");
-                                return InstallResult.Fail(
-                                    "O instalador foi executado, mas o driver não foi encontrado no Windows.",
-                                    $"Drivers instalados: {list}",
-                                    steps);
-                            }
-
-                            driverInstalled = true;
-                            steps.Add($"Driver instalado via instalador (UI): {request.Driver.InstallerExe}");
-                            _log.Info($"Driver installed via UI. Name: '{resolvedUi}'");
-                        }
+                        using var uiProc = Process.Start(new ProcessStartInfo { FileName = exePath, UseShellExecute = true })!;
+                        await uiProc.WaitForExitAsync(ct);
+                        _log.Info($"UI installer exit: {uiProc.ExitCode}");
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        return InstallResult.Fail("Falha ao instalar driver.", exeResult.output, steps);
+                        _log.Warning($"UI installer failed to launch: {ex.Message}");
                     }
+
+                    progress?.Report("Verificando driver após instalação...");
+                    await Task.Delay(3000, ct);
+
+                    var driversAfterUi = await _printerService.GetInstalledDriversAsync(ct);
+                    var resolvedUi = ResolveActualDriverName(request.Driver, driversAfterUi);
+                    if (resolvedUi == null)
+                    {
+                        var list = string.Join(", ", driversAfterUi.Take(10));
+                        return InstallResult.Fail(
+                            "O instalador foi executado, mas o driver não foi encontrado no Windows.",
+                            $"Drivers instalados: {list}", steps);
+                    }
+
+                    driverInstalled = true;
+                    steps.Add($"Driver instalado via assistente visual: {request.Driver.InstallerExe}");
+                    _log.Info($"Driver installed via UI. Name: '{resolvedUi}'");
                 }
 
                 if (!driverInstalled)
-                    return InstallResult.Fail("Nenhum arquivo de driver encontrado (INF ou EXE).", null, steps);
+                    return InstallResult.Fail("Não foi possível instalar o driver.", null, steps);
             }
 
             // Step 2: Create the port
@@ -297,72 +328,86 @@ public class DriverInstaller : IDriverInstaller
         }
     }
 
-    private async Task<(bool success, string output)> RunExeInstallerAsync(
-        string exePath, string args, CancellationToken ct, IProgress<string>? progress = null)
+    private async Task<(bool success, string output)> InstallWinRarSfxAsync(
+        string sfxPath, string silentSetupExe, CancellationToken ct, IProgress<string>? progress = null)
     {
-        // Try silent flags in order — stop at first success.
-        // /S                              = NSIS (Nullsoft)
-        // /VERYSILENT /SUPPRESSMSGBOXES   = Inno Setup
-        // /silent                         = Epson APD and others
-        // /q                              = MSI-wrapped installers
-        var silentCandidates = new[] { args, "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART", "/silent", "/q" }
-            .Where(a => !string.IsNullOrWhiteSpace(a))
-            .Distinct()
-            .ToArray();
-
-        foreach (var currentArgs in silentCandidates)
-        {
-            try
-            {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = exePath,
-                    Arguments = currentArgs,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                _log.Info($"Trying EXE installer (silent) args: '{currentArgs}'");
-                using var process = Process.Start(psi)!;
-                await process.WaitForExitAsync(ct);
-                _log.Info($"EXE exit {process.ExitCode} with args '{currentArgs}'");
-
-                if (process.ExitCode == 0 || process.ExitCode == 3010 || process.ExitCode == 1641)
-                    return (true, $"Instalador concluído silenciosamente (código {process.ExitCode}).");
-
-                _log.Warning($"Silent flag '{currentArgs}' failed (exit {process.ExitCode}), trying next...");
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"EXE installer error with args '{currentArgs}': {ex.Message}");
-            }
-        }
-
-        // All silent flags failed — open the installer with UI and wait for the user to finish.
-        _log.Warning($"No silent flag worked. Opening installer with UI: {exePath}");
-        progress?.Report("⚠ Conclua a instalação do driver na janela que abriu e clique em OK ao terminar...");
+        var tempDir = Path.Combine(Path.GetTempPath(), $"PM_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
 
         try
         {
-            var psi = new ProcessStartInfo
+            progress?.Report("Extraindo pacote do driver...");
+
+            // WinRAR SFX: -y auto-confirm, -d<path> extract destination, -s suppress dialogs
+            var extractPsi = new ProcessStartInfo
             {
-                FileName = exePath,
-                UseShellExecute = true
+                FileName = sfxPath,
+                Arguments = $"-y -s -d\"{tempDir}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true
             };
 
-            using var process = Process.Start(psi)!;
-            await process.WaitForExitAsync(ct);
-            _log.Info($"UI installer exit code: {process.ExitCode}");
+            using var extractProc = Process.Start(extractPsi)!;
 
-            if (process.ExitCode == 0 || process.ExitCode == 3010 || process.ExitCode == 1641)
-                return (true, "Instalação concluída pelo usuário.");
+            // Wait up to 30s for extraction; the SFX may also auto-launch the interactive Setup.exe
+            var completed = await Task.Run(() => extractProc.WaitForExit(30_000), ct);
+            if (!completed)
+                extractProc.Kill();
 
-            return (false, $"Instalador retornou código {process.ExitCode}.");
+            // Kill any interactive Setup.exe spawned from within the extracted temp dir
+            foreach (var proc in Process.GetProcesses())
+            {
+                try
+                {
+                    var mainModulePath = proc.MainModule?.FileName;
+                    if (mainModulePath?.StartsWith(tempDir, StringComparison.OrdinalIgnoreCase) == true &&
+                        !mainModulePath.Contains("Silent_Setup", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _log.Info($"Killing auto-launched interactive setup: {mainModulePath}");
+                        proc.Kill();
+                    }
+                }
+                catch { }
+            }
+
+            // Find and run Silent_Setup.exe in the extracted folder
+            var silentExePath = Directory
+                .GetFiles(tempDir, silentSetupExe, SearchOption.AllDirectories)
+                .FirstOrDefault();
+
+            if (silentExePath == null)
+            {
+                _log.Warning($"'{silentSetupExe}' not found in extracted SFX at '{tempDir}'");
+                return (false, $"{silentSetupExe} não encontrado após extração");
+            }
+
+            progress?.Report("Instalando driver silenciosamente...");
+            _log.Info($"Running WinRAR SFX silent setup: '{silentExePath}'");
+
+            var silentPsi = new ProcessStartInfo
+            {
+                FileName = silentExePath,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var silentProc = Process.Start(silentPsi)!;
+            await silentProc.WaitForExitAsync(ct);
+            _log.Info($"Silent_Setup.exe exit: {silentProc.ExitCode}");
+
+            if (silentProc.ExitCode == 0 || silentProc.ExitCode == 3010 || silentProc.ExitCode == 1641)
+                return (true, $"Silent_Setup exit {silentProc.ExitCode}");
+
+            return (false, $"Silent_Setup retornou código {silentProc.ExitCode}");
         }
         catch (Exception ex)
         {
-            _log.Error("Failed to run EXE installer with UI", ex);
+            _log.Error($"WinRAR SFX install failed: {ex.Message}");
             return (false, ex.Message);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { }
         }
     }
 
@@ -388,43 +433,6 @@ public class DriverInstaller : IDriverInstaller
 
         // Not found — caller decides what to do
         return null;
-    }
-
-    private async Task<(bool success, string output)> RunPnpUtilAsync(string infPath, CancellationToken ct)
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = "pnputil.exe",
-            Arguments = $"/add-driver \"{infPath}\" /install",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        try
-        {
-            using var process = Process.Start(psi)!;
-            var output = await process.StandardOutput.ReadToEndAsync(ct);
-            var error = await process.StandardError.ReadToEndAsync(ct);
-            await process.WaitForExitAsync(ct);
-
-            _log.Info($"pnputil exit code: {process.ExitCode}");
-            _log.Debug($"pnputil output: {output}");
-
-            if (process.ExitCode != 0 && process.ExitCode != 3010) // 3010 = reboot required but driver installed
-            {
-                _log.Error($"pnputil error: {error}");
-                return (false, error);
-            }
-
-            return (true, output);
-        }
-        catch (Exception ex)
-        {
-            _log.Error("Failed to run pnputil", ex);
-            return (false, ex.Message);
-        }
     }
 
     private async Task ConfigureSerialPortAsync(string portName, SerialConfig? config, CancellationToken ct)

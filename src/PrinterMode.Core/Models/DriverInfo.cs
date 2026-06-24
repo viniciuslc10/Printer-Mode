@@ -21,6 +21,12 @@ public class DriverInfo
     public string? InstallerExe { get; set; }
     public string? InstallerArgs { get; set; }
 
+    // "innosetup" | "winrar-sfx" | "epson-apd" | "ui-only" — controls silent install strategy
+    public string? InstallerType { get; set; }
+
+    // For "winrar-sfx": filename of the silent setup binary inside the extracted archive
+    public string? SilentSetupExe { get; set; }
+
     // All driver names the installer may register in Win32_PrinterDriver.
     // The first entry is the preferred name; extras are fallback aliases.
     public List<string> WindowsDriverNames { get; set; } = [];
