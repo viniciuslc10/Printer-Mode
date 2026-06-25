@@ -201,13 +201,25 @@ public class DriverInstaller : IDriverInstaller
                         }
                         else
                         {
-                            // 4th try: EXE exited 0, so trust it installed something.
-                            // Proceed with the configured driverName and let AddPrinterAsync validate.
-                            var list = string.Join(", ", driversAfterStore);
-                            _log.Warning($"Driver not found by name/diff/DriverStore. EXE exited 0, proceeding with configured name '{request.Driver.DriverName}'. Installed: [{list}]");
-                            detectedDriverName = null; // Step 3 will use driverName from config
-                            driverInstalled = true;
-                            steps.Add($"Driver instalado (nome não confirmado): {request.Driver.InstallerExe}");
+                            // 4th try: find driver from a printer Windows may have auto-installed
+                            var autoDriver = await _printerService.FindDriverNameFromAutoInstalledPrinterAsync(
+                                request.Driver.Manufacturer, request.Driver.Model, ct);
+                            if (autoDriver != null)
+                            {
+                                detectedDriverName = autoDriver;
+                                driverInstalled = true;
+                                steps.Add($"Driver detectado de impressora auto-instalada: '{autoDriver}'");
+                                _log.Info($"Using auto-installed printer driver: '{autoDriver}'");
+                            }
+                            else
+                            {
+                                // 5th try (last resort): EXE exited 0, trust it and proceed with configured name
+                                var list = string.Join(", ", driversAfterStore);
+                                _log.Warning($"All detection failed. EXE exited 0, proceeding with '{request.Driver.DriverName}'. Installed: [{list}]");
+                                detectedDriverName = null;
+                                driverInstalled = true;
+                                steps.Add($"Driver instalado (nome não confirmado): {request.Driver.InstallerExe}");
+                            }
                         }
                     }
                 }
@@ -562,16 +574,32 @@ public class DriverInstaller : IDriverInstaller
             var mfgLower = driver.Manufacturer.ToLowerInvariant();
             var modelLower = driver.Model.Replace("-", "").Replace(" ", "").ToLowerInvariant();
 
-            return after
-                .Where(f => !before.Contains(f))
-                .Where(f =>
+            var newFiles = after.Where(f => !before.Contains(f)).ToList();
+
+            // Priority 1: new .inf whose path/name matches manufacturer or model
+            var byName = newFiles.Where(f =>
+            {
+                var dir = Path.GetFileName(Path.GetDirectoryName(f) ?? "").ToLowerInvariant();
+                var name = Path.GetFileNameWithoutExtension(f).ToLowerInvariant();
+                return dir.Contains(mfgLower) || dir.Contains(modelLower)
+                    || name.Contains(mfgLower) || name.Contains(modelLower);
+            }).ToList();
+
+            if (byName.Count > 0) return byName;
+
+            // Priority 2: any new .inf that declares Class=Printer (any manufacturer)
+            var byClass = newFiles.Where(f =>
+            {
+                try
                 {
-                    var dir = Path.GetFileName(Path.GetDirectoryName(f) ?? "").ToLowerInvariant();
-                    return dir.Contains(mfgLower) || dir.Contains(modelLower)
-                           || Path.GetFileNameWithoutExtension(f).ToLowerInvariant().Contains(mfgLower)
-                           || Path.GetFileNameWithoutExtension(f).ToLowerInvariant().Contains(modelLower);
-                })
-                .ToList();
+                    var content = File.ReadAllText(f, System.Text.Encoding.Latin1);
+                    return content.Contains("Class=Printer", StringComparison.OrdinalIgnoreCase)
+                        || content.Contains("Class = Printer", StringComparison.OrdinalIgnoreCase);
+                }
+                catch { return false; }
+            }).ToList();
+
+            return byClass;
         }
         catch { return []; }
     }

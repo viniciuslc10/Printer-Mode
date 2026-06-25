@@ -440,6 +440,58 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    public async Task<string?> FindDriverNameFromAutoInstalledPrinterAsync(
+        string manufacturerHint, string modelHint, CancellationToken ct = default)
+    {
+        return await Task.Run(() =>
+        {
+            try
+            {
+                // Search Win32_Printer for any printer that Windows auto-installed
+                // that matches our manufacturer or model keywords
+                using var searcher = new ManagementObjectSearcher("SELECT Name, DriverName FROM Win32_Printer");
+                var mfgLow = manufacturerHint.ToLowerInvariant();
+                var mdlLow = modelHint.Replace("-", "").Replace(" ", "").ToLowerInvariant();
+
+                foreach (ManagementObject obj in searcher.Get())
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var name = obj["Name"]?.ToString() ?? "";
+                    var driverName = obj["DriverName"]?.ToString();
+                    if (string.IsNullOrEmpty(driverName)) continue;
+
+                    var nameLow = name.ToLowerInvariant().Replace("-", "").Replace(" ", "");
+                    if (nameLow.Contains(mfgLow) || nameLow.Contains(mdlLow))
+                    {
+                        _log.Info($"Found auto-installed printer '{name}' using driver '{driverName}'");
+                        return driverName;
+                    }
+                }
+
+                // Broader fallback: any printer on a USB port that isn't a well-known system printer
+                using var usbSearcher = new ManagementObjectSearcher(
+                    "SELECT Name, DriverName, PortName FROM Win32_Printer WHERE PortName LIKE 'USB%'");
+                foreach (ManagementObject obj in usbSearcher.Get())
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var driverName = obj["DriverName"]?.ToString();
+                    var name = obj["Name"]?.ToString() ?? "";
+                    if (string.IsNullOrEmpty(driverName)) continue;
+                    if (driverName.Contains("Microsoft", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (driverName.Contains("OneNote", StringComparison.OrdinalIgnoreCase)) continue;
+
+                    _log.Info($"Found USB printer '{name}' using driver '{driverName}' — using as fallback");
+                    return driverName;
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"FindDriverNameFromAutoInstalledPrinterAsync failed: {ex.Message}");
+            }
+            return null;
+        }, ct);
+    }
+
     private bool RunPrintUi(string arguments)
     {
         var psi = new ProcessStartInfo
