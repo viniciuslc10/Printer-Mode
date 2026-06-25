@@ -6,7 +6,7 @@ setlocal enabledelayedexpansion
 :: Execute dentro da pasta Installer\ (duplo clique ou cmd)
 :: ============================================================
 
-set "PROJECT=..\src\PrinterMode.UI\PrinterMode.UI.csproj"
+set "PROJECT=%~dp0..\src\PrinterMode.UI\PrinterMode.UI.csproj"
 set "PUBLISH_DIR=%~dp0publish"
 set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
 
