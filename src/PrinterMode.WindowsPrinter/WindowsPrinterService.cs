@@ -223,6 +223,37 @@ public class WindowsPrinterService : IWindowsPrinterService
 
     public async Task<IReadOnlyList<string>> GetInstalledDriversAsync(CancellationToken ct = default)
     {
+        // PowerShell Get-PrinterDriver queries the Print Spooler directly — no WMI cache lag.
+        // WMI Win32_PrinterDriver can take 10-30 seconds to reflect a newly installed driver.
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = "-NoProfile -NonInteractive -Command \"Get-PrinterDriver | Select-Object -ExpandProperty Name\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true
+            };
+            using var proc = Process.Start(psi)!;
+            var output = await proc.StandardOutput.ReadToEndAsync(ct);
+            await proc.WaitForExitAsync(ct);
+
+            var drivers = output
+                .Split('\n')
+                .Select(l => l.Trim())
+                .Where(l => !string.IsNullOrEmpty(l))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            _log.Info($"Installed printer drivers (PS): [{string.Join(", ", drivers)}]");
+            return drivers;
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"PowerShell Get-PrinterDriver failed ({ex.Message}), falling back to WMI");
+        }
+
         return await Task.Run(() =>
         {
             var drivers = new List<string>();
@@ -234,9 +265,7 @@ public class WindowsPrinterService : IWindowsPrinterService
                     ct.ThrowIfCancellationRequested();
                     var raw = obj["Name"]?.ToString();
                     if (raw == null) continue;
-
-                    // Win32_PrinterDriver.Name is a compound key: "DriverName,Version,Environment"
-                    // e.g. "G250,3,Windows x64" — we only want the first segment.
+                    // Win32_PrinterDriver.Name compound key: "DriverName,Version,Environment"
                     var name = raw.Split(',')[0].Trim();
                     if (!string.IsNullOrEmpty(name) && !drivers.Contains(name, StringComparer.OrdinalIgnoreCase))
                         drivers.Add(name);
@@ -244,10 +273,10 @@ public class WindowsPrinterService : IWindowsPrinterService
             }
             catch (Exception ex)
             {
-                _log.Error("Failed to list printer drivers", ex);
+                _log.Error("WMI fallback also failed to list printer drivers", ex);
             }
 
-            _log.Info($"Installed printer drivers: [{string.Join(", ", drivers)}]");
+            _log.Info($"Installed printer drivers (WMI): [{string.Join(", ", drivers)}]");
             return (IReadOnlyList<string>)drivers;
         }, ct);
     }

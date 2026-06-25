@@ -151,20 +151,20 @@ public class DriverInstaller : IDriverInstaller
                         return InstallResult.Fail($"Falha ao executar instalador: {ex.Message}", null, steps);
                     }
 
-                    await Task.Delay(5000, ct);
-                    var driversAfterSilent = await _printerService.GetInstalledDriversAsync(ct);
-
-                    // 1st try: match by known driver names
-                    var resolvedSilent = ResolveActualDriverName(request.Driver, driversAfterSilent);
-
-                    // 2nd try: detect by diff — any new driver that appeared after install
-                    if (resolvedSilent == null)
+                    // Poll up to 30 seconds for the driver to register in the Print Spooler.
+                    // WMI can lag; PowerShell Get-PrinterDriver is used by GetInstalledDriversAsync
+                    // and reflects changes much faster.
+                    string? resolvedSilent = null;
+                    IReadOnlyList<string> driversAfterSilent = driversBefore;
+                    progress?.Report("Aguardando registro do driver...");
+                    for (int poll = 0; poll < 6 && resolvedSilent == null; poll++)
                     {
-                        resolvedSilent = driversAfterSilent
-                            .Except(driversBefore, StringComparer.OrdinalIgnoreCase)
-                            .FirstOrDefault();
+                        await Task.Delay(5000, ct);
+                        driversAfterSilent = await _printerService.GetInstalledDriversAsync(ct);
+                        resolvedSilent = ResolveActualDriverName(request.Driver, driversAfterSilent)
+                            ?? driversAfterSilent.Except(driversBefore, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
                         if (resolvedSilent != null)
-                            _log.Info($"Driver detected by before/after diff: '{resolvedSilent}'");
+                            _log.Info($"Driver detected on poll {poll + 1}: '{resolvedSilent}'");
                     }
 
                     if (resolvedSilent != null)
@@ -176,8 +176,8 @@ public class DriverInstaller : IDriverInstaller
                     }
                     else
                     {
-                        // 3rd try: EXE may have staged real .inf files into DriverStore — use them
-                        _log.Warning("EXE exited 0 but driver not in Win32_PrinterDriver. Searching DriverStore...");
+                        // 2nd try: EXE may have staged real .inf files into DriverStore — use pnputil
+                        _log.Warning("EXE exited 0 but driver not detected after 30s. Searching DriverStore...");
                         progress?.Report("Buscando driver no DriverStore do Windows...");
                         var newInfFiles = FindNewDriverStoreInfs(storeSnapBefore, request.Driver);
                         foreach (var stagedInf in newInfFiles)
@@ -187,7 +187,7 @@ public class DriverInstaller : IDriverInstaller
                             if (pnpOk) break;
                         }
 
-                        await Task.Delay(3000, ct);
+                        await Task.Delay(5000, ct);
                         var driversAfterStore = await _printerService.GetInstalledDriversAsync(ct);
                         resolvedSilent = ResolveActualDriverName(request.Driver, driversAfterStore)
                             ?? driversAfterStore.Except(driversBefore, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
@@ -201,7 +201,7 @@ public class DriverInstaller : IDriverInstaller
                         }
                         else
                         {
-                            // 4th try: find driver from a printer Windows may have auto-installed
+                            // 3rd try: find driver from a printer Windows may have auto-installed on USB
                             var autoDriver = await _printerService.FindDriverNameFromAutoInstalledPrinterAsync(
                                 request.Driver.Manufacturer, request.Driver.Model, ct);
                             if (autoDriver != null)
@@ -213,12 +213,12 @@ public class DriverInstaller : IDriverInstaller
                             }
                             else
                             {
-                                // All 5 detection stages failed — fall back to UI installer so user
-                                // can complete the wizard with the printer physically connected.
-                                var list = string.Join(", ", driversAfterStore);
-                                _log.Warning($"All silent-detection stages failed. Falling back to UI installer. Drivers found: [{list}]");
-                                needsUiInstall = true;
-                                steps.Add("Instalação silenciosa não registrou driver — abrindo instalador visual...");
+                                var list = string.Join(", ", driversAfterStore.Take(10));
+                                _log.Warning($"All detection stages failed. Drivers found: [{list}]");
+                                return InstallResult.Fail(
+                                    $"O instalador do driver {request.Driver.DisplayName} foi executado, mas o driver não foi registrado no Windows.",
+                                    $"Conecte a impressora ao computador e tente novamente. Drivers detectados: {list}",
+                                    steps);
                             }
                         }
                     }
@@ -244,7 +244,7 @@ public class DriverInstaller : IDriverInstaller
                     }
 
                     progress?.Report("Verificando driver após instalação...");
-                    await Task.Delay(3000, ct);
+                    await Task.Delay(5000, ct);
 
                     var driversAfterUi = await _printerService.GetInstalledDriversAsync(ct);
                     var resolvedUi = ResolveActualDriverName(request.Driver, driversAfterUi)
