@@ -188,9 +188,6 @@ public partial class SimpleViewModel : ObservableObject
             var driver = SelectedModel!;
             var paper = SelectedPaper ?? driver.DefaultPaper;
 
-            StatusText = "Verificando driver instalado...";
-            var alreadyInstalled = await _installer.IsDriverInstalledAsync(driver, ct);
-
             var connType = ConnectionNetwork ? ConnectionType.Network
                          : ConnectionSerial ? ConnectionType.Serial
                          : ConnectionShared ? ConnectionType.Shared
@@ -209,7 +206,7 @@ public partial class SimpleViewModel : ObservableObject
                          : null,
                 Paper = paper,
                 SetAsDefault = SetAsDefault,
-                SkipDriverInstall = alreadyInstalled
+                SkipDriverInstall = false
             };
 
             var result = await _installer.InstallAsync(

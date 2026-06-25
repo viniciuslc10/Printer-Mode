@@ -344,13 +344,16 @@ public class WindowsPrinterService : IWindowsPrinterService
         return await Task.Run(() =>
         {
             var result = new List<PortEntry>();
+            var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             try
             {
-                // Win32_PnPEntity returns entries like "Daruma DR700 (COM5)" for serial devices
-                using var searcher = new ManagementObjectSearcher(
-                    "SELECT Name FROM Win32_PnPEntity WHERE Name LIKE '%(COM%)' AND Status = 'OK'");
+                // Source 1: Win32_PnPEntity — catches USB serial adapters, Bluetooth, etc.
+                // Name format: "Daruma DR700 (COM5)" or "Communications Port (COM1)"
+                using var pnpSearcher = new ManagementObjectSearcher(
+                    "SELECT Name FROM Win32_PnPEntity WHERE Name LIKE '%(COM%)'");
 
-                foreach (ManagementObject obj in searcher.Get())
+                foreach (ManagementObject obj in pnpSearcher.Get())
                 {
                     ct.ThrowIfCancellationRequested();
                     var wmiName = obj["Name"]?.ToString();
@@ -362,14 +365,40 @@ public class WindowsPrinterService : IWindowsPrinterService
                     var portName = m.Groups[1].Value;
                     var deviceName = wmiName[..^(m.Length)].Trim();
                     var displayName = string.IsNullOrEmpty(deviceName) ? portName : $"{portName} ({deviceName})";
+
+                    if (found.Add(portName))
+                        result.Add(new PortEntry(portName, displayName));
+                }
+            }
+            catch (Exception ex) { _log.Warning($"Win32_PnPEntity serial query failed: {ex.Message}"); }
+
+            try
+            {
+                // Source 2: Win32_SerialPort — catches built-in COM ports and any port
+                // not listed via PnP (e.g. COM1, COM2 without a device attached)
+                using var serialSearcher = new ManagementObjectSearcher(
+                    "SELECT DeviceID, Description FROM Win32_SerialPort");
+
+                foreach (ManagementObject obj in serialSearcher.Get())
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var portName = obj["DeviceID"]?.ToString();
+                    if (string.IsNullOrEmpty(portName)) continue;
+
+                    if (!found.Add(portName)) continue;
+
+                    var desc = obj["Description"]?.ToString();
+                    var displayName = string.IsNullOrEmpty(desc) ? portName : $"{portName} ({desc})";
                     result.Add(new PortEntry(portName, displayName));
                 }
-
-                result.Sort((a, b) => string.Compare(a.PortName, b.PortName, StringComparison.OrdinalIgnoreCase));
-                _log.Info($"Serial ports detected: [{string.Join(", ", result.Select(p => p.DisplayName))}]");
             }
-            catch (Exception ex)
-            {
+            catch (Exception ex) { _log.Warning($"Win32_SerialPort query failed: {ex.Message}"); }
+
+            result.Sort((a, b) => string.Compare(a.PortName, b.PortName, StringComparison.OrdinalIgnoreCase));
+            _log.Info($"Serial ports: [{string.Join(", ", result.Select(p => p.DisplayName))}]");
+            return (IReadOnlyList<PortEntry>)result;
+        }, ct);
+    }
                 _log.Error("Failed to enumerate serial ports with names", ex);
             }
             return (IReadOnlyList<PortEntry>)result;
