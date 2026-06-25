@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 
 :: ============================================================
 :: build.bat — Gera PrinterModeSetup_1.0.0.exe
@@ -8,7 +8,7 @@ setlocal
 
 set "PROJECT=..\src\PrinterMode.UI\PrinterMode.UI.csproj"
 set "PUBLISH_DIR=%~dp0publish"
-set "ISCC=C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
 
 echo.
 echo  ================================================
@@ -30,10 +30,10 @@ if %ERRORLEVEL% NEQ 0 (
 for /f "tokens=*" %%v in ('dotnet --version') do echo .NET SDK: %%v
 
 :: ── 2. Verificar Inno Setup ───────────────────────────────
-if not exist "%ISCC%" (
+if not exist "!ISCC!" (
     echo.
     echo [ERRO] Inno Setup nao encontrado em:
-    echo        %ISCC%
+    echo        !ISCC!
     echo        Download: https://jrsoftware.org/isinfo.php
     pause & exit /b 1
 )
@@ -72,7 +72,7 @@ echo [2/2] Compilando instalador com Inno Setup...
 echo.
 
 cd /d "%~dp0"
-"%ISCC%" "PrinterMode.iss"
+"!ISCC!" "PrinterMode.iss"
 set "EXIT=%ERRORLEVEL%"
 
 echo.
