@@ -201,11 +201,13 @@ public class DriverInstaller : IDriverInstaller
                         }
                         else
                         {
+                            // 4th try: EXE exited 0, so trust it installed something.
+                            // Proceed with the configured driverName and let AddPrinterAsync validate.
                             var list = string.Join(", ", driversAfterStore);
-                            _log.Error($"Driver still not found. All installed: [{list}]");
-                            return InstallResult.Fail(
-                                "O instalador foi executado, mas o driver não foi encontrado no Windows.",
-                                $"Drivers instalados: {list}", steps);
+                            _log.Warning($"Driver not found by name/diff/DriverStore. EXE exited 0, proceeding with configured name '{request.Driver.DriverName}'. Installed: [{list}]");
+                            detectedDriverName = null; // Step 3 will use driverName from config
+                            driverInstalled = true;
+                            steps.Add($"Driver instalado (nome não confirmado): {request.Driver.InstallerExe}");
                         }
                     }
                 }
@@ -311,21 +313,18 @@ public class DriverInstaller : IDriverInstaller
             }
             else
             {
-                // Use the driver name captured at install time; fall back to fresh lookup
-                string? resolvedDriverName = detectedDriverName;
-                if (resolvedDriverName == null)
+                // Use the driver name captured at install time; fall back to fresh lookup then config name
+                string resolvedDriverName;
+                if (detectedDriverName != null)
+                {
+                    resolvedDriverName = detectedDriverName;
+                }
+                else
                 {
                     var installedDrivers = await _printerService.GetInstalledDriversAsync(ct);
-                    resolvedDriverName = ResolveActualDriverName(request.Driver, installedDrivers);
-                    if (resolvedDriverName == null)
-                    {
-                        var list = string.Join(", ", installedDrivers.Take(10));
-                        _log.Error($"Cannot resolve driver name. Installed drivers: [{list}]");
-                        return InstallResult.Fail(
-                            "Driver não encontrado no Windows para criar a impressora.",
-                            $"Drivers instalados: {list}",
-                            steps);
-                    }
+                    resolvedDriverName = ResolveActualDriverName(request.Driver, installedDrivers)
+                        ?? request.Driver.DriverName; // trust the config name as last resort
+                    _log.Info($"Driver name resolved (fallback path): '{resolvedDriverName}'");
                 }
 
                 _log.Info($"Resolved driver name: '{resolvedDriverName}' (catalog: '{request.Driver.DriverName}')");

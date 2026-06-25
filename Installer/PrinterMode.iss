@@ -84,10 +84,10 @@ Name: "{group}\Desinstalar {#AppName}";      Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}";            Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
-; Opção para abrir o PrinterMode ao final da instalação
+; Abre o PrinterMode ao final da instalação já com elevação de administrador
 Filename: "{app}\{#AppExeName}"; \
   Description: "Abrir {#AppName} agora"; \
-  Flags: nowait postinstall skipifsilent
+  Flags: nowait postinstall skipifsilent shellexec runasoriginaluser
 
 [UninstallDelete]
 ; Remove a pasta de logs ao desinstalar
