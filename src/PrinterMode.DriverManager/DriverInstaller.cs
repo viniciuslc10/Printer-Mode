@@ -134,7 +134,7 @@ public class DriverInstaller : IDriverInstaller
                         return InstallResult.Fail($"Falha ao executar instalador: {ex.Message}", null, steps);
                     }
 
-                    await Task.Delay(2500, ct);
+                    await Task.Delay(5000, ct);
                     var driversAfterSilent = await _printerService.GetInstalledDriversAsync(ct);
                     var resolvedSilent = ResolveActualDriverName(request.Driver, driversAfterSilent);
                     if (resolvedSilent != null)
@@ -145,11 +145,39 @@ public class DriverInstaller : IDriverInstaller
                     }
                     else
                     {
-                        var list = string.Join(", ", driversAfterSilent.Take(10));
-                        _log.Error($"Silent install exited 0 but driver not found. Installed: [{list}]");
-                        return InstallResult.Fail(
-                            "O instalador foi executado, mas o driver não foi encontrado no Windows.",
-                            $"Drivers instalados: {list}", steps);
+                        // EXE ran but driver not visible yet — try pnputil /add-driver as fallback
+                        _log.Warning("EXE exited 0 but driver not found. Trying pnputil fallback...");
+                        progress?.Report("Registrando driver via pnputil...");
+                        var infPath = _repository.ResolveInfPath(request.Driver);
+                        var pnpInstalled = await InstallViaPnpUtilAsync(infPath, ct);
+                        if (pnpInstalled)
+                        {
+                            await Task.Delay(3000, ct);
+                            var driversAfterPnp = await _printerService.GetInstalledDriversAsync(ct);
+                            var resolvedPnp = ResolveActualDriverName(request.Driver, driversAfterPnp);
+                            if (resolvedPnp != null)
+                            {
+                                driverInstalled = true;
+                                steps.Add($"Driver registrado via pnputil: {request.Driver.InfFile}");
+                                _log.Info($"Driver found after pnputil. Name: '{resolvedPnp}'");
+                            }
+                            else
+                            {
+                                var list = string.Join(", ", driversAfterPnp);
+                                _log.Error($"pnputil ran but driver still not found. Installed: [{list}]");
+                                return InstallResult.Fail(
+                                    "O driver foi instalado mas não foi reconhecido pelo Windows.",
+                                    $"Drivers instalados: {list}", steps);
+                            }
+                        }
+                        else
+                        {
+                            var list = string.Join(", ", driversAfterSilent);
+                            _log.Error($"Silent install exited 0 but driver not found. pnputil also failed. Installed: [{list}]");
+                            return InstallResult.Fail(
+                                "O instalador foi executado, mas o driver não foi encontrado no Windows.",
+                                $"Drivers instalados: {list}", steps);
+                        }
                     }
                 }
 
@@ -472,6 +500,41 @@ public class DriverInstaller : IDriverInstaller
         finally
         {
             try { Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
+
+    private async Task<bool> InstallViaPnpUtilAsync(string infPath, CancellationToken ct)
+    {
+        if (!File.Exists(infPath))
+        {
+            _log.Warning($"pnputil fallback: inf not found at '{infPath}'");
+            return false;
+        }
+
+        try
+        {
+            _log.Info($"pnputil /add-driver \"{infPath}\" /install");
+            var psi = new ProcessStartInfo
+            {
+                FileName = "pnputil.exe",
+                Arguments = $"/add-driver \"{infPath}\" /install",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            using var proc = Process.Start(psi)!;
+            await proc.WaitForExitAsync(ct);
+            var output = await proc.StandardOutput.ReadToEndAsync(ct);
+            _log.Info($"pnputil exit: {proc.ExitCode}. Output: {output.Trim()}");
+
+            return proc.ExitCode == 0 || proc.ExitCode == 3010;
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"pnputil fallback failed: {ex.Message}");
+            return false;
         }
     }
 
