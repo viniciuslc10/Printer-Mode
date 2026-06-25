@@ -213,12 +213,12 @@ public class DriverInstaller : IDriverInstaller
                             }
                             else
                             {
-                                // 5th try (last resort): EXE exited 0, trust it and proceed with configured name
+                                // All 5 detection stages failed — fall back to UI installer so user
+                                // can complete the wizard with the printer physically connected.
                                 var list = string.Join(", ", driversAfterStore);
-                                _log.Warning($"All detection failed. EXE exited 0, proceeding with '{request.Driver.DriverName}'. Installed: [{list}]");
-                                detectedDriverName = null;
-                                driverInstalled = true;
-                                steps.Add($"Driver instalado (nome não confirmado): {request.Driver.InstallerExe}");
+                                _log.Warning($"All silent-detection stages failed. Falling back to UI installer. Drivers found: [{list}]");
+                                needsUiInstall = true;
+                                steps.Add("Instalação silenciosa não registrou driver — abrindo instalador visual...");
                             }
                         }
                     }
@@ -229,6 +229,8 @@ public class DriverInstaller : IDriverInstaller
                 {
                     progress?.Report($"⚠ Siga as instruções do instalador {request.Driver.DisplayName} na janela que abrir...");
                     _log.Info($"Opening UI installer for {request.Driver.DisplayName}: {exePath}");
+
+                    var driversBeforeUi = await _printerService.GetInstalledDriversAsync(ct);
 
                     try
                     {
@@ -245,7 +247,9 @@ public class DriverInstaller : IDriverInstaller
                     await Task.Delay(3000, ct);
 
                     var driversAfterUi = await _printerService.GetInstalledDriversAsync(ct);
-                    var resolvedUi = ResolveActualDriverName(request.Driver, driversAfterUi);
+                    var resolvedUi = ResolveActualDriverName(request.Driver, driversAfterUi)
+                        ?? driversAfterUi.Except(driversBeforeUi, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+
                     if (resolvedUi == null)
                     {
                         var list = string.Join(", ", driversAfterUi.Take(10));
