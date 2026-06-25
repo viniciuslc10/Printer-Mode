@@ -399,11 +399,6 @@ public class WindowsPrinterService : IWindowsPrinterService
             return (IReadOnlyList<PortEntry>)result;
         }, ct);
     }
-                _log.Error("Failed to enumerate serial ports with names", ex);
-            }
-            return (IReadOnlyList<PortEntry>)result;
-        }, ct);
-    }
 
     public async Task<IReadOnlyList<PortEntry>> GetUsbPrinterPortsWithNamesAsync(CancellationToken ct = default)
     {
