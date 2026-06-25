@@ -52,6 +52,7 @@ public class DriverInstaller : IDriverInstaller
             //   "winrar-sfx"  → extract SFX to temp, run Silent_Setup.exe inside
             //   "ui-only"     → open installer with UI (Daruma and similar proprietary setups)
             bool driverInstalled;
+            string? detectedDriverName = null; // actual Windows driver name found after install
 
             if (request.SkipDriverInstall)
             {
@@ -93,6 +94,7 @@ public class DriverInstaller : IDriverInstaller
                         var resolvedSfx = ResolveActualDriverName(request.Driver, driversAfterSfx);
                         if (resolvedSfx != null)
                         {
+                            detectedDriverName = resolvedSfx;
                             driverInstalled = true;
                             steps.Add($"Driver instalado via WinRAR SFX: {request.Driver.InstallerExe}");
                             _log.Info($"Driver installed via WinRAR SFX. Name: '{resolvedSfx}'");
@@ -115,6 +117,10 @@ public class DriverInstaller : IDriverInstaller
                     var silentArgs = request.Driver.InstallerArgs;
                     if (string.IsNullOrEmpty(silentArgs))
                         silentArgs = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART";
+
+                    // Snapshot drivers and DriverStore BEFORE install
+                    var driversBefore = await _printerService.GetInstalledDriversAsync(ct);
+                    var storeSnapBefore = SnapshotDriverStore();
 
                     progress?.Report("Instalando driver silenciosamente...");
                     _log.Info($"Running silent EXE installer: '{exePath}' args='{silentArgs}'");
@@ -147,44 +153,56 @@ public class DriverInstaller : IDriverInstaller
 
                     await Task.Delay(5000, ct);
                     var driversAfterSilent = await _printerService.GetInstalledDriversAsync(ct);
+
+                    // 1st try: match by known driver names
                     var resolvedSilent = ResolveActualDriverName(request.Driver, driversAfterSilent);
+
+                    // 2nd try: detect by diff — any new driver that appeared after install
+                    if (resolvedSilent == null)
+                    {
+                        resolvedSilent = driversAfterSilent
+                            .Except(driversBefore, StringComparer.OrdinalIgnoreCase)
+                            .FirstOrDefault();
+                        if (resolvedSilent != null)
+                            _log.Info($"Driver detected by before/after diff: '{resolvedSilent}'");
+                    }
+
                     if (resolvedSilent != null)
                     {
+                        detectedDriverName = resolvedSilent;
                         driverInstalled = true;
                         steps.Add($"Driver instalado silenciosamente: {request.Driver.InstallerExe}");
                         _log.Info($"Driver installed silently. Name: '{resolvedSilent}'");
                     }
                     else
                     {
-                        // EXE ran but driver not visible yet — try pnputil /add-driver as fallback
-                        _log.Warning("EXE exited 0 but driver not found. Trying pnputil fallback...");
-                        progress?.Report("Registrando driver via pnputil...");
-                        var infPath = _repository.ResolveInfPath(request.Driver);
-                        var pnpInstalled = await InstallViaPnpUtilAsync(infPath, ct);
-                        if (pnpInstalled)
+                        // 3rd try: EXE may have staged real .inf files into DriverStore — use them
+                        _log.Warning("EXE exited 0 but driver not in Win32_PrinterDriver. Searching DriverStore...");
+                        progress?.Report("Buscando driver no DriverStore do Windows...");
+                        var newInfFiles = FindNewDriverStoreInfs(storeSnapBefore, request.Driver);
+                        foreach (var stagedInf in newInfFiles)
                         {
-                            await Task.Delay(3000, ct);
-                            var driversAfterPnp = await _printerService.GetInstalledDriversAsync(ct);
-                            var resolvedPnp = ResolveActualDriverName(request.Driver, driversAfterPnp);
-                            if (resolvedPnp != null)
-                            {
-                                driverInstalled = true;
-                                steps.Add($"Driver registrado via pnputil: {request.Driver.InfFile}");
-                                _log.Info($"Driver found after pnputil. Name: '{resolvedPnp}'");
-                            }
-                            else
-                            {
-                                var list = string.Join(", ", driversAfterPnp);
-                                _log.Error($"pnputil ran but driver still not found. Installed: [{list}]");
-                                return InstallResult.Fail(
-                                    "O driver foi instalado mas não foi reconhecido pelo Windows.",
-                                    $"Drivers instalados: {list}", steps);
-                            }
+                            _log.Info($"Found staged inf in DriverStore: '{stagedInf}'");
+                            var pnpOk = await InstallViaPnpUtilAsync(stagedInf, ct);
+                            if (pnpOk) break;
+                        }
+
+                        await Task.Delay(3000, ct);
+                        var driversAfterStore = await _printerService.GetInstalledDriversAsync(ct);
+                        resolvedSilent = ResolveActualDriverName(request.Driver, driversAfterStore)
+                            ?? driversAfterStore.Except(driversBefore, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+
+                        if (resolvedSilent != null)
+                        {
+                            detectedDriverName = resolvedSilent;
+                            driverInstalled = true;
+                            steps.Add($"Driver registrado via DriverStore: {request.Driver.InfFile}");
+                            _log.Info($"Driver found after DriverStore search. Name: '{resolvedSilent}'");
                         }
                         else
                         {
-                            var list = string.Join(", ", driversAfterSilent);
-                            _log.Error($"Silent install exited 0 but driver not found. pnputil also failed. Installed: [{list}]");
+                            var list = string.Join(", ", driversAfterStore);
+                            _log.Error($"Driver still not found. All installed: [{list}]");
                             return InstallResult.Fail(
                                 "O instalador foi executado, mas o driver não foi encontrado no Windows.",
                                 $"Drivers instalados: {list}", steps);
@@ -222,6 +240,7 @@ public class DriverInstaller : IDriverInstaller
                             $"Drivers instalados: {list}", steps);
                     }
 
+                    detectedDriverName = resolvedUi;
                     driverInstalled = true;
                     steps.Add($"Driver instalado via assistente visual: {request.Driver.InstallerExe}");
                     _log.Info($"Driver installed via UI. Name: '{resolvedUi}'");
@@ -292,17 +311,21 @@ public class DriverInstaller : IDriverInstaller
             }
             else
             {
-                var installedDrivers = await _printerService.GetInstalledDriversAsync(ct);
-                var resolvedDriverName = ResolveActualDriverName(request.Driver, installedDrivers);
-
+                // Use the driver name captured at install time; fall back to fresh lookup
+                string? resolvedDriverName = detectedDriverName;
                 if (resolvedDriverName == null)
                 {
-                    var list = string.Join(", ", installedDrivers.Take(10));
-                    _log.Error($"Cannot resolve driver name. Installed drivers: [{list}]");
-                    return InstallResult.Fail(
-                        "Driver não encontrado no Windows para criar a impressora.",
-                        $"Drivers instalados: {list}",
-                        steps);
+                    var installedDrivers = await _printerService.GetInstalledDriversAsync(ct);
+                    resolvedDriverName = ResolveActualDriverName(request.Driver, installedDrivers);
+                    if (resolvedDriverName == null)
+                    {
+                        var list = string.Join(", ", installedDrivers.Take(10));
+                        _log.Error($"Cannot resolve driver name. Installed drivers: [{list}]");
+                        return InstallResult.Fail(
+                            "Driver não encontrado no Windows para criar a impressora.",
+                            $"Drivers instalados: {list}",
+                            steps);
+                    }
                 }
 
                 _log.Info($"Resolved driver name: '{resolvedDriverName}' (catalog: '{request.Driver.DriverName}')");
@@ -512,6 +535,46 @@ public class DriverInstaller : IDriverInstaller
         {
             try { Directory.Delete(tempDir, recursive: true); } catch { }
         }
+    }
+
+    private static HashSet<string> SnapshotDriverStore()
+    {
+        var storeRoot = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+            "System32", "DriverStore", "FileRepository");
+        if (!Directory.Exists(storeRoot)) return [];
+        try
+        {
+            return Directory.GetFiles(storeRoot, "*.inf", SearchOption.AllDirectories)
+                            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+        catch { return []; }
+    }
+
+    private IReadOnlyList<string> FindNewDriverStoreInfs(HashSet<string> before, DriverInfo driver)
+    {
+        var storeRoot = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+            "System32", "DriverStore", "FileRepository");
+        if (!Directory.Exists(storeRoot)) return [];
+        try
+        {
+            var after = Directory.GetFiles(storeRoot, "*.inf", SearchOption.AllDirectories);
+            var mfgLower = driver.Manufacturer.ToLowerInvariant();
+            var modelLower = driver.Model.Replace("-", "").Replace(" ", "").ToLowerInvariant();
+
+            return after
+                .Where(f => !before.Contains(f))
+                .Where(f =>
+                {
+                    var dir = Path.GetFileName(Path.GetDirectoryName(f) ?? "").ToLowerInvariant();
+                    return dir.Contains(mfgLower) || dir.Contains(modelLower)
+                           || Path.GetFileNameWithoutExtension(f).ToLowerInvariant().Contains(mfgLower)
+                           || Path.GetFileNameWithoutExtension(f).ToLowerInvariant().Contains(modelLower);
+                })
+                .ToList();
+        }
+        catch { return []; }
     }
 
     private async Task<bool> InstallViaPnpUtilAsync(string infPath, CancellationToken ct)
