@@ -54,8 +54,8 @@ ArchitecturesInstallIn64BitMode=x64
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Desktop shortcut"; \
-  GroupDescription: "Additional icons:"; Flags: unchecked
+Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; \
+  GroupDescription: "Ícones adicionais:"
 
 [Files]
 ; Arquivos publicados pelo dotnet publish (.NET runtime, DLLs, exe)
