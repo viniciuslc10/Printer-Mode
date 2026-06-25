@@ -58,8 +58,20 @@ Name: "desktopicon"; Description: "Desktop shortcut"; \
   GroupDescription: "Additional icons:"; Flags: unchecked
 
 [Files]
-; Todos os arquivos publicados (inclui .NET runtime, DLLs, Repository, Config)
+; Arquivos publicados pelo dotnet publish (.NET runtime, DLLs, exe)
 Source: "{#BuildDir}\*"; DestDir: "{app}"; \
+  Flags: ignoreversion recursesubdirs createallsubdirs
+
+; Repositorio de drivers
+Source: "..\Repository\*"; DestDir: "{app}\Repository"; \
+  Flags: ignoreversion recursesubdirs createallsubdirs
+
+; Configuracoes
+Source: "..\Config\*"; DestDir: "{app}\Config"; \
+  Flags: ignoreversion recursesubdirs createallsubdirs
+
+; Scripts PowerShell
+Source: "..\Scripts\*"; DestDir: "{app}\Scripts"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Dirs]
