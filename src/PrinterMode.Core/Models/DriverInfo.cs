@@ -21,11 +21,15 @@ public class DriverInfo
     public string? InstallerExe { get; set; }
     public string? InstallerArgs { get; set; }
 
-    // "innosetup" | "winrar-sfx" | "epson-apd" | "ui-only" — controls silent install strategy
+    // "innosetup" | "winrar-sfx" | "epson-apd" | "ui-only" | "manual" — controls silent install strategy
+    // "manual": no bundled installer; user must download from DownloadUrl
     public string? InstallerType { get; set; }
 
     // For "winrar-sfx": filename of the silent setup binary inside the extracted archive
     public string? SilentSetupExe { get; set; }
+
+    // URL to download the driver when InstallerType == "manual"
+    public string? DownloadUrl { get; set; }
 
     // All driver names the installer may register in Win32_PrinterDriver.
     // The first entry is the preferred name; extras are fallback aliases.

@@ -1,6 +1,6 @@
 {
-  "version": "1.4",
-  "updatedAt": "2026-06-24T00:00:00Z",
+  "version": "1.5",
+  "updatedAt": "2026-06-25T00:00:00Z",
   "drivers": [
     {
       "id": "bematech_mp4200",
@@ -14,7 +14,12 @@
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",
       "driverName": "Bematech MP-4200 TH",
-      "windowsDriverNames": ["Bematech MP-4200 TH", "MP-4200 TH", "Bematech MP4200 TH", "MP4200 TH"],
+      "windowsDriverNames": [
+        "Bematech MP-4200 TH",
+        "MP-4200 TH",
+        "Bematech MP4200 TH",
+        "MP4200 TH"
+      ],
       "version": "1.7.7",
       "notes": "Térmica 80mm.",
       "defaultPaper": {
@@ -36,7 +41,11 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB", "COM", "TCP/IP"]
+      "supportedPorts": [
+        "USB",
+        "COM",
+        "TCP/IP"
+      ]
     },
     {
       "id": "bematech_mp2800",
@@ -50,7 +59,11 @@
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",
       "driverName": "Bematech MP-2800 TH",
-      "windowsDriverNames": ["Bematech MP-2800 TH", "MP-2800 TH", "Bematech MP2800 TH"],
+      "windowsDriverNames": [
+        "Bematech MP-2800 TH",
+        "MP-2800 TH",
+        "Bematech MP2800 TH"
+      ],
       "version": "1.3",
       "notes": "Térmica 58mm.",
       "defaultPaper": {
@@ -78,7 +91,10 @@
         "stopBits": "One",
         "flowControl": "None"
       },
-      "supportedPorts": ["USB", "COM"]
+      "supportedPorts": [
+        "USB",
+        "COM"
+      ]
     },
     {
       "id": "bematech_mp4000",
@@ -92,7 +108,11 @@
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",
       "driverName": "Bematech MP-4000 TH",
-      "windowsDriverNames": ["Bematech MP-4000 TH", "MP-4000 TH", "Bematech MP4000 TH"],
+      "windowsDriverNames": [
+        "Bematech MP-4000 TH",
+        "MP-4000 TH",
+        "Bematech MP4000 TH"
+      ],
       "version": "6.0.1.0",
       "notes": "Térmica 80mm, corte parcial/total.",
       "defaultPaper": {
@@ -120,7 +140,11 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB", "COM", "TCP/IP"]
+      "supportedPorts": [
+        "USB",
+        "COM",
+        "TCP/IP"
+      ]
     },
     {
       "id": "bematech_mp5100",
@@ -134,7 +158,11 @@
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",
       "driverName": "Bematech MP-5100 TH",
-      "windowsDriverNames": ["Bematech MP-5100 TH", "MP-5100 TH", "Bematech MP5100 TH"],
+      "windowsDriverNames": [
+        "Bematech MP-5100 TH",
+        "MP-5100 TH",
+        "Bematech MP5100 TH"
+      ],
       "version": "6.0.1.0",
       "notes": "Térmica 80mm alta velocidade, Bluetooth/USB/Ethernet.",
       "defaultPaper": {
@@ -156,7 +184,11 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB", "TCP/IP", "BT"]
+      "supportedPorts": [
+        "USB",
+        "TCP/IP",
+        "BT"
+      ]
     },
     {
       "id": "bematech_mp100s",
@@ -170,7 +202,11 @@
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",
       "driverName": "Bematech MP-100S TH",
-      "windowsDriverNames": ["Bematech MP-100S TH", "MP-100S TH", "Bematech MP100S TH"],
+      "windowsDriverNames": [
+        "Bematech MP-100S TH",
+        "MP-100S TH",
+        "Bematech MP100S TH"
+      ],
       "version": "6.0.1.0",
       "notes": "Térmica 58mm, porta serial RS-232.",
       "defaultPaper": {
@@ -198,7 +234,9 @@
         "stopBits": "One",
         "flowControl": "None"
       },
-      "supportedPorts": ["COM"]
+      "supportedPorts": [
+        "COM"
+      ]
     },
     {
       "id": "elgin_i9",
@@ -212,7 +250,12 @@
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",
       "driverName": "Elgin i9",
-      "windowsDriverNames": ["Elgin i9", "Elgin I9", "ELGIN i9", "Elgin i-9"],
+      "windowsDriverNames": [
+        "Elgin i9",
+        "Elgin I9",
+        "ELGIN i9",
+        "Elgin i-9"
+      ],
       "version": "1.7.3",
       "notes": "Térmica 80mm, 250mm/s.",
       "defaultPaper": {
@@ -234,7 +277,10 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB", "TCP/IP"]
+      "supportedPorts": [
+        "USB",
+        "TCP/IP"
+      ]
     },
     {
       "id": "elgin_i8",
@@ -248,7 +294,12 @@
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",
       "driverName": "Elgin i8",
-      "windowsDriverNames": ["Elgin i8", "Elgin I8", "ELGIN i8", "Elgin i-8"],
+      "windowsDriverNames": [
+        "Elgin i8",
+        "Elgin I8",
+        "ELGIN i8",
+        "Elgin i-8"
+      ],
       "version": "7.1.7",
       "notes": "Térmica 80mm.",
       "defaultPaper": {
@@ -270,7 +321,10 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB", "TCP/IP"]
+      "supportedPorts": [
+        "USB",
+        "TCP/IP"
+      ]
     },
     {
       "id": "elgin_i7",
@@ -284,7 +338,12 @@
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",
       "driverName": "Elgin i7",
-      "windowsDriverNames": ["Elgin i7", "Elgin I7", "ELGIN i7", "Elgin i-7"],
+      "windowsDriverNames": [
+        "Elgin i7",
+        "Elgin I7",
+        "ELGIN i7",
+        "Elgin i-7"
+      ],
       "version": "1.7.3",
       "notes": "Térmica 80mm, USB+Serial.",
       "defaultPaper": {
@@ -312,7 +371,10 @@
         "stopBits": "One",
         "flowControl": "None"
       },
-      "supportedPorts": ["USB", "COM"]
+      "supportedPorts": [
+        "USB",
+        "COM"
+      ]
     },
     {
       "id": "elgin_i5",
@@ -327,7 +389,11 @@
       "installerType": "winrar-sfx",
       "silentSetupExe": "Silent_Setup.exe",
       "driverName": "Elgin i5",
-      "windowsDriverNames": ["Elgin i5", "Elgin I5", "ELGIN i5"],
+      "windowsDriverNames": [
+        "Elgin i5",
+        "Elgin I5",
+        "ELGIN i5"
+      ],
       "version": "1.02",
       "notes": "Térmica 58mm compacta.",
       "defaultPaper": {
@@ -349,7 +415,9 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB"]
+      "supportedPorts": [
+        "USB"
+      ]
     },
     {
       "id": "elgin_i3",
@@ -364,7 +432,11 @@
       "installerType": "winrar-sfx",
       "silentSetupExe": "Silent_Setup.exe",
       "driverName": "Elgin i3",
-      "windowsDriverNames": ["Elgin i3", "Elgin I3", "ELGIN i3"],
+      "windowsDriverNames": [
+        "Elgin i3",
+        "Elgin I3",
+        "ELGIN i3"
+      ],
       "version": "1.02",
       "notes": "Térmica 58mm entrada.",
       "defaultPaper": {
@@ -386,7 +458,9 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB"]
+      "supportedPorts": [
+        "USB"
+      ]
     },
     {
       "id": "gertec_g250",
@@ -400,7 +474,13 @@
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",
       "driverName": "G250",
-      "windowsDriverNames": ["G250", "GA-Printer", "GA Printer", "Gertec G250", "Gertec G-250"],
+      "windowsDriverNames": [
+        "G250",
+        "GA-Printer",
+        "GA Printer",
+        "Gertec G250",
+        "Gertec G-250"
+      ],
       "version": "1.1",
       "notes": "Térmica 80mm, ESC/POS.",
       "defaultPaper": {
@@ -422,7 +502,10 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB", "TCP/IP"]
+      "supportedPorts": [
+        "USB",
+        "TCP/IP"
+      ]
     },
     {
       "id": "gertec_g500",
@@ -436,7 +519,13 @@
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",
       "driverName": "G500",
-      "windowsDriverNames": ["G500", "GA-Printer", "GA Printer", "Gertec G500", "Gertec G-500"],
+      "windowsDriverNames": [
+        "G500",
+        "GA-Printer",
+        "GA Printer",
+        "Gertec G500",
+        "Gertec G-500"
+      ],
       "version": "1.1",
       "notes": "Térmica 80mm alta velocidade. Usa mesmo pacote do G250.",
       "defaultPaper": {
@@ -458,7 +547,10 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB", "TCP/IP"]
+      "supportedPorts": [
+        "USB",
+        "TCP/IP"
+      ]
     },
     {
       "id": "tanca_tp550",
@@ -472,7 +564,13 @@
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",
       "driverName": "Tanca TP-550",
-      "windowsDriverNames": ["Tanca TP-550", "TP-550", "Tanca TP550", "TP 550", "Tanca TP 550"],
+      "windowsDriverNames": [
+        "Tanca TP-550",
+        "TP-550",
+        "Tanca TP550",
+        "TP 550",
+        "Tanca TP 550"
+      ],
       "version": "8.1.1.2",
       "notes": "Térmica 80mm, 200mm/s.",
       "defaultPaper": {
@@ -500,7 +598,11 @@
         "stopBits": "One",
         "flowControl": "None"
       },
-      "supportedPorts": ["USB", "COM", "TCP/IP"]
+      "supportedPorts": [
+        "USB",
+        "COM",
+        "TCP/IP"
+      ]
     },
     {
       "id": "tanca_tp650",
@@ -514,7 +616,13 @@
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",
       "driverName": "Tanca TP-650",
-      "windowsDriverNames": ["Tanca TP-650", "TP-650", "Tanca TP650", "TP 650", "Tanca TP 650"],
+      "windowsDriverNames": [
+        "Tanca TP-650",
+        "TP-650",
+        "Tanca TP650",
+        "TP 650",
+        "Tanca TP 650"
+      ],
       "version": "2.11",
       "notes": "Térmica 80mm, guilhotina automática.",
       "defaultPaper": {
@@ -536,7 +644,11 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB", "TCP/IP", "BT"]
+      "supportedPorts": [
+        "USB",
+        "TCP/IP",
+        "BT"
+      ]
     },
     {
       "id": "epson_tmt20x",
@@ -550,7 +662,14 @@
       "installerArgs": "/Silent",
       "installerType": "epson-apd",
       "driverName": "EPSON TM-T20X",
-      "windowsDriverNames": ["EPSON TM-T20X", "Epson TM-T20X", "TM-T20X", "EPSON TM T20X"],
+      "windowsDriverNames": [
+        "EPSON TM-T20X Receipt",
+        "EPSON TM-T20 Receipt",
+        "EPSON TM-T20X",
+        "TM-T20X",
+        "EPSON TM-T20",
+        "EPSON Advanced Printer Driver"
+      ],
       "version": "6.1.0.0",
       "notes": "Térmica 80mm, driver APD v6.",
       "defaultPaper": {
@@ -578,7 +697,11 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB", "COM", "TCP/IP"]
+      "supportedPorts": [
+        "USB",
+        "COM",
+        "TCP/IP"
+      ]
     },
     {
       "id": "epson_tmt88v",
@@ -592,7 +715,12 @@
       "installerArgs": "/Silent",
       "installerType": "epson-apd",
       "driverName": "EPSON TM-T88V",
-      "windowsDriverNames": ["EPSON TM-T88V", "Epson TM-T88V", "TM-T88V", "EPSON TM T88V"],
+      "windowsDriverNames": [
+        "EPSON TM-T88V Receipt",
+        "EPSON TM-T88V",
+        "TM-T88V",
+        "EPSON TM-T88"
+      ],
       "version": "5.6.0.0",
       "notes": "Térmica 80mm, 300mm/s.",
       "defaultPaper": {
@@ -614,7 +742,11 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB", "COM", "TCP/IP"]
+      "supportedPorts": [
+        "USB",
+        "COM",
+        "TCP/IP"
+      ]
     },
     {
       "id": "epson_tmt88vi",
@@ -628,7 +760,11 @@
       "installerArgs": "/Silent",
       "installerType": "epson-apd",
       "driverName": "EPSON TM-T88VI",
-      "windowsDriverNames": ["EPSON TM-T88VI", "Epson TM-T88VI", "TM-T88VI"],
+      "windowsDriverNames": [
+        "EPSON TM-T88VI Receipt",
+        "EPSON TM-T88VI",
+        "TM-T88VI"
+      ],
       "version": "5.11.0.0",
       "notes": "Térmica 80mm, 350mm/s, NFC.",
       "defaultPaper": {
@@ -650,7 +786,10 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB", "TCP/IP"]
+      "supportedPorts": [
+        "USB",
+        "TCP/IP"
+      ]
     },
     {
       "id": "epson_tmt20iii",
@@ -664,7 +803,12 @@
       "installerArgs": "/Silent",
       "installerType": "epson-apd",
       "driverName": "EPSON TM-T20III",
-      "windowsDriverNames": ["EPSON TM-T20III", "Epson TM-T20III", "TM-T20III"],
+      "windowsDriverNames": [
+        "EPSON TM-T20III Receipt",
+        "EPSON TM-T20III",
+        "TM-T20III",
+        "EPSON TM-T20 Receipt"
+      ],
       "version": "5.6.0.0",
       "notes": "Térmica 80mm, sucessora da TM-T20X.",
       "defaultPaper": {
@@ -692,7 +836,10 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB", "TCP/IP"]
+      "supportedPorts": [
+        "USB",
+        "TCP/IP"
+      ]
     },
     {
       "id": "epson_tmt82x",
@@ -706,7 +853,12 @@
       "installerArgs": "/Silent",
       "installerType": "epson-apd",
       "driverName": "EPSON TM-T82X",
-      "windowsDriverNames": ["EPSON TM-T82X", "Epson TM-T82X", "TM-T82X"],
+      "windowsDriverNames": [
+        "EPSON TM-T82X Receipt",
+        "EPSON TM-T82X",
+        "TM-T82X",
+        "EPSON TM-T82 Receipt"
+      ],
       "version": "15.0.0.498",
       "notes": "Térmica 80mm, Latinoamérica.",
       "defaultPaper": {
@@ -728,7 +880,11 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB", "COM", "TCP/IP"]
+      "supportedPorts": [
+        "USB",
+        "COM",
+        "TCP/IP"
+      ]
     },
     {
       "id": "tomate_mt508",
@@ -741,7 +897,12 @@
       "installerExe": null,
       "installerArgs": null,
       "driverName": "Tomate MT-508",
-      "windowsDriverNames": ["Tomate MT-508", "MT-508", "Tomate MT508", "MT508"],
+      "windowsDriverNames": [
+        "Tomate MT-508",
+        "MT-508",
+        "Tomate MT508",
+        "MT508"
+      ],
       "version": "1.0",
       "notes": "Térmica 58mm. Driver manual via site Multilaser.",
       "defaultPaper": {
@@ -763,7 +924,11 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB"]
+      "supportedPorts": [
+        "USB"
+      ],
+      "installerType": "manual",
+      "downloadUrl": "https://www.multilaser.com.br/suporte"
     },
     {
       "id": "tomate_mt609",
@@ -776,7 +941,12 @@
       "installerExe": null,
       "installerArgs": null,
       "driverName": "Tomate MT-609",
-      "windowsDriverNames": ["Tomate MT-609", "MT-609", "Tomate MT609", "MT609"],
+      "windowsDriverNames": [
+        "Tomate MT-609",
+        "MT-609",
+        "Tomate MT609",
+        "MT609"
+      ],
       "version": "1.0",
       "notes": "Térmica 80mm, USB+Bluetooth. Driver manual via site Multilaser.",
       "defaultPaper": {
@@ -798,7 +968,12 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB", "BT"]
+      "supportedPorts": [
+        "USB",
+        "BT"
+      ],
+      "installerType": "manual",
+      "downloadUrl": "https://www.multilaser.com.br/suporte"
     },
     {
       "id": "diebold_im453",
@@ -812,7 +987,13 @@
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",
       "driverName": "Diebold IM453",
-      "windowsDriverNames": ["Diebold IM453", "IM453", "IM-453", "Diebold IM-453", "IM 453"],
+      "windowsDriverNames": [
+        "Diebold IM453",
+        "IM453",
+        "IM-453",
+        "Diebold IM-453",
+        "IM 453"
+      ],
       "version": "1.34",
       "notes": "Térmica 80mm, PDVs Diebold.",
       "defaultPaper": {
@@ -834,7 +1015,10 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB", "TCP/IP"]
+      "supportedPorts": [
+        "USB",
+        "TCP/IP"
+      ]
     },
     {
       "id": "diebold_im333",
@@ -848,7 +1032,13 @@
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",
       "driverName": "Diebold IM333",
-      "windowsDriverNames": ["Diebold IM333", "IM333", "IM-333", "Diebold IM-333", "IM 333"],
+      "windowsDriverNames": [
+        "Diebold IM333",
+        "IM333",
+        "IM-333",
+        "Diebold IM-333",
+        "IM 333"
+      ],
       "version": "1.34",
       "notes": "Térmica 58mm PDVs compactos.",
       "defaultPaper": {
@@ -870,7 +1060,9 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB"]
+      "supportedPorts": [
+        "USB"
+      ]
     },
     {
       "id": "pos58_generic",
@@ -884,7 +1076,13 @@
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",
       "driverName": "POS-58 Printer",
-      "windowsDriverNames": ["POS-58 Printer", "POS58 Printer", "POS 58 Printer", "POS-58", "POS58"],
+      "windowsDriverNames": [
+        "POS-58 Printer",
+        "POS58 Printer",
+        "POS 58 Printer",
+        "POS-58",
+        "POS58"
+      ],
       "version": "11.3.0.0",
       "notes": "Genérica 58mm, chip STM32.",
       "defaultPaper": {
@@ -906,7 +1104,9 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB"]
+      "supportedPorts": [
+        "USB"
+      ]
     },
     {
       "id": "pos80_generic",
@@ -920,7 +1120,13 @@
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",
       "driverName": "POS-80 Printer",
-      "windowsDriverNames": ["POS-80 Printer", "POS80 Printer", "POS 80 Printer", "POS-80", "POS80"],
+      "windowsDriverNames": [
+        "POS-80 Printer",
+        "POS80 Printer",
+        "POS 80 Printer",
+        "POS-80",
+        "POS80"
+      ],
       "version": "11.3.0.0",
       "notes": "Genérica 80mm, ESC/POS.",
       "defaultPaper": {
@@ -942,7 +1148,9 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB"]
+      "supportedPorts": [
+        "USB"
+      ]
     },
     {
       "id": "daruma_dr800",
@@ -956,7 +1164,14 @@
       "installerArgs": null,
       "installerType": "ui-only",
       "driverName": "Daruma DR800",
-      "windowsDriverNames": ["Daruma DR800", "DR800", "DR-800", "Daruma DR-800", "DR 800", "Daruma Impressora DR800"],
+      "windowsDriverNames": [
+        "Daruma DR800",
+        "DR800",
+        "DR-800",
+        "Daruma DR-800",
+        "DR 800",
+        "Daruma Impressora DR800"
+      ],
       "version": "2.0.1.7",
       "notes": "Não-térmica, matricial.",
       "defaultPaper": {
@@ -980,7 +1195,10 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB", "TCP/IP"]
+      "supportedPorts": [
+        "USB",
+        "TCP/IP"
+      ]
     },
     {
       "id": "daruma_dr700",
@@ -994,7 +1212,15 @@
       "installerArgs": null,
       "installerType": "ui-only",
       "driverName": "Daruma DR700",
-      "windowsDriverNames": ["Daruma DR700", "DR700", "DR-700", "Daruma DR-700", "DR 700", "Daruma Impressora DR700", "Daruma Fiscal DR700"],
+      "windowsDriverNames": [
+        "Daruma DR700",
+        "DR700",
+        "DR-700",
+        "Daruma DR-700",
+        "DR 700",
+        "Daruma Impressora DR700",
+        "Daruma Fiscal DR700"
+      ],
       "version": "4.0.3.1",
       "notes": "80 colunas, USB/Serial.",
       "defaultPaper": {
@@ -1022,7 +1248,10 @@
         "stopBits": "One",
         "flowControl": "None"
       },
-      "supportedPorts": ["USB", "COM"]
+      "supportedPorts": [
+        "USB",
+        "COM"
+      ]
     },
     {
       "id": "daruma_dr600",
@@ -1036,7 +1265,13 @@
       "installerArgs": null,
       "installerType": "ui-only",
       "driverName": "Daruma DR600",
-      "windowsDriverNames": ["Daruma DR600", "DR600", "DR-600", "Daruma DR-600", "DR 600"],
+      "windowsDriverNames": [
+        "Daruma DR600",
+        "DR600",
+        "DR-600",
+        "Daruma DR-600",
+        "DR 600"
+      ],
       "version": "2.0.1.7",
       "notes": "ECF fiscal/não-fiscal, Serial RS-232.",
       "defaultPaper": {
@@ -1064,7 +1299,10 @@
         "stopBits": "One",
         "flowControl": "None"
       },
-      "supportedPorts": ["USB", "COM"]
+      "supportedPorts": [
+        "USB",
+        "COM"
+      ]
     },
     {
       "id": "zebra_zd220",
@@ -1077,7 +1315,12 @@
       "installerExe": null,
       "installerArgs": null,
       "driverName": "ZDesigner ZD220-203dpi ZPL",
-      "windowsDriverNames": ["ZDesigner ZD220-203dpi ZPL", "ZDesigner ZD220", "ZD220", "Zebra ZD220"],
+      "windowsDriverNames": [
+        "ZDesigner ZD220-203dpi ZPL",
+        "ZDesigner ZD220",
+        "ZD220",
+        "Zebra ZD220"
+      ],
       "version": "8.7",
       "notes": "Etiquetas ZPL/EPL, driver ZDesigner. Baixe em zebra.com.",
       "defaultPaper": {
@@ -1104,7 +1347,12 @@
         }
       ],
       "defaultSerial": null,
-      "supportedPorts": ["USB", "TCP/IP"]
+      "supportedPorts": [
+        "USB",
+        "TCP/IP"
+      ],
+      "installerType": "manual",
+      "downloadUrl": "https://www.zebra.com/us/en/support-downloads/printers/desktop/zd220.html"
     }
   ]
 }

@@ -66,6 +66,17 @@ public class DriverInstaller : IDriverInstaller
                 var exePath = _repository.ResolveInstallerPath(request.Driver);
                 var installerType = request.Driver.InstallerType ?? "exe";
 
+                if (installerType == "manual")
+                {
+                    var url = string.IsNullOrEmpty(request.Driver.DownloadUrl)
+                        ? "site do fabricante"
+                        : request.Driver.DownloadUrl;
+                    return InstallResult.Fail(
+                        $"O driver {request.Driver.DisplayName} precisa ser instalado manualmente.",
+                        $"Baixe e instale o driver em: {url}\nDepois abra o PrinterMode novamente.",
+                        steps);
+                }
+
                 if (!request.Driver.HasInstaller || exePath == null)
                     return InstallResult.Fail("Nenhum instalador encontrado para este driver.", null, steps);
 
