@@ -527,6 +527,45 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    public async Task RestartSpoolerAsync(CancellationToken ct = default)
+    {
+        _log.Info("Restarting Print Spooler to ensure driver is loaded...");
+        try
+        {
+            await Task.Run(() =>
+            {
+                RunProcess("net", "stop spooler");
+            }, ct);
+
+            await Task.Delay(2000, ct);
+
+            await Task.Run(() =>
+            {
+                RunProcess("net", "start spooler");
+            }, ct);
+
+            await Task.Delay(3000, ct);
+            _log.Info("Print Spooler restarted.");
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"RestartSpoolerAsync error: {ex.Message}");
+        }
+    }
+
+    private static void RunProcess(string fileName, string arguments)
+    {
+        var psi = new ProcessStartInfo(fileName, arguments)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        using var p = Process.Start(psi);
+        p?.WaitForExit(15_000);
+    }
+
     private bool RunPrintUi(string arguments)
     {
         var psi = new ProcessStartInfo

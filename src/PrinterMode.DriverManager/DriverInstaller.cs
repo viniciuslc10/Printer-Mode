@@ -151,34 +151,26 @@ public class DriverInstaller : IDriverInstaller
                         return InstallResult.Fail($"Falha ao executar instalador: {ex.Message}", null, steps);
                     }
 
-                    // Poll for driver registration for up to 60 seconds.
-                    // Some installers restart the Print Spooler, making GetInstalledDriversAsync
-                    // return empty during the restart. We skip empty-list iterations so a Spooler
-                    // restart doesn't exhaust our retry budget.
+                    // Explicitly restart the Print Spooler so the newly installed driver is loaded
+                    // into a clean Spooler state. Many driver EXEs restart the Spooler internally;
+                    // we do it ourselves to guarantee a controlled, known-good starting point.
+                    progress?.Report("Reiniciando serviço de impressão para carregar o driver...");
+                    await _printerService.RestartSpoolerAsync(ct);
+
+                    // Poll for driver registration for up to 30 seconds after the Spooler restart.
                     string? resolvedSilent = null;
                     IReadOnlyList<string> driversAfterSilent = driversBefore;
                     progress?.Report("Aguardando registro do driver...");
-                    int nonEmptyPolls = 0;
-                    int totalPolls = 0;
-                    while (resolvedSilent == null && totalPolls < 12) // max 60s
+                    // After our controlled Spooler restart the list should be stable.
+                    // Poll up to 6 × 3s = 18 seconds for the driver to appear.
+                    for (int poll = 0; poll < 6 && resolvedSilent == null; poll++)
                     {
-                        await Task.Delay(5000, ct);
-                        totalPolls++;
+                        await Task.Delay(3000, ct);
                         driversAfterSilent = await _printerService.GetInstalledDriversAsync(ct);
-
-                        if (driversAfterSilent.Count == 0)
-                        {
-                            _log.Info($"Poll {totalPolls}: driver list empty (Spooler restarting?), waiting...");
-                            continue; // don't count this poll; keep waiting
-                        }
-
-                        nonEmptyPolls++;
                         resolvedSilent = ResolveActualDriverName(request.Driver, driversAfterSilent)
                             ?? driversAfterSilent.Except(driversBefore, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
                         if (resolvedSilent != null)
-                            _log.Info($"Driver detected on poll {totalPolls}: '{resolvedSilent}'");
-                        else if (nonEmptyPolls >= 6)
-                            break; // 6 non-empty checks done and driver not found — give up on this stage
+                            _log.Info($"Driver detected on poll {poll + 1}: '{resolvedSilent}'");
                     }
 
                     if (resolvedSilent != null)
