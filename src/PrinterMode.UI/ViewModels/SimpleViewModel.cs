@@ -58,12 +58,22 @@ public partial class SimpleViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowSerialFields))]
     [NotifyPropertyChangedFor(nameof(ShowSharedFields))]
     [NotifyPropertyChangedFor(nameof(ShowUsbPortSelector))]
+    [NotifyPropertyChangedFor(nameof(CanInstall))]
+    [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
     private bool _connectionShared;
 
     [ObservableProperty] private string _ipAddress = string.Empty;
     [ObservableProperty] private int _networkPort = 9100;
-    [ObservableProperty] private string _sharedHost = string.Empty;
-    [ObservableProperty] private string _sharedPrinterName = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanInstall))]
+    [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
+    private string _sharedHost = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanInstall))]
+    [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
+    private string _sharedPrinterName = string.Empty;
     [ObservableProperty] private ObservableCollection<string> _sharedPrinterList = [];
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSharedPrinters))]
@@ -93,7 +103,10 @@ public partial class SimpleViewModel : ObservableObject
     [ObservableProperty] private bool _showSuccess;
     [ObservableProperty] private bool _showError;
 
-    public bool CanInstall => SelectedModel != null && !string.IsNullOrWhiteSpace(PrinterName) && !IsInstalling;
+    public bool CanInstall => !IsInstalling && (
+        ConnectionShared
+            ? !string.IsNullOrWhiteSpace(SharedHost) && !string.IsNullOrWhiteSpace(SharedPrinterName)
+            : SelectedModel != null && !string.IsNullOrWhiteSpace(PrinterName));
     public bool ShowNetworkFields => ConnectionNetwork;
     public bool ShowSerialFields => ConnectionSerial;
     public bool ShowSharedFields => ConnectionShared;
@@ -181,6 +194,14 @@ public partial class SimpleViewModel : ObservableObject
         StatusText = $"Modelo: {value.DisplayName}. Clique em Instalar para continuar.";
     }
 
+    partial void OnConnectionSharedChanged(bool value)
+    {
+        if (value)
+            StatusText = "Digite o IP/host e clique em Buscar para encontrar as impressoras compartilhadas.";
+        else if (SelectedModel == null)
+            StatusText = "Selecione o fabricante e modelo para continuar.";
+    }
+
     [RelayCommand(IncludeCancelCommand = true, CanExecute = nameof(CanInstall))]
     private async Task InstallAsync(CancellationToken ct)
     {
@@ -191,18 +212,23 @@ public partial class SimpleViewModel : ObservableObject
 
         try
         {
-            var driver = SelectedModel!;
-            var paper = SelectedPaper ?? driver.DefaultPaper;
+            var driver = SelectedModel ?? new DriverInfo();
+            var paper = SelectedPaper ?? (SelectedModel?.DefaultPaper ?? new PaperConfig { Name = "Padrão", WidthMm = 80 });
 
             var connType = ConnectionNetwork ? ConnectionType.Network
                          : ConnectionSerial ? ConnectionType.Serial
                          : ConnectionShared ? ConnectionType.Shared
                          : ConnectionType.USB;
 
+            // For shared printers, use the share name as the printer name (model not required)
+            var printerNameForRequest = ConnectionShared
+                ? SharedPrinterName.Trim()
+                : PrinterName;
+
             var request = new InstallRequest
             {
                 Driver = driver,
-                PrinterName = PrinterName,
+                PrinterName = printerNameForRequest,
                 ConnectionType = connType,
                 IpAddress = ConnectionNetwork ? IpAddress : null,
                 NetworkPort = ConnectionNetwork ? NetworkPort : 9100,

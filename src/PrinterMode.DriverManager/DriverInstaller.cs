@@ -527,7 +527,10 @@ public class DriverInstaller : IDriverInstaller
 
         if (request.SetAsDefault)
         {
-            await _printerService.SetDefaultPrinterAsync(request.PrinterName, ct);
+            // After Add-Printer -ConnectionName, Windows names the printer by the share name from the server.
+            // Use the share name component of the UNC path as best-effort default name.
+            var sharePart = connectedAs.TrimStart('\\').Split('\\').LastOrDefault() ?? request.PrinterName;
+            await _printerService.SetDefaultPrinterAsync(sharePart, ct);
             steps.Add("Definida como impressora padrão.");
         }
 
