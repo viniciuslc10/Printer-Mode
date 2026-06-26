@@ -1,10 +1,47 @@
 using System.Diagnostics;
 using System.Management;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using PrinterMode.Core.Interfaces;
 using PrinterMode.Core.Models;
 
 namespace PrinterMode.WindowsPrinter;
+
+// P/Invoke to mpr.dll for native SMB share enumeration (works even when running elevated)
+internal static class WNetApi
+{
+    public const int NO_ERROR             = 0;
+    public const int ERROR_NO_MORE_ITEMS  = 259;
+    public const int RESOURCE_GLOBALNET   = 0x00000002;
+    public const int RESOURCETYPE_ANY     = 0x00000000;
+    public const int RESOURCETYPE_PRINT   = 0x00000002;
+    public const int RESOURCEDISPLAY_SERVER = 0x00000003;
+    public const int RESOURCEUSAGE_CONTAINER = 0x00000002;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct NETRESOURCE
+    {
+        public int    dwScope;
+        public int    dwType;
+        public int    dwDisplayType;
+        public int    dwUsage;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? lpLocalName;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? lpRemoteName;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? lpComment;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? lpProvider;
+    }
+
+    [DllImport("mpr.dll", CharSet = CharSet.Unicode)]
+    public static extern int WNetOpenEnum(int dwScope, int dwType, int dwUsage,
+        ref NETRESOURCE lpNetResource, out IntPtr lphEnum);
+
+    [DllImport("mpr.dll", CharSet = CharSet.Unicode)]
+    public static extern int WNetEnumResource(IntPtr hEnum, ref int lpcCount,
+        IntPtr lpBuffer, ref int lpBufferSize);
+
+    [DllImport("mpr.dll")]
+    public static extern int WNetCloseEnum(IntPtr hEnum);
+}
 
 public class WindowsPrinterService : IWindowsPrinterService
 {
@@ -404,50 +441,29 @@ public class WindowsPrinterService : IWindowsPrinterService
         {
             var result = new List<string>();
 
-            // Strategy 1: Shell.Application COM — mirrors exactly what Windows Explorer
-            // shows when the user browses \\host. Works whenever Explorer works.
+            // Strategy 1: WNetOpenEnum via mpr.dll — native Windows API used by the
+            // "Add Printer" wizard. Works even when running as admin (elevated token),
+            // unlike Shell.Application which fails in elevated/service contexts.
             try
             {
-                var safeHost = host.Replace("'", "''");
-                var script = $@"
-$shell = New-Object -ComObject Shell.Application
-$ns = $shell.NameSpace('\\\\{safeHost}')
-if ($null -ne $ns) {{ $ns.Items() | ForEach-Object {{ $_.Name }} }}";
-                var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-                using var proc = Process.Start(psi)!;
-                var output = proc.StandardOutput.ReadToEnd();
-                proc.WaitForExit(12_000);
-
-                foreach (var line in output.Split('\n'))
-                {
-                    var name = line.Trim();
-                    if (!string.IsNullOrEmpty(name) && !name.EndsWith("$"))
-                        result.Add(name);
-                }
-                _log.Info($"Shell.Application {host}: [{string.Join(", ", result)}]");
+                var wnetShares = EnumeratePrinterSharesViaWNet(host);
+                result.AddRange(wnetShares);
+                _log.Info($"WNet {host}: [{string.Join(", ", result)}]");
             }
             catch (Exception ex)
             {
-                _log.Warning($"Shell.Application enumeration failed: {ex.Message}");
+                _log.Warning($"WNet enumeration failed: {ex.Message}");
             }
 
             if (result.Count > 0)
                 return (IReadOnlyList<string>)result;
 
-            // Strategy 2: net view \\host — SMB port 445, no WMI required.
-            // Uses fixed-width column parsing so share names with spaces are handled correctly.
+            // Strategy 2: net view \\host — SMB port 445, column-aware parsing.
             try
             {
-                var psi = new ProcessStartInfo("net", $"view \\\\{host}")
+                var netExe = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.System), "net.exe");
+                var psi = new ProcessStartInfo(netExe, $"view \\\\{host}")
                 {
                     UseShellExecute = false,
                     CreateNoWindow = true,
@@ -466,7 +482,8 @@ if ($null -ne $ns) {{ $ns.Items() | ForEach-Object {{ $_.Name }} }}";
                 }
                 else
                 {
-                    _log.Warning($"net view exited {proc.ExitCode} for {host}");
+                    var stderr = proc.StandardError.ReadToEnd().Trim();
+                    _log.Warning($"net view exited {proc.ExitCode} for {host}: {stderr}");
                 }
             }
             catch (Exception ex)
@@ -510,6 +527,69 @@ if ($null -ne $ns) {{ $ns.Items() | ForEach-Object {{ $_.Name }} }}";
 
             return (IReadOnlyList<string>)result;
         }, ct);
+    }
+
+    private List<string> EnumeratePrinterSharesViaWNet(string host)
+    {
+        var shares = new List<string>();
+        var serverResource = new WNetApi.NETRESOURCE
+        {
+            dwScope       = WNetApi.RESOURCE_GLOBALNET,
+            dwType        = WNetApi.RESOURCETYPE_ANY,
+            dwDisplayType = WNetApi.RESOURCEDISPLAY_SERVER,
+            dwUsage       = WNetApi.RESOURCEUSAGE_CONTAINER,
+            lpRemoteName  = $@"\\{host}"
+        };
+
+        int hr = WNetApi.WNetOpenEnum(
+            WNetApi.RESOURCE_GLOBALNET,
+            WNetApi.RESOURCETYPE_ANY,
+            0,
+            ref serverResource,
+            out IntPtr hEnum);
+
+        if (hr != WNetApi.NO_ERROR)
+        {
+            _log.Warning($"WNetOpenEnum({host}) error {hr} (0x{hr:X8})");
+            return shares;
+        }
+
+        try
+        {
+            const int bufSize = 65536;
+            IntPtr buf = Marshal.AllocHGlobal(bufSize);
+            try
+            {
+                while (true)
+                {
+                    int count = -1, size = bufSize;
+                    int err = WNetApi.WNetEnumResource(hEnum, ref count, buf, ref size);
+                    if (err == WNetApi.ERROR_NO_MORE_ITEMS || count <= 0) break;
+                    if (err != WNetApi.NO_ERROR) break;
+
+                    IntPtr ptr = buf;
+                    for (int i = 0; i < count; i++)
+                    {
+                        var res = Marshal.PtrToStructure<WNetApi.NETRESOURCE>(ptr);
+
+                        // dwType 2 = RESOURCETYPE_PRINT (printer share)
+                        if (res.dwType == WNetApi.RESOURCETYPE_PRINT
+                            && !string.IsNullOrEmpty(res.lpRemoteName))
+                        {
+                            int slash = res.lpRemoteName.LastIndexOf('\\');
+                            var name = slash >= 0 ? res.lpRemoteName[(slash + 1)..] : res.lpRemoteName;
+                            if (!string.IsNullOrEmpty(name) && !name.EndsWith("$"))
+                                shares.Add(name);
+                        }
+                        ptr = IntPtr.Add(ptr, Marshal.SizeOf<WNetApi.NETRESOURCE>());
+                    }
+                }
+            }
+            finally { Marshal.FreeHGlobal(buf); }
+        }
+        finally { WNetApi.WNetCloseEnum(hEnum); }
+
+        return shares;
     }
 
     // Parses "net view \\host" output using fixed-width column detection so share names
