@@ -74,30 +74,37 @@ Source: "..\Config\*"; DestDir: "{app}\Config"; \
 Source: "..\Scripts\*"; DestDir: "{app}\Scripts"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
 
+; Launcher silencioso — roda o app via tarefa agendada sem janela preta
+Source: "Launcher.vbs"; DestDir: "{app}"; Flags: ignoreversion
+
 [Dirs]
 ; Cria pasta de logs vazia
 Name: "{app}\Logs"
 
 [Icons]
-; Atalhos invocam a tarefa agendada — sem prompt UAC ao abrir
-Name: "{group}\{#AppName}";             Filename: "{sys}\schtasks.exe"; \
-  Parameters: "/Run /TN ""{#AppName}"""; IconFilename: "{app}\{#AppExeName}"
+; Atalhos usam wscript.exe + Launcher.vbs para invocar a tarefa sem janela de console
+Name: "{group}\{#AppName}"; \
+  Filename: "{sys}\wscript.exe"; \
+  Parameters: """{app}\Launcher.vbs"""; \
+  IconFilename: "{app}\{#AppExeName}"
 Name: "{group}\Desinstalar {#AppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#AppName}";       Filename: "{sys}\schtasks.exe"; \
-  Parameters: "/Run /TN ""{#AppName}"""; IconFilename: "{app}\{#AppExeName}"; \
+Name: "{autodesktop}\{#AppName}"; \
+  Filename: "{sys}\wscript.exe"; \
+  Parameters: """{app}\Launcher.vbs"""; \
+  IconFilename: "{app}\{#AppExeName}"; \
   Tasks: desktopicon
 
 [Run]
-; Registra tarefa agendada que executa o app como SYSTEM/HighestPrivilege sem prompt UAC
+; Registra tarefa agendada que executa o app com privilégios máximos sem prompt UAC
 Filename: "{sys}\schtasks.exe"; \
-  Parameters: "/Create /F /RL HIGHEST /SC ONDEMAND /TN ""{#AppName}"" /TR """"""{app}\{#AppExeName}"""""""; \
+  Parameters: "/Create /F /RL HIGHEST /SC ONDEMAND /TN ""{#AppName}"" /TR ""{app}\{#AppExeName}"""; \
   Flags: runhidden waituntilterminated; \
   StatusMsg: "Configurando execução como administrador..."
-; Abre o PrinterMode ao final da instalação (via tarefa agendada, sem UAC)
-Filename: "{sys}\schtasks.exe"; \
-  Parameters: "/Run /TN ""{#AppName}"""; \
+; Abre o PrinterMode ao final da instalação via Launcher.vbs (sem janela preta)
+Filename: "{sys}\wscript.exe"; \
+  Parameters: """{app}\Launcher.vbs"""; \
   Description: "Abrir {#AppName} agora"; \
-  Flags: nowait postinstall skipifsilent runhidden
+  Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 ; Remove a tarefa agendada ao desinstalar
@@ -108,3 +115,5 @@ Filename: "{sys}\schtasks.exe"; \
 [UninstallDelete]
 ; Remove a pasta de logs ao desinstalar
 Type: filesandordirs; Name: "{app}\Logs"
+; Remove o launcher ao desinstalar
+Type: files; Name: "{app}\Launcher.vbs"
