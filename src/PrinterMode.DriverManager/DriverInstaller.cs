@@ -227,12 +227,14 @@ public class DriverInstaller : IDriverInstaller
                             }
                             else
                             {
+                                // Detection failed but EXE exited 0 — driver is likely installed
+                                // with a name we can't query right now (Spooler still settling).
+                                // Proceed to port creation; Step 3 will probe each known driver name.
                                 var list = string.Join(", ", driversAfterStore.Take(10));
-                                _log.Warning($"All detection stages failed. Drivers found: [{list}]");
-                                return InstallResult.Fail(
-                                    $"O instalador do driver {request.Driver.DisplayName} foi executado, mas o driver não foi registrado no Windows.",
-                                    $"Conecte a impressora ao computador e tente novamente. Drivers detectados: {list}",
-                                    steps);
+                                _log.Warning($"Detection failed after all stages. Drivers visible: [{list}]. Proceeding to probe all candidate names.");
+                                detectedDriverName = null; // Step 3 will try AllDriverNames()
+                                driverInstalled = true;
+                                steps.Add("Driver instalado mas nome não confirmado — testando nomes na criação...");
                             }
                         }
                     }
@@ -343,36 +345,56 @@ public class DriverInstaller : IDriverInstaller
             }
             else
             {
-                // Use the driver name captured at install time; fall back to fresh lookup then config name
-                string resolvedDriverName;
+                // Build ordered list of driver names to try.
+                // When detectedDriverName is set we use it first; otherwise probe all known names.
+                List<string> driverNamesToTry;
                 if (detectedDriverName != null)
                 {
-                    resolvedDriverName = detectedDriverName;
+                    driverNamesToTry = [detectedDriverName];
                 }
                 else
                 {
-                    var installedDrivers = await _printerService.GetInstalledDriversAsync(ct);
-                    resolvedDriverName = ResolveActualDriverName(request.Driver, installedDrivers)
-                        ?? request.Driver.DriverName; // trust the config name as last resort
-                    _log.Info($"Driver name resolved (fallback path): '{resolvedDriverName}'");
+                    // Do one final fresh lookup — by now the Spooler may have settled
+                    var freshDrivers = await _printerService.GetInstalledDriversAsync(ct);
+                    var freshResolved = ResolveActualDriverName(request.Driver, freshDrivers);
+                    if (freshResolved != null)
+                    {
+                        _log.Info($"Fresh lookup found driver: '{freshResolved}'");
+                        driverNamesToTry = [freshResolved];
+                    }
+                    else
+                    {
+                        // Probe every candidate name — AddPrinterAsync tells us which one Windows accepts
+                        driverNamesToTry = request.Driver.AllDriverNames().ToList();
+                        _log.Info($"Probing {driverNamesToTry.Count} candidate driver names: [{string.Join(", ", driverNamesToTry)}]");
+                    }
                 }
 
-                _log.Info($"Resolved driver name: '{resolvedDriverName}' (catalog: '{request.Driver.DriverName}')");
-
-                var printerAdded = await _printerService.AddPrinterAsync(
-                    request.PrinterName, resolvedDriverName, portName, ct);
+                bool printerAdded = false;
+                string usedDriverName = driverNamesToTry[0];
+                foreach (var candidateName in driverNamesToTry)
+                {
+                    _log.Info($"Trying AddPrinterAsync with driver: '{candidateName}'");
+                    progress?.Report($"Criando impressora (driver: {candidateName})...");
+                    if (await _printerService.AddPrinterAsync(request.PrinterName, candidateName, portName, ct))
+                    {
+                        printerAdded = true;
+                        usedDriverName = candidateName;
+                        break;
+                    }
+                }
 
                 if (!printerAdded)
                 {
-                    _log.Error($"AddPrinterAsync failed. driver='{resolvedDriverName}' port='{portName}'");
+                    _log.Error($"AddPrinterAsync failed for all candidates. port='{portName}' tried=[{string.Join(", ", driverNamesToTry)}]");
                     return InstallResult.Fail(
-                        $"Falha ao criar impressora no Windows (driver: '{resolvedDriverName}').",
-                        "Verifique se o driver está instalado e tente novamente.",
+                        $"Falha ao criar impressora no Windows.",
+                        $"Nenhum driver foi aceito pelo Windows. Nomes tentados: {string.Join(", ", driverNamesToTry)}",
                         steps);
                 }
 
-                steps.Add($"Impressora criada: {request.PrinterName}");
-                _log.Info($"Printer created: {request.PrinterName}");
+                steps.Add($"Impressora criada: {request.PrinterName} (driver: {usedDriverName})");
+                _log.Info($"Printer created: {request.PrinterName} with driver '{usedDriverName}'");
             }
 
             // Step 4: Configure paper
