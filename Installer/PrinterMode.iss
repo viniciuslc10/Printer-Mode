@@ -13,7 +13,6 @@
 #define BuildDir     "publish"
 
 [Setup]
-; Altere o GUID abaixo se criar outro produto (gere um novo em https://www.guidgenerator.com)
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 AppName={#AppName}
 AppVersion={#AppVersion}
@@ -23,29 +22,22 @@ AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}
 AppUpdatesURL={#AppURL}
 
-; Instala em C:\Program Files\PrinterMode
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 AllowNoIcons=yes
 
-; Icone do instalador
 SetupIconFile=..\src\PrinterMode.UI\Assets\icon.ico
 
-; Saída
 OutputDir=.\Output
 OutputBaseFilename=PrinterModeSetup_{#AppVersion}
 
-; Compressão máxima
 Compression=lzma2/ultra64
 SolidCompression=yes
-
-; Visual moderno do assistente
 WizardStyle=modern
 
-; Requer administrador (necessário para instalar drivers)
+; Requer administrador para instalar drivers
 PrivilegesRequired=admin
 
-; Apenas Windows 10/11 de 64 bits
 MinVersion=10.0.17763
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
@@ -58,62 +50,30 @@ Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; \
   GroupDescription: "Ícones adicionais:"
 
 [Files]
-; Arquivos publicados pelo dotnet publish (.NET runtime, DLLs, exe)
 Source: "{#BuildDir}\*"; DestDir: "{app}"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
 
-; Repositorio de drivers
 Source: "..\Repository\*"; DestDir: "{app}\Repository"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
 
-; Configuracoes
 Source: "..\Config\*"; DestDir: "{app}\Config"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
 
-; Scripts PowerShell
 Source: "..\Scripts\*"; DestDir: "{app}\Scripts"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
 
-; Launcher silencioso — roda o app via tarefa agendada sem janela preta
-Source: "Launcher.vbs"; DestDir: "{app}"; Flags: ignoreversion
-
 [Dirs]
-; Cria pasta de logs vazia
 Name: "{app}\Logs"
 
 [Icons]
-; Atalhos usam wscript.exe + Launcher.vbs para invocar a tarefa sem janela de console
-Name: "{group}\{#AppName}"; \
-  Filename: "{sys}\wscript.exe"; \
-  Parameters: """{app}\Launcher.vbs"""; \
-  IconFilename: "{app}\{#AppExeName}"
+Name: "{group}\{#AppName}";             Filename: "{app}\{#AppExeName}"
 Name: "{group}\Desinstalar {#AppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#AppName}"; \
-  Filename: "{sys}\wscript.exe"; \
-  Parameters: """{app}\Launcher.vbs"""; \
-  IconFilename: "{app}\{#AppExeName}"; \
-  Tasks: desktopicon
+Name: "{autodesktop}\{#AppName}";       Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
-; Registra tarefa agendada que executa o app com privilégios máximos sem prompt UAC
-Filename: "{sys}\schtasks.exe"; \
-  Parameters: "/Create /F /RL HIGHEST /SC ONDEMAND /TN ""{#AppName}"" /TR ""{app}\{#AppExeName}"""; \
-  Flags: runhidden waituntilterminated; \
-  StatusMsg: "Configurando execução como administrador..."
-; Abre o PrinterMode ao final da instalação via Launcher.vbs (sem janela preta)
-Filename: "{sys}\wscript.exe"; \
-  Parameters: """{app}\Launcher.vbs"""; \
+Filename: "{app}\{#AppExeName}"; \
   Description: "Abrir {#AppName} agora"; \
-  Flags: nowait postinstall skipifsilent
-
-[UninstallRun]
-; Remove a tarefa agendada ao desinstalar
-Filename: "{sys}\schtasks.exe"; \
-  Parameters: "/Delete /F /TN ""{#AppName}"""; \
-  Flags: runhidden waituntilterminated
+  Flags: nowait postinstall skipifsilent runascurrentuser
 
 [UninstallDelete]
-; Remove a pasta de logs ao desinstalar
 Type: filesandordirs; Name: "{app}\Logs"
-; Remove o launcher ao desinstalar
-Type: files; Name: "{app}\Launcher.vbs"
