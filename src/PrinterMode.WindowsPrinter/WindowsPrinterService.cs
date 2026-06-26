@@ -333,8 +333,9 @@ public class WindowsPrinterService : IWindowsPrinterService
                 var stderr = process.StandardError.ReadToEnd();
                 process.StandardOutput.ReadToEnd();
                 process.WaitForExit(30_000);
-                _log.Info($"Add-Printer -ConnectionName exit={process.ExitCode} stderr='{stderr.Trim()}'");
-                return (process.ExitCode == 0, stderr.Trim());
+                var cleanError = ExtractPsError(stderr.Trim());
+                _log.Info($"Add-Printer -ConnectionName exit={process.ExitCode} stderr='{cleanError}'");
+                return (process.ExitCode == 0, cleanError);
             }
             catch (Exception ex)
             {
@@ -598,6 +599,27 @@ public class WindowsPrinterService : IWindowsPrinterService
         {
             _log.Warning($"RestartSpoolerAsync error: {ex.Message}");
         }
+    }
+
+    // PowerShell -NonInteractive wraps errors in CLIXML (#< <Objs...>).
+    // This extracts the human-readable Message field, falling back to a generic message.
+    private static string ExtractPsError(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return string.Empty;
+        if (!raw.Contains("<Objs") && !raw.StartsWith("#<")) return raw;
+
+        var match = System.Text.RegularExpressions.Regex.Match(
+            raw, @"<S N=""Message"">(.*?)</S>",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        if (match.Success)
+        {
+            var msg = match.Groups[1].Value
+                .Replace("_x000D__x000A_", " ")
+                .Replace("_x0027_", "'")
+                .Trim();
+            return msg;
+        }
+        return "Erro de rede ao conectar à impressora compartilhada.";
     }
 
     private static void RunProcess(string fileName, string arguments)

@@ -471,26 +471,59 @@ public class DriverInstaller : IDriverInstaller
             return InstallResult.Fail(
                 "Informe o nome ou IP do computador que compartilha a impressora.", null, steps);
 
-        // Use the explicit share name if provided; otherwise fall back to the printer name.
-        var shareName = !string.IsNullOrWhiteSpace(request.SharedPrinterName)
-            ? request.SharedPrinterName.Trim()
-            : request.PrinterName;
+        // Build candidate share names to try in order:
+        // 1. Explicit share name typed by the user
+        // 2. Auto-discovered names from Get-Printer -ComputerName
+        // 3. The printer display name as last resort
+        var candidates = new List<string>();
 
-        var connectionName = $@"\\{host}\{shareName}";
-        progress?.Report($"Conectando à impressora compartilhada {connectionName}...");
-        _log.Info($"Connecting shared printer: {connectionName}");
+        if (!string.IsNullOrWhiteSpace(request.SharedPrinterName))
+            candidates.Add(request.SharedPrinterName.Trim());
 
-        var (ok, psError) = await _printerService.AddSharedPrinterInternalAsync(connectionName, ct);
-        if (!ok)
+        if (candidates.Count == 0)
         {
-            var detail = string.IsNullOrEmpty(psError)
-                ? "Verifique se a impressora está compartilhada no computador host e se o nome do compartilhamento está correto."
-                : $"Erro do Windows: {psError}";
-            return InstallResult.Fail($"Não foi possível conectar a '{connectionName}'.", detail, steps);
+            progress?.Report($"Descobrindo impressoras compartilhadas em {host}...");
+            var discovered = await _printerService.GetSharedPrintersAsync(host, ct);
+            candidates.AddRange(discovered.Where(n => !string.IsNullOrWhiteSpace(n)));
         }
 
-        steps.Add($"Conectado: {connectionName}");
-        _log.Info($"Shared printer connected: {connectionName}");
+        if (candidates.Count == 0)
+            candidates.Add(request.PrinterName); // last resort
+
+        string? lastError = null;
+        string? connectedAs = null;
+
+        foreach (var shareName in candidates)
+        {
+            var connectionName = $@"\\{host}\{shareName}";
+            progress?.Report($"Conectando a {connectionName}...");
+            _log.Info($"Trying shared printer: {connectionName}");
+
+            var (ok, psError) = await _printerService.AddSharedPrinterInternalAsync(connectionName, ct);
+            if (ok)
+            {
+                connectedAs = connectionName;
+                steps.Add($"Conectado: {connectionName}");
+                break;
+            }
+            lastError = string.IsNullOrEmpty(psError)
+                ? "Acesso negado ou impressora não encontrada."
+                : psError;
+            _log.Warning($"Failed to connect to '{connectionName}': {lastError}");
+        }
+
+        if (connectedAs == null)
+        {
+            var triedNames = string.Join(", ", candidates);
+            var detail = $"Nomes tentados: {triedNames}.\n" +
+                         "Verifique se:\n" +
+                         "• A impressora está compartilhada no host (Painel de Controle → Impressoras → Propriedades → Compartilhamento)\n" +
+                         "• O Compartilhamento de Arquivo e Impressora está ativado no host\n" +
+                         $"• Último erro: {lastError}";
+            return InstallResult.Fail("Não foi possível conectar à impressora compartilhada.", detail, steps);
+        }
+
+        _log.Info($"Shared printer connected: {connectedAs}");
 
         if (request.SetAsDefault)
         {
@@ -500,7 +533,7 @@ public class DriverInstaller : IDriverInstaller
 
         progress?.Report("Impressora compartilhada conectada com sucesso!");
         return InstallResult.Ok(
-            $"Impressora conectada: {connectionName}",
+            $"Impressora conectada: {connectedAs}",
             request.PrinterName, steps);
     }
 
