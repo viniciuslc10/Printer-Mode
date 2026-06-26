@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Net.NetworkInformation;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrinterMode.Core.Enums;
@@ -301,13 +302,31 @@ public partial class SimpleViewModel : ObservableObject
             }
             else
             {
-                StatusText = "Nenhuma impressora encontrada automaticamente. Digite o nome do compartilhamento manualmente no campo abaixo e clique em Instalar.";
+                StatusText = "Verificando conectividade com o host...";
+                var hostReachable = await PingHostAsync(host);
+                StatusText = hostReachable
+                    ? $"Host '{host}' encontrado, mas nenhuma impressora compartilhada foi descoberta. Verifique se o 'Compartilhamento de Arquivo e Impressora' está habilitado no Firewall do Windows em '{host}' (Painel de Controle → Firewall → Permitir app). Ou digite o nome do compartilhamento manualmente."
+                    : $"Host '{host}' não encontrado na rede. Verifique o IP ou nome do computador e se ele está ligado e na mesma rede.";
             }
         }
         finally
         {
             IsSearchingShared = false;
             OnPropertyChanged(nameof(HasSharedPrinters));
+        }
+    }
+
+    private static async Task<bool> PingHostAsync(string host)
+    {
+        try
+        {
+            using var ping = new Ping();
+            var reply = await ping.SendPingAsync(host, 2000);
+            return reply.Status == IPStatus.Success;
+        }
+        catch
+        {
+            return false;
         }
     }
 }
