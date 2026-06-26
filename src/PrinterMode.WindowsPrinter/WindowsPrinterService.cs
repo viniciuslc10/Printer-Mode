@@ -404,8 +404,47 @@ public class WindowsPrinterService : IWindowsPrinterService
         {
             var result = new List<string>();
 
-            // Strategy 1: net view \\host — uses only SMB port 445 (standard Windows sharing).
-            // Works whenever "File and Printer Sharing" is enabled, no WMI/RPC required.
+            // Strategy 1: Shell.Application COM — mirrors exactly what Windows Explorer
+            // shows when the user browses \\host. Works whenever Explorer works.
+            try
+            {
+                var safeHost = host.Replace("'", "''");
+                var script = $@"
+$shell = New-Object -ComObject Shell.Application
+$ns = $shell.NameSpace('\\\\{safeHost}')
+if ($null -ne $ns) {{ $ns.Items() | ForEach-Object {{ $_.Name }} }}";
+                var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                using var proc = Process.Start(psi)!;
+                var output = proc.StandardOutput.ReadToEnd();
+                proc.WaitForExit(12_000);
+
+                foreach (var line in output.Split('\n'))
+                {
+                    var name = line.Trim();
+                    if (!string.IsNullOrEmpty(name) && !name.EndsWith("$"))
+                        result.Add(name);
+                }
+                _log.Info($"Shell.Application {host}: [{string.Join(", ", result)}]");
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Shell.Application enumeration failed: {ex.Message}");
+            }
+
+            if (result.Count > 0)
+                return (IReadOnlyList<string>)result;
+
+            // Strategy 2: net view \\host — SMB port 445, no WMI required.
+            // Uses fixed-width column parsing so share names with spaces are handled correctly.
             try
             {
                 var psi = new ProcessStartInfo("net", $"view \\\\{host}")
@@ -422,7 +461,7 @@ public class WindowsPrinterService : IWindowsPrinterService
                 if (proc.ExitCode == 0)
                 {
                     var parsed = ParseNetViewShares(output);
-                    result.AddRange(parsed);
+                    result.AddRange(parsed.Where(s => !result.Contains(s, StringComparer.OrdinalIgnoreCase)));
                     _log.Info($"net view {host}: [{string.Join(", ", parsed)}]");
                 }
                 else
@@ -438,7 +477,7 @@ public class WindowsPrinterService : IWindowsPrinterService
             if (result.Count > 0)
                 return (IReadOnlyList<string>)result;
 
-            // Strategy 2: Get-Printer -ComputerName (needs WMI/RPC — may be blocked by firewall)
+            // Strategy 3: Get-Printer -ComputerName (needs WMI/RPC — often blocked by firewall)
             try
             {
                 var script = $"Get-Printer -ComputerName '{host.Replace("'", "''")}' | Select-Object -ExpandProperty ShareName | Where-Object {{ $_ -ne $null -and $_ -ne '' }}";
@@ -473,41 +512,74 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
-    // Parses "net view \\host" output and returns non-admin share names.
-    // Works across locales — relies on the "---" separator line rather than column headers.
+    // Parses "net view \\host" output using fixed-width column detection so share names
+    // with spaces (e.g. "Gertec G250") are extracted correctly. Locale-independent.
     private static List<string> ParseNetViewShares(string output)
     {
         var shares = new List<string>();
-        bool inData = false;
+        var lines = output.Split('\n').Select(l => l.TrimEnd()).ToArray();
 
-        foreach (var rawLine in output.Split('\n'))
+        int separatorIdx = -1;
+        int typeColStart = -1;
+
+        // Find the separator line and detect the Type column position from the header above it
+        for (int i = 0; i < lines.Length; i++)
         {
-            var line = rawLine.TrimEnd();
+            if (!lines[i].TrimStart().StartsWith("---")) continue;
+            separatorIdx = i;
+
+            for (int j = i - 1; j >= 0; j--)
+            {
+                if (string.IsNullOrWhiteSpace(lines[j])) continue;
+                var header = lines[j];
+                var pos = header.IndexOf("Type", StringComparison.OrdinalIgnoreCase);
+                if (pos < 0) pos = header.IndexOf("Tipo", StringComparison.OrdinalIgnoreCase);
+                if (pos > 0) typeColStart = pos;
+                break;
+            }
+            break;
+        }
+
+        if (separatorIdx < 0) return shares;
+
+        for (int i = separatorIdx + 1; i < lines.Length; i++)
+        {
+            var line = lines[i];
             if (string.IsNullOrWhiteSpace(line)) continue;
 
-            // The "------" separator marks the beginning of data rows
-            if (line.TrimStart().StartsWith("---"))
+            string shareName;
+            string typeField = string.Empty;
+
+            if (typeColStart > 0)
             {
-                inData = true;
-                continue;
+                if (line.Length <= typeColStart) continue; // footer/short line
+                shareName = line[..typeColStart].Trim();
+                typeField = line[typeColStart..].TrimStart();
+            }
+            else
+            {
+                // No column info: first space-delimited token (won't capture spaces in share name)
+                var parts = line.TrimStart().Split(new[] { ' ', '\t' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                shareName = parts.Length > 0 ? parts[0].Trim() : string.Empty;
             }
 
-            if (!inData) continue;
-
-            // "The command completed successfully" / "O comando foi concluído" — end of data
-            if (!line.StartsWith(" ") && char.IsLetter(line[0])) break;
-
-            // Extract share name (first whitespace-delimited token)
-            var parts = line.TrimStart().Split(new[] { ' ', '\t' }, 2, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 0) continue;
-
-            var shareName = parts[0].Trim();
             if (string.IsNullOrEmpty(shareName)) continue;
+            if (shareName.EndsWith("$")) continue; // skip admin/hidden shares
 
-            // Skip hidden/admin shares (end with $)
-            if (shareName.EndsWith("$")) continue;
+            // When type info is available, validate it to filter out the footer line
+            if (!string.IsNullOrEmpty(typeField))
+            {
+                bool isKnownType =
+                    typeField.StartsWith("Disk",  StringComparison.OrdinalIgnoreCase) ||
+                    typeField.StartsWith("Print", StringComparison.OrdinalIgnoreCase) ||
+                    typeField.StartsWith("IPC",   StringComparison.OrdinalIgnoreCase) ||
+                    typeField.StartsWith("Disco", StringComparison.OrdinalIgnoreCase) ||
+                    typeField.StartsWith("Impr",  StringComparison.OrdinalIgnoreCase);
+                if (!isKnownType) continue;
+            }
 
-            shares.Add(shareName);
+            if (!shares.Contains(shareName, StringComparer.OrdinalIgnoreCase))
+                shares.Add(shareName);
         }
 
         return shares;
@@ -725,37 +797,36 @@ public class WindowsPrinterService : IWindowsPrinterService
     }
 
     // PowerShell -NonInteractive wraps errors in CLIXML (#< <Objs...>).
-    // This extracts the human-readable Message field. If not CLIXML, returns the raw text.
+    // Handles both <S N="Message"> (standard PS) and <S S="Error"> (Add-Printer format).
     private static string ExtractPsError(string raw)
     {
         if (string.IsNullOrEmpty(raw)) return string.Empty;
 
-        // Not CLIXML — plain text error, return as-is (truncated to avoid wall of text)
         if (!raw.Contains("<Objs") && !raw.StartsWith("#<"))
             return raw.Length > 300 ? raw[..300] : raw;
 
-        var match = Regex.Match(raw, @"<S N=""Message"">(.*?)</S>", RegexOptions.Singleline);
-        if (match.Success)
-        {
-            var msg = match.Groups[1].Value
-                .Replace("_x000D__x000A_", " ")
-                .Replace("_x0027_", "'")
-                .Replace("_x003C_", "<")
-                .Replace("_x003E_", ">")
-                .Trim();
-            return msg;
-        }
+        // Standard PowerShell error format
+        var msgMatch = Regex.Match(raw, @"<S N=""Message"">(.*?)</S>", RegexOptions.Singleline);
+        if (msgMatch.Success)
+            return CleanXmlEscapes(msgMatch.Groups[1].Value);
 
-        // Last resort: extract any readable text from CLIXML
-        var fallback = Regex.Match(raw, @"<S[^>]*>(.*?)</S>", RegexOptions.Singleline);
-        if (fallback.Success)
+        // Add-Printer / WMI cmdlet format: <S S="Error">text_x000D__x000A_At line:...</S>
+        var errMatch = Regex.Match(raw, @"<S S=""Error"">(.*?)</S>", RegexOptions.Singleline);
+        if (errMatch.Success)
         {
-            var msg = Regex.Replace(fallback.Groups[1].Value, @"_x[0-9A-Fa-f]{4}_", " ").Trim();
-            if (!string.IsNullOrWhiteSpace(msg)) return msg;
+            var text = CleanXmlEscapes(errMatch.Groups[1].Value);
+            // Trim trace info after " At line:"
+            var atLine = text.IndexOf(" At line:", StringComparison.OrdinalIgnoreCase);
+            if (atLine > 0) text = text[..atLine];
+            return text.Trim();
         }
 
         return "Falha ao conectar — verifique se o compartilhamento está ativo no host.";
     }
+
+    private static string CleanXmlEscapes(string text) =>
+        text.Replace("_x000D__x000A_", " ").Replace("_x0027_", "'")
+            .Replace("_x003C_", "<").Replace("_x003E_", ">").Replace("_x0022_", "\"").Trim();
 
     private static void RunProcess(string fileName, string arguments)
     {

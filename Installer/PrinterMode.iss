@@ -79,15 +79,31 @@ Source: "..\Scripts\*"; DestDir: "{app}\Scripts"; \
 Name: "{app}\Logs"
 
 [Icons]
-Name: "{group}\{#AppName}";                  Filename: "{app}\{#AppExeName}"
-Name: "{group}\Desinstalar {#AppName}";      Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#AppName}";            Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
+; Atalhos invocam a tarefa agendada — sem prompt UAC ao abrir
+Name: "{group}\{#AppName}";             Filename: "{sys}\schtasks.exe"; \
+  Parameters: "/Run /TN ""{#AppName}"""; IconFilename: "{app}\{#AppExeName}"
+Name: "{group}\Desinstalar {#AppName}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\{#AppName}";       Filename: "{sys}\schtasks.exe"; \
+  Parameters: "/Run /TN ""{#AppName}"""; IconFilename: "{app}\{#AppExeName}"; \
+  Tasks: desktopicon
 
 [Run]
-; Abre o PrinterMode ao final da instalação já com elevação de administrador
-Filename: "{app}\{#AppExeName}"; \
+; Registra tarefa agendada que executa o app como SYSTEM/HighestPrivilege sem prompt UAC
+Filename: "{sys}\schtasks.exe"; \
+  Parameters: "/Create /F /RL HIGHEST /SC ONDEMAND /TN ""{#AppName}"" /TR """"""{app}\{#AppExeName}"""""""; \
+  Flags: runhidden waituntilterminated; \
+  StatusMsg: "Configurando execução como administrador..."
+; Abre o PrinterMode ao final da instalação (via tarefa agendada, sem UAC)
+Filename: "{sys}\schtasks.exe"; \
+  Parameters: "/Run /TN ""{#AppName}"""; \
   Description: "Abrir {#AppName} agora"; \
-  Flags: nowait postinstall skipifsilent shellexec runasoriginaluser
+  Flags: nowait postinstall skipifsilent runhidden
+
+[UninstallRun]
+; Remove a tarefa agendada ao desinstalar
+Filename: "{sys}\schtasks.exe"; \
+  Parameters: "/Delete /F /TN ""{#AppName}"""; \
+  Flags: runhidden waituntilterminated
 
 [UninstallDelete]
 ; Remove a pasta de logs ao desinstalar
