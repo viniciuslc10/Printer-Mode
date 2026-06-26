@@ -10,6 +10,7 @@ public interface IWindowsPrinterService
     Task<bool> PrinterExistsAsync(string printerName, CancellationToken ct = default);
     Task<bool> UpdatePrinterPortAsync(string printerName, string newPortName, CancellationToken ct = default);
     Task<bool> AddSharedPrinterAsync(string connectionName, CancellationToken ct = default);
+    Task<(bool ok, string error)> AddSharedPrinterInternalAsync(string connectionName, CancellationToken ct);
     Task<bool> SetPaperFormAsync(string printerName, PaperConfig paper, CancellationToken ct = default);
     Task<bool> SetDefaultPrinterAsync(string printerName, CancellationToken ct = default);
     Task<bool> DeletePrinterAsync(string printerName, CancellationToken ct = default);
@@ -22,4 +23,5 @@ public interface IWindowsPrinterService
     Task<IReadOnlyList<PortEntry>> GetUsbPrinterPortsWithNamesAsync(CancellationToken ct = default);
     Task<string?> FindDriverNameFromAutoInstalledPrinterAsync(string manufacturerHint, string modelHint, CancellationToken ct = default);
     Task RestartSpoolerAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<string>> GetSharedPrintersAsync(string host, CancellationToken ct = default);
 }

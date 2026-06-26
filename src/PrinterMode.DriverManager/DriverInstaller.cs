@@ -471,16 +471,23 @@ public class DriverInstaller : IDriverInstaller
             return InstallResult.Fail(
                 "Informe o nome ou IP do computador que compartilha a impressora.", null, steps);
 
-        var connectionName = $@"\\{host}\{request.PrinterName}";
+        // Use the explicit share name if provided; otherwise fall back to the printer name.
+        var shareName = !string.IsNullOrWhiteSpace(request.SharedPrinterName)
+            ? request.SharedPrinterName.Trim()
+            : request.PrinterName;
+
+        var connectionName = $@"\\{host}\{shareName}";
         progress?.Report($"Conectando à impressora compartilhada {connectionName}...");
         _log.Info($"Connecting shared printer: {connectionName}");
 
-        var ok = await _printerService.AddSharedPrinterAsync(connectionName, ct);
+        var (ok, psError) = await _printerService.AddSharedPrinterInternalAsync(connectionName, ct);
         if (!ok)
-            return InstallResult.Fail(
-                $"Não foi possível conectar a '{connectionName}'.",
-                "Verifique o nome/IP do computador host, o nome do compartilhamento e as permissões de rede.",
-                steps);
+        {
+            var detail = string.IsNullOrEmpty(psError)
+                ? "Verifique se a impressora está compartilhada no computador host e se o nome do compartilhamento está correto."
+                : $"Erro do Windows: {psError}";
+            return InstallResult.Fail($"Não foi possível conectar a '{connectionName}'.", detail, steps);
+        }
 
         steps.Add($"Conectado: {connectionName}");
         _log.Info($"Shared printer connected: {connectionName}");

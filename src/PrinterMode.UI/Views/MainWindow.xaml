@@ -14,6 +14,8 @@
   <Window.Resources>
     <conv:BoolToVisibilityConverter x:Key="BoolVis"/>
     <conv:BoolToVisibilityConverter x:Key="InvertVis" Invert="True"/>
+    <conv:InvertBoolConverter x:Key="InvertBool"/>
+    <conv:CountToVisibilityConverter x:Key="CountVis"/>
   </Window.Resources>
 
   <Border CornerRadius="12" ClipToBounds="True"
@@ -129,13 +131,54 @@
           <!-- Shared printer fields -->
           <StackPanel Margin="0,0,0,12"
                       Visibility="{Binding ShowSharedFields, Converter={StaticResource BoolVis}}">
+
+            <!-- Host / IP -->
             <TextBlock Text="Computador ou IP do host" FontSize="12"
                        Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
-            <TextBox Text="{Binding SharedHost, UpdateSourceTrigger=PropertyChanged}"
-                     Tag="Ex: DESKTOP-PC ou 192.168.1.50"/>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <TextBox Grid.Column="0"
+                       Text="{Binding SharedHost, UpdateSourceTrigger=PropertyChanged}"
+                       Tag="Ex: DESKTOP-PC ou 192.168.1.50"/>
+              <Button Grid.Column="2"
+                      Command="{Binding SearchSharedPrintersCommand}"
+                      IsEnabled="{Binding IsSearchingShared, Converter={StaticResource InvertBool}}"
+                      Padding="10,0" Height="34">
+                <Button.Style>
+                  <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                    <Setter Property="Content" Value="Buscar"/>
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsSearchingShared}" Value="True">
+                        <Setter Property="Content" Value="Buscando..."/>
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Button.Style>
+              </Button>
+            </Grid>
+
+            <!-- Shared printer list (populated by search) -->
+            <StackPanel Margin="0,6,0,0"
+                        Visibility="{Binding HasSharedPrinters, Converter={StaticResource BoolVis}}">
+              <TextBlock Text="Impressoras encontradas no host:" FontSize="11"
+                         Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,3"/>
+              <ComboBox ItemsSource="{Binding SharedPrinterList}"
+                        SelectedItem="{Binding SharedPrinterName, Mode=TwoWay}"
+                        FontSize="13"/>
+            </StackPanel>
+
+            <!-- Manual share name override -->
+            <TextBlock Text="Nome do compartilhamento" FontSize="12"
+                       Foreground="{StaticResource TextMutedBrush}" Margin="0,8,0,4"/>
+            <TextBox Text="{Binding SharedPrinterName, UpdateSourceTrigger=PropertyChanged}"
+                     Tag="Deixe vazio para usar o nome da impressora"/>
             <TextBlock FontSize="11" Foreground="{StaticResource TextMutedBrush}"
-                       Margin="0,5,0,0" TextWrapping="Wrap"
-                       Text="A impressora deve estar compartilhada no computador host com o mesmo nome definido no campo 'Nome da impressora' abaixo."/>
+                       Margin="0,4,0,0" TextWrapping="Wrap"
+                       Text="Nome exato de como a impressora foi compartilhada no computador host (Painel de Controle → Dispositivos e Impressoras → Propriedades da Impressora → Compartilhamento)."/>
           </StackPanel>
 
           <!-- Network fields -->

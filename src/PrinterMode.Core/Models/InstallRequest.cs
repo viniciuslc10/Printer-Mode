@@ -16,4 +16,6 @@ public class InstallRequest
     public bool SetAsDefault { get; set; } = false;
     public bool SkipDriverInstall { get; set; } = false;
     public string? SharedHost { get; set; }
+    // The share name as configured on the host (may differ from PrinterName)
+    public string? SharedPrinterName { get; set; }
 }

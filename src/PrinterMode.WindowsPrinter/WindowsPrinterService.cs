@@ -311,7 +311,7 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
-    public async Task<bool> AddSharedPrinterAsync(string connectionName, CancellationToken ct = default)
+    public async Task<(bool ok, string error)> AddSharedPrinterInternalAsync(string connectionName, CancellationToken ct)
     {
         return await Task.Run(() =>
         {
@@ -325,20 +325,67 @@ public class WindowsPrinterService : IWindowsPrinterService
                     Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
                     UseShellExecute = false,
                     CreateNoWindow = true,
+                    RedirectStandardOutput = true,
                     RedirectStandardError = true
                 };
                 _log.Info($"AddSharedPrinterAsync: '{connectionName}'");
                 using var process = Process.Start(psi)!;
                 var stderr = process.StandardError.ReadToEnd();
+                process.StandardOutput.ReadToEnd();
                 process.WaitForExit(30_000);
                 _log.Info($"Add-Printer -ConnectionName exit={process.ExitCode} stderr='{stderr.Trim()}'");
-                return process.ExitCode == 0;
+                return (process.ExitCode == 0, stderr.Trim());
             }
             catch (Exception ex)
             {
                 _log.Error($"AddSharedPrinterAsync exception: {ex.Message}");
-                return false;
+                return (false, ex.Message);
             }
+        }, ct);
+    }
+
+    public async Task<bool> AddSharedPrinterAsync(string connectionName, CancellationToken ct = default)
+    {
+        var (ok, _) = await AddSharedPrinterInternalAsync(connectionName, ct);
+        return ok;
+    }
+
+    public async Task<IReadOnlyList<string>> GetSharedPrintersAsync(string host, CancellationToken ct = default)
+    {
+        return await Task.Run(() =>
+        {
+            var printers = new List<string>();
+            try
+            {
+                var script = $"Get-Printer -ComputerName '{host.Replace("'", "''")}' | Select-Object -ExpandProperty ShareName | Where-Object {{ $_ -ne $null -and $_ -ne '' }}";
+                var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                using var proc = Process.Start(psi)!;
+                var output = proc.StandardOutput.ReadToEnd();
+                proc.StandardError.ReadToEnd();
+                proc.WaitForExit(15_000);
+
+                foreach (var line in output.Split('\n'))
+                {
+                    var name = line.Trim();
+                    if (!string.IsNullOrEmpty(name))
+                        printers.Add(name);
+                }
+                _log.Info($"GetSharedPrintersAsync({host}): [{string.Join(", ", printers)}]");
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"GetSharedPrintersAsync failed: {ex.Message}");
+            }
+            return (IReadOnlyList<string>)printers;
         }, ct);
     }
 

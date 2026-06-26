@@ -63,6 +63,12 @@ public partial class SimpleViewModel : ObservableObject
     [ObservableProperty] private string _ipAddress = string.Empty;
     [ObservableProperty] private int _networkPort = 9100;
     [ObservableProperty] private string _sharedHost = string.Empty;
+    [ObservableProperty] private string _sharedPrinterName = string.Empty;
+    [ObservableProperty] private ObservableCollection<string> _sharedPrinterList = [];
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSharedPrinters))]
+    private bool _isSearchingShared;
+    public bool HasSharedPrinters => SharedPrinterList.Count > 0;
     [ObservableProperty] private PortEntry? _selectedComPort;
     [ObservableProperty] private PortEntry? _selectedUsbPort;
 
@@ -201,6 +207,7 @@ public partial class SimpleViewModel : ObservableObject
                 IpAddress = ConnectionNetwork ? IpAddress : null,
                 NetworkPort = ConnectionNetwork ? NetworkPort : 9100,
                 SharedHost = ConnectionShared ? SharedHost : null,
+                SharedPrinterName = ConnectionShared ? SharedPrinterName : null,
                 PortName = ConnectionSerial ? SelectedComPort?.PortName
                          : ConnectionUsb && SelectedUsbPort != null ? SelectedUsbPort.PortName
                          : null,
@@ -243,6 +250,30 @@ public partial class SimpleViewModel : ObservableObject
         {
             IsInstalling = false;
             OnPropertyChanged(nameof(CanInstall));
+        }
+    }
+
+    [RelayCommand]
+    private async Task SearchSharedPrintersAsync()
+    {
+        var host = SharedHost.Trim();
+        if (string.IsNullOrEmpty(host)) return;
+
+        IsSearchingShared = true;
+        SharedPrinterList.Clear();
+        try
+        {
+            var printers = await _printerService.GetSharedPrintersAsync(host);
+            foreach (var p in printers)
+                SharedPrinterList.Add(p);
+
+            if (SharedPrinterList.Count > 0 && string.IsNullOrWhiteSpace(SharedPrinterName))
+                SharedPrinterName = SharedPrinterList[0];
+        }
+        finally
+        {
+            IsSearchingShared = false;
+            OnPropertyChanged(nameof(HasSharedPrinters));
         }
     }
 }
