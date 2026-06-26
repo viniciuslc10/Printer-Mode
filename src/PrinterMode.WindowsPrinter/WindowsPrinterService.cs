@@ -246,8 +246,14 @@ public class WindowsPrinterService : IWindowsPrinterService
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            _log.Info($"Installed printer drivers (PS): [{string.Join(", ", drivers)}]");
-            return drivers;
+            if (drivers.Count > 0)
+            {
+                _log.Info($"Installed printer drivers (PS): [{string.Join(", ", drivers)}]");
+                return drivers;
+            }
+
+            // Empty result — Print Spooler may be restarting; fall through to WMI
+            _log.Warning("PowerShell Get-PrinterDriver returned empty list, trying WMI...");
         }
         catch (Exception ex)
         {

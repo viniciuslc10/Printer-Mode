@@ -151,20 +151,34 @@ public class DriverInstaller : IDriverInstaller
                         return InstallResult.Fail($"Falha ao executar instalador: {ex.Message}", null, steps);
                     }
 
-                    // Poll up to 30 seconds for the driver to register in the Print Spooler.
-                    // WMI can lag; PowerShell Get-PrinterDriver is used by GetInstalledDriversAsync
-                    // and reflects changes much faster.
+                    // Poll for driver registration for up to 60 seconds.
+                    // Some installers restart the Print Spooler, making GetInstalledDriversAsync
+                    // return empty during the restart. We skip empty-list iterations so a Spooler
+                    // restart doesn't exhaust our retry budget.
                     string? resolvedSilent = null;
                     IReadOnlyList<string> driversAfterSilent = driversBefore;
                     progress?.Report("Aguardando registro do driver...");
-                    for (int poll = 0; poll < 6 && resolvedSilent == null; poll++)
+                    int nonEmptyPolls = 0;
+                    int totalPolls = 0;
+                    while (resolvedSilent == null && totalPolls < 12) // max 60s
                     {
                         await Task.Delay(5000, ct);
+                        totalPolls++;
                         driversAfterSilent = await _printerService.GetInstalledDriversAsync(ct);
+
+                        if (driversAfterSilent.Count == 0)
+                        {
+                            _log.Info($"Poll {totalPolls}: driver list empty (Spooler restarting?), waiting...");
+                            continue; // don't count this poll; keep waiting
+                        }
+
+                        nonEmptyPolls++;
                         resolvedSilent = ResolveActualDriverName(request.Driver, driversAfterSilent)
                             ?? driversAfterSilent.Except(driversBefore, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
                         if (resolvedSilent != null)
-                            _log.Info($"Driver detected on poll {poll + 1}: '{resolvedSilent}'");
+                            _log.Info($"Driver detected on poll {totalPolls}: '{resolvedSilent}'");
+                        else if (nonEmptyPolls >= 6)
+                            break; // 6 non-empty checks done and driver not found — give up on this stage
                     }
 
                     if (resolvedSilent != null)
