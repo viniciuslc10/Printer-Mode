@@ -390,17 +390,36 @@
                   </Button>
                 </Grid>
 
-                <!-- ComboBox editável: mostra o resultado da busca E permite digitar manualmente -->
-                <TextBlock Text="Impressora compartilhada" FontSize="11"
-                           Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4"/>
-                <ComboBox ItemsSource="{Binding SharedPrinterList}"
-                          Text="{Binding SharedPrinterName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                          IsEditable="True"
-                          FontSize="13"
-                          Tag="Use 'Buscar' ou digite o nome do compartilhamento"/>
+                <!-- ComboBox editável: mostra o resultado da busca OU permite digitar manualmente -->
+                <TextBlock FontSize="11" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4">
+                  <Run Text="Nome do compartilhamento"/>
+                  <Run Text=" — selecione ou digite manualmente" Foreground="{StaticResource TextMutedBrush}" FontStyle="Italic"/>
+                </TextBlock>
+                <Grid>
+                  <ComboBox ItemsSource="{Binding SharedPrinterList}"
+                            Text="{Binding SharedPrinterName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            IsEditable="True"
+                            FontSize="13"/>
+                  <!-- Placeholder watermark quando vazio e sem foco -->
+                  <TextBlock Text="Ex: IMPRESSORA ou HP_LaserJet"
+                             Foreground="{StaticResource TextMutedBrush}"
+                             FontSize="13" Margin="12,0,0,0"
+                             VerticalAlignment="Center" IsHitTestVisible="False">
+                    <TextBlock.Style>
+                      <Style TargetType="TextBlock">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding SharedPrinterName}" Value="">
+                            <Setter Property="Visibility" Value="Visible"/>
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </TextBlock.Style>
+                  </TextBlock>
+                </Grid>
                 <TextBlock FontSize="11" Foreground="{StaticResource TextMutedBrush}"
                            Margin="0,4,0,0" TextWrapping="Wrap"
-                           Text="Clique em 'Buscar' para descobrir automaticamente. Se não aparecer, verifique se o Compartilhamento de Arquivo e Impressora está ativo no host."/>
+                           Text="Clique em 'Buscar' para descobrir automaticamente, ou digite o nome do compartilhamento diretamente se souber."/>
               </StackPanel>
 
             </StackPanel>

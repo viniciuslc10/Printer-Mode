@@ -293,8 +293,16 @@ public partial class SimpleViewModel : ObservableObject
             foreach (var p in printers)
                 SharedPrinterList.Add(p);
 
-            if (SharedPrinterList.Count > 0 && string.IsNullOrWhiteSpace(SharedPrinterName))
-                SharedPrinterName = SharedPrinterList[0];
+            if (SharedPrinterList.Count > 0)
+            {
+                if (string.IsNullOrWhiteSpace(SharedPrinterName))
+                    SharedPrinterName = SharedPrinterList[0];
+                StatusText = $"{SharedPrinterList.Count} impressora(s) encontrada(s). Selecione e clique em Instalar.";
+            }
+            else
+            {
+                StatusText = "Nenhuma impressora encontrada automaticamente. Digite o nome do compartilhamento manualmente no campo abaixo e clique em Instalar.";
+            }
         }
         finally
         {
