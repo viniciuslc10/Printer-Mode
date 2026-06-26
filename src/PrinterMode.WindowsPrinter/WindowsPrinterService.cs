@@ -315,34 +315,81 @@ public class WindowsPrinterService : IWindowsPrinterService
     {
         return await Task.Run(() =>
         {
-            try
-            {
-                var script = $"Add-Printer -ConnectionName '{connectionName.Replace("'", "''")}'";
-                var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-                _log.Info($"AddSharedPrinterAsync: '{connectionName}'");
-                using var process = Process.Start(psi)!;
-                var stderr = process.StandardError.ReadToEnd();
-                process.StandardOutput.ReadToEnd();
-                process.WaitForExit(30_000);
-                var cleanError = ExtractPsError(stderr.Trim());
-                _log.Info($"Add-Printer -ConnectionName exit={process.ExitCode} stderr='{cleanError}'");
-                return (process.ExitCode == 0, cleanError);
-            }
-            catch (Exception ex)
-            {
-                _log.Error($"AddSharedPrinterAsync exception: {ex.Message}");
-                return (false, ex.Message);
-            }
+            // Method 1: Add-Printer -ConnectionName (PrintManagement module)
+            var (ok1, err1) = TryAddPrinterViaPs(connectionName);
+            if (ok1) return (true, string.Empty);
+
+            _log.Warning($"Add-Printer failed ('{err1}'), trying WScript.Network...");
+
+            // Method 2: WScript.Network.AddWindowsPrinterConnection (COM/legacy — often succeeds when PS fails)
+            var (ok2, err2) = TryAddPrinterViaWScript(connectionName);
+            if (ok2) return (true, string.Empty);
+
+            var finalError = string.IsNullOrEmpty(err1) ? err2 : err1;
+            _log.Error($"Both methods failed for '{connectionName}'. Error: {finalError}");
+            return (false, finalError);
         }, ct);
+    }
+
+    private (bool ok, string error) TryAddPrinterViaPs(string connectionName)
+    {
+        try
+        {
+            var script = $"Add-Printer -ConnectionName '{connectionName.Replace("'", "''")}'";
+            var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+            var psi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            _log.Info($"TryAddPrinterViaPs: '{connectionName}'");
+            using var proc = Process.Start(psi)!;
+            var stderr = proc.StandardError.ReadToEnd();
+            proc.StandardOutput.ReadToEnd();
+            proc.WaitForExit(30_000);
+            var cleanError = ExtractPsError(stderr.Trim());
+            _log.Info($"Add-Printer exit={proc.ExitCode} error='{cleanError}'");
+            return (proc.ExitCode == 0, cleanError);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    private (bool ok, string error) TryAddPrinterViaWScript(string connectionName)
+    {
+        try
+        {
+            var safe = connectionName.Replace("'", "''");
+            var script = $"(New-Object -ComObject WScript.Network).AddWindowsPrinterConnection('{safe}')";
+            var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+            var psi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            _log.Info($"TryAddPrinterViaWScript: '{connectionName}'");
+            using var proc = Process.Start(psi)!;
+            var stderr = proc.StandardError.ReadToEnd();
+            proc.StandardOutput.ReadToEnd();
+            proc.WaitForExit(30_000);
+            var cleanError = ExtractPsError(stderr.Trim());
+            _log.Info($"WScript.Network exit={proc.ExitCode} error='{cleanError}'");
+            return (proc.ExitCode == 0, cleanError);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
     }
 
     public async Task<bool> AddSharedPrinterAsync(string connectionName, CancellationToken ct = default)
@@ -355,7 +402,43 @@ public class WindowsPrinterService : IWindowsPrinterService
     {
         return await Task.Run(() =>
         {
-            var printers = new List<string>();
+            var result = new List<string>();
+
+            // Strategy 1: net view \\host — uses only SMB port 445 (standard Windows sharing).
+            // Works whenever "File and Printer Sharing" is enabled, no WMI/RPC required.
+            try
+            {
+                var psi = new ProcessStartInfo("net", $"view \\\\{host}")
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                using var proc = Process.Start(psi)!;
+                var output = proc.StandardOutput.ReadToEnd();
+                proc.WaitForExit(10_000);
+
+                if (proc.ExitCode == 0)
+                {
+                    var parsed = ParseNetViewShares(output);
+                    result.AddRange(parsed);
+                    _log.Info($"net view {host}: [{string.Join(", ", parsed)}]");
+                }
+                else
+                {
+                    _log.Warning($"net view exited {proc.ExitCode} for {host}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"net view failed: {ex.Message}");
+            }
+
+            if (result.Count > 0)
+                return (IReadOnlyList<string>)result;
+
+            // Strategy 2: Get-Printer -ComputerName (needs WMI/RPC — may be blocked by firewall)
             try
             {
                 var script = $"Get-Printer -ComputerName '{host.Replace("'", "''")}' | Select-Object -ExpandProperty ShareName | Where-Object {{ $_ -ne $null -and $_ -ne '' }}";
@@ -371,23 +454,63 @@ public class WindowsPrinterService : IWindowsPrinterService
                 };
                 using var proc = Process.Start(psi)!;
                 var output = proc.StandardOutput.ReadToEnd();
-                proc.StandardError.ReadToEnd();
-                proc.WaitForExit(15_000);
+                proc.WaitForExit(10_000);
 
                 foreach (var line in output.Split('\n'))
                 {
                     var name = line.Trim();
-                    if (!string.IsNullOrEmpty(name))
-                        printers.Add(name);
+                    if (!string.IsNullOrEmpty(name) && !result.Contains(name, StringComparer.OrdinalIgnoreCase))
+                        result.Add(name);
                 }
-                _log.Info($"GetSharedPrintersAsync({host}): [{string.Join(", ", printers)}]");
+                _log.Info($"Get-Printer -ComputerName {host}: [{string.Join(", ", result)}]");
             }
             catch (Exception ex)
             {
-                _log.Warning($"GetSharedPrintersAsync failed: {ex.Message}");
+                _log.Warning($"Get-Printer -ComputerName failed: {ex.Message}");
             }
-            return (IReadOnlyList<string>)printers;
+
+            return (IReadOnlyList<string>)result;
         }, ct);
+    }
+
+    // Parses "net view \\host" output and returns non-admin share names.
+    // Works across locales — relies on the "---" separator line rather than column headers.
+    private static List<string> ParseNetViewShares(string output)
+    {
+        var shares = new List<string>();
+        bool inData = false;
+
+        foreach (var rawLine in output.Split('\n'))
+        {
+            var line = rawLine.TrimEnd();
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            // The "------" separator marks the beginning of data rows
+            if (line.TrimStart().StartsWith("---"))
+            {
+                inData = true;
+                continue;
+            }
+
+            if (!inData) continue;
+
+            // "The command completed successfully" / "O comando foi concluído" — end of data
+            if (!line.StartsWith(" ") && char.IsLetter(line[0])) break;
+
+            // Extract share name (first whitespace-delimited token)
+            var parts = line.TrimStart().Split(new[] { ' ', '\t' }, 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0) continue;
+
+            var shareName = parts[0].Trim();
+            if (string.IsNullOrEmpty(shareName)) continue;
+
+            // Skip hidden/admin shares (end with $)
+            if (shareName.EndsWith("$")) continue;
+
+            shares.Add(shareName);
+        }
+
+        return shares;
     }
 
     public async Task<bool> PrinterExistsAsync(string printerName, CancellationToken ct = default)
@@ -602,24 +725,36 @@ public class WindowsPrinterService : IWindowsPrinterService
     }
 
     // PowerShell -NonInteractive wraps errors in CLIXML (#< <Objs...>).
-    // This extracts the human-readable Message field, falling back to a generic message.
+    // This extracts the human-readable Message field. If not CLIXML, returns the raw text.
     private static string ExtractPsError(string raw)
     {
         if (string.IsNullOrEmpty(raw)) return string.Empty;
-        if (!raw.Contains("<Objs") && !raw.StartsWith("#<")) return raw;
 
-        var match = System.Text.RegularExpressions.Regex.Match(
-            raw, @"<S N=""Message"">(.*?)</S>",
-            System.Text.RegularExpressions.RegexOptions.Singleline);
+        // Not CLIXML — plain text error, return as-is (truncated to avoid wall of text)
+        if (!raw.Contains("<Objs") && !raw.StartsWith("#<"))
+            return raw.Length > 300 ? raw[..300] : raw;
+
+        var match = Regex.Match(raw, @"<S N=""Message"">(.*?)</S>", RegexOptions.Singleline);
         if (match.Success)
         {
             var msg = match.Groups[1].Value
                 .Replace("_x000D__x000A_", " ")
                 .Replace("_x0027_", "'")
+                .Replace("_x003C_", "<")
+                .Replace("_x003E_", ">")
                 .Trim();
             return msg;
         }
-        return "Erro de rede ao conectar à impressora compartilhada.";
+
+        // Last resort: extract any readable text from CLIXML
+        var fallback = Regex.Match(raw, @"<S[^>]*>(.*?)</S>", RegexOptions.Singleline);
+        if (fallback.Success)
+        {
+            var msg = Regex.Replace(fallback.Groups[1].Value, @"_x[0-9A-Fa-f]{4}_", " ").Trim();
+            if (!string.IsNullOrWhiteSpace(msg)) return msg;
+        }
+
+        return "Falha ao conectar — verifique se o compartilhamento está ativo no host.";
     }
 
     private static void RunProcess(string fileName, string arguments)

@@ -17,7 +17,9 @@
     <conv:InvertBoolConverter x:Key="InvertBool"/>
     <conv:CountToVisibilityConverter x:Key="CountVis"/>
 
-    <!-- RadioButton sem indicador padrão, usado nos cards de conexão -->
+    <!-- RadioButton sem indicador padrão, usado nos cards de conexão.
+         A raiz do template é Border Background="Transparent" para que cliques em
+         qualquer ponto do card (não só na bolinha) selecionem a opção. -->
     <Style x:Key="ConnRadio" TargetType="RadioButton">
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="BorderThickness" Value="0"/>
@@ -27,18 +29,21 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="RadioButton">
-            <StackPanel Margin="10,10,10,12">
-              <Grid HorizontalAlignment="Left" Margin="0,0,0,8">
-                <Ellipse x:Name="Outer" Width="14" Height="14"
-                         Stroke="{StaticResource BorderBrush2}"
-                         StrokeThickness="1.5" Fill="Transparent"/>
-                <Ellipse x:Name="Inner" Width="7" Height="7"
-                         Fill="#2563EB"
-                         HorizontalAlignment="Center" VerticalAlignment="Center"
-                         Visibility="Collapsed"/>
-              </Grid>
-              <ContentPresenter HorizontalAlignment="Center"/>
-            </StackPanel>
+            <!-- Background="Transparent" garante hit-testing em toda a área do card -->
+            <Border Background="Transparent">
+              <StackPanel Margin="10,10,10,12">
+                <Grid HorizontalAlignment="Left" Margin="0,0,0,8">
+                  <Ellipse x:Name="Outer" Width="14" Height="14"
+                           Stroke="{StaticResource BorderBrush2}"
+                           StrokeThickness="1.5" Fill="Transparent"/>
+                  <Ellipse x:Name="Inner" Width="7" Height="7"
+                           Fill="#2563EB"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="Collapsed"/>
+                </Grid>
+                <ContentPresenter HorizontalAlignment="Center"/>
+              </StackPanel>
+            </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsChecked" Value="True">
                 <Setter TargetName="Outer" Property="Stroke" Value="#2563EB"/>
@@ -374,7 +379,7 @@
                           Padding="12,0" Height="34">
                     <Button.Style>
                       <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                        <Setter Property="Content" Value="Buscar"/>
+                        <Setter Property="Content" Value="🔍 Buscar"/>
                         <Style.Triggers>
                           <DataTrigger Binding="{Binding IsSearchingShared}" Value="True">
                             <Setter Property="Content" Value="Buscando..."/>
@@ -385,22 +390,17 @@
                   </Button>
                 </Grid>
 
-                <StackPanel Margin="0,8,0,0"
-                            Visibility="{Binding HasSharedPrinters, Converter={StaticResource BoolVis}}">
-                  <TextBlock Text="Impressoras encontradas no host:" FontSize="11"
-                             Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
-                  <ComboBox ItemsSource="{Binding SharedPrinterList}"
-                            SelectedItem="{Binding SharedPrinterName, Mode=TwoWay}"
-                            FontSize="13"/>
-                </StackPanel>
-
-                <TextBlock Text="Nome do compartilhamento" FontSize="11"
+                <!-- ComboBox editável: mostra o resultado da busca E permite digitar manualmente -->
+                <TextBlock Text="Impressora compartilhada" FontSize="11"
                            Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4"/>
-                <TextBox Text="{Binding SharedPrinterName, UpdateSourceTrigger=PropertyChanged}"
-                         Tag="Deixe vazio para usar o nome da impressora"/>
+                <ComboBox ItemsSource="{Binding SharedPrinterList}"
+                          Text="{Binding SharedPrinterName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          IsEditable="True"
+                          FontSize="13"
+                          Tag="Use 'Buscar' ou digite o nome do compartilhamento"/>
                 <TextBlock FontSize="11" Foreground="{StaticResource TextMutedBrush}"
                            Margin="0,4,0,0" TextWrapping="Wrap"
-                           Text="Nome exato de como a impressora foi compartilhada no host (Painel de Controle → Impressoras → Propriedades → Compartilhamento)."/>
+                           Text="Clique em 'Buscar' para descobrir automaticamente. Se não aparecer, verifique se o Compartilhamento de Arquivo e Impressora está ativo no host."/>
               </StackPanel>
 
             </StackPanel>
