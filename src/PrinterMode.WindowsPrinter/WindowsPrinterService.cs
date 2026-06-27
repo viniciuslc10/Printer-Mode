@@ -7,7 +7,26 @@ using PrinterMode.Core.Models;
 
 namespace PrinterMode.WindowsPrinter;
 
-// P/Invoke to mpr.dll for native SMB share enumeration (works even when running elevated)
+// winspool.drv — same API used by the Windows "Add Printer" wizard to list remote printers
+internal static class WinspoolApi
+{
+    public const int PRINTER_ENUM_NAME = 0x00000008;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct PRINTER_INFO_1
+    {
+        public int Flags;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? pDescription;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? pName;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? pComment;
+    }
+
+    [DllImport("winspool.drv", EntryPoint = "EnumPrintersW", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern bool EnumPrinters(int Flags, string? Name, int Level,
+        IntPtr pPrinterEnum, int cbBuf, out int pcbNeeded, out int pcReturned);
+}
+
+// mpr.dll — WNet share enumeration (secondary fallback)
 internal static class WNetApi
 {
     public const int NO_ERROR             = 0;
@@ -441,14 +460,30 @@ public class WindowsPrinterService : IWindowsPrinterService
         {
             var result = new List<string>();
 
-            // Strategy 1: WNetOpenEnum via mpr.dll — native Windows API used by the
-            // "Add Printer" wizard. Works even when running as admin (elevated token),
-            // unlike Shell.Application which fails in elevated/service contexts.
+            // Strategy 1: EnumPrinters(PRINTER_ENUM_NAME) from winspool.drv.
+            // This is the exact API the Windows "Add Printer" wizard uses to list
+            // remote shared printers. Works from elevated processes via the print
+            // spooler's named pipe (\\host\pipe\spoolss over SMB port 445).
+            try
+            {
+                var spoolShares = EnumeratePrinterSharesViaEnumPrinters(host);
+                result.AddRange(spoolShares);
+                _log.Info($"EnumPrinters {host}: [{string.Join(", ", result)}]");
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"EnumPrinters failed: {ex.Message}");
+            }
+
+            if (result.Count > 0)
+                return (IReadOnlyList<string>)result;
+
+            // Strategy 2: WNetOpenEnum via mpr.dll
             try
             {
                 var wnetShares = EnumeratePrinterSharesViaWNet(host);
-                result.AddRange(wnetShares);
-                _log.Info($"WNet {host}: [{string.Join(", ", result)}]");
+                result.AddRange(wnetShares.Where(s => !result.Contains(s, StringComparer.OrdinalIgnoreCase)));
+                _log.Info($"WNet {host}: [{string.Join(", ", wnetShares)}]");
             }
             catch (Exception ex)
             {
@@ -527,6 +562,55 @@ public class WindowsPrinterService : IWindowsPrinterService
 
             return (IReadOnlyList<string>)result;
         }, ct);
+    }
+
+    private List<string> EnumeratePrinterSharesViaEnumPrinters(string host)
+    {
+        var shares = new List<string>();
+        var serverName = $@"\\{host}";
+
+        // First call: get required buffer size (returns false with needed > 0)
+        WinspoolApi.EnumPrinters(WinspoolApi.PRINTER_ENUM_NAME, serverName, 1,
+            IntPtr.Zero, 0, out int needed, out _);
+
+        if (needed == 0)
+        {
+            _log.Warning($"EnumPrinters({host}): needed=0, Win32={Marshal.GetLastWin32Error()}");
+            return shares;
+        }
+
+        var buf = Marshal.AllocHGlobal(needed);
+        try
+        {
+            if (!WinspoolApi.EnumPrinters(WinspoolApi.PRINTER_ENUM_NAME, serverName, 1,
+                    buf, needed, out _, out int count))
+            {
+                _log.Warning($"EnumPrinters({host}) 2nd call failed: Win32={Marshal.GetLastWin32Error()}");
+                return shares;
+            }
+
+            _log.Info($"EnumPrinters({host}) returned {count} printer(s)");
+            var structSize = Marshal.SizeOf<WinspoolApi.PRINTER_INFO_1>();
+            var ptr = buf;
+            for (int i = 0; i < count; i++)
+            {
+                var info = Marshal.PtrToStructure<WinspoolApi.PRINTER_INFO_1>(ptr);
+                var name = info.pName ?? string.Empty;
+                // pName is "\\host\sharename" — extract just the share name
+                if (name.StartsWith(@"\\"))
+                {
+                    var lastSlash = name.LastIndexOf('\\');
+                    name = lastSlash >= 0 ? name[(lastSlash + 1)..] : name;
+                }
+                _log.Info($"  printer[{i}]: '{name}' (raw='{info.pName}')");
+                if (!string.IsNullOrEmpty(name) && !name.EndsWith("$"))
+                    shares.Add(name);
+                ptr = IntPtr.Add(ptr, structSize);
+            }
+        }
+        finally { Marshal.FreeHGlobal(buf); }
+
+        return shares;
     }
 
     private List<string> EnumeratePrinterSharesViaWNet(string host)
