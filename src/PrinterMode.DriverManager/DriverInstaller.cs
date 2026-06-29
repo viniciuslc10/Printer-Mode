@@ -53,6 +53,7 @@ public class DriverInstaller : IDriverInstaller
             //   "ui-only"     → open installer with UI (Daruma and similar proprietary setups)
             bool driverInstalled;
             string? detectedDriverName = null; // actual Windows driver name found after install
+            IReadOnlyList<string> driversAtInstallStart = []; // snapshot for diff-based detection in Step 3
 
             if (request.SkipDriverInstall)
             {
@@ -83,15 +84,19 @@ public class DriverInstaller : IDriverInstaller
 
                 bool needsUiInstall = installerType == "ui-only";
 
+                // Snapshot drivers before install for all paths (diff-based detection)
+                driversAtInstallStart = await _printerService.GetInstalledDriversAsync(ct);
+
                 // ── WinRAR SFX: extract to temp, kill auto-launched setup, run Silent_Setup.exe ──
                 if (installerType == "winrar-sfx" && !string.IsNullOrEmpty(request.Driver.SilentSetupExe))
                 {
                     var sfxResult = await InstallWinRarSfxAsync(exePath, request.Driver.SilentSetupExe!, ct, progress);
                     if (sfxResult.success)
                     {
-                        await Task.Delay(2000, ct);
+                        await Task.Delay(4000, ct);
                         var driversAfterSfx = await _printerService.GetInstalledDriversAsync(ct);
-                        var resolvedSfx = ResolveActualDriverName(request.Driver, driversAfterSfx);
+                        var resolvedSfx = ResolveActualDriverName(request.Driver, driversAfterSfx)
+                            ?? driversAfterSfx.Except(driversAtInstallStart, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
                         if (resolvedSfx != null)
                         {
                             detectedDriverName = resolvedSfx;
@@ -118,8 +123,8 @@ public class DriverInstaller : IDriverInstaller
                     if (string.IsNullOrEmpty(silentArgs))
                         silentArgs = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART";
 
-                    // Snapshot drivers and DriverStore BEFORE install
-                    var driversBefore = await _printerService.GetInstalledDriversAsync(ct);
+                    // driversBefore reuses the snapshot taken above (no second WMI call)
+                    var driversBefore = driversAtInstallStart;
                     var storeSnapBefore = SnapshotDriverStore();
 
                     progress?.Report("Instalando driver silenciosamente...");
@@ -151,21 +156,19 @@ public class DriverInstaller : IDriverInstaller
                         return InstallResult.Fail($"Falha ao executar instalador: {ex.Message}", null, steps);
                     }
 
-                    // Explicitly restart the Print Spooler so the newly installed driver is loaded
-                    // into a clean Spooler state. Many driver EXEs restart the Spooler internally;
-                    // we do it ourselves to guarantee a controlled, known-good starting point.
+                    // Wait a few seconds so the installer's own background tasks finish registering
+                    // the driver before we restart the Spooler (avoids interrupting the installer).
+                    await Task.Delay(4000, ct);
                     progress?.Report("Reiniciando serviço de impressão para carregar o driver...");
                     await _printerService.RestartSpoolerAsync(ct);
 
-                    // Poll for driver registration for up to 30 seconds after the Spooler restart.
+                    // Poll for driver registration for up to 50 seconds after the Spooler restart.
                     string? resolvedSilent = null;
                     IReadOnlyList<string> driversAfterSilent = driversBefore;
                     progress?.Report("Aguardando registro do driver...");
-                    // After our controlled Spooler restart the list should be stable.
-                    // Poll up to 6 × 3s = 18 seconds for the driver to appear.
-                    for (int poll = 0; poll < 6 && resolvedSilent == null; poll++)
+                    for (int poll = 0; poll < 10 && resolvedSilent == null; poll++)
                     {
-                        await Task.Delay(3000, ct);
+                        await Task.Delay(5000, ct);
                         driversAfterSilent = await _printerService.GetInstalledDriversAsync(ct);
                         resolvedSilent = ResolveActualDriverName(request.Driver, driversAfterSilent)
                             ?? driversAfterSilent.Except(driversBefore, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
@@ -280,6 +283,7 @@ public class DriverInstaller : IDriverInstaller
             progress?.Report("Criando porta de impressão...");
             string portName;
             bool portCreated;
+            string? discoveredUsbPort = null; // accessible outside switch for error diagnosis
 
             switch (request.ConnectionType)
             {
@@ -299,13 +303,21 @@ public class DriverInstaller : IDriverInstaller
 
                 case ConnectionType.USB:
                 default:
-                    // Find the actual USB port Windows registered for this printer.
-                    // Windows creates USB001/USB002/… only when the device is detected.
-                    var usbPort = await _printerService.FindBestUsbPortAsync(ct);
-                    portName = request.PortName ?? usbPort ?? "USB001";
+                    // Poll for the USB port — after driver install + spooler restart Windows
+                    // takes time to re-enumerate the USB device and register the port.
+                    for (int usbPoll = 0; usbPoll < 10 && discoveredUsbPort == null; usbPoll++)
+                    {
+                        discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct);
+                        if (discoveredUsbPort == null)
+                        {
+                            if (usbPoll == 0) progress?.Report("Aguardando porta USB...");
+                            await Task.Delay(2000, ct);
+                        }
+                    }
+                    portName = request.PortName ?? discoveredUsbPort ?? "USB001";
                     portCreated = true;
                     steps.Add($"Porta USB: {portName}");
-                    _log.Info($"USB port selected: {portName} (discovered: {usbPort ?? "none"})");
+                    _log.Info($"USB port selected: {portName} (discovered: {discoveredUsbPort ?? "none"})");
                     break;
             }
 
@@ -356,9 +368,16 @@ public class DriverInstaller : IDriverInstaller
                     }
                     else
                     {
-                        // Probe every candidate name — AddPrinterAsync tells us which one Windows accepts
-                        driverNamesToTry = request.Driver.AllDriverNames().ToList();
-                        _log.Info($"Probing {driverNamesToTry.Count} candidate driver names: [{string.Join(", ", driverNamesToTry)}]");
+                        // Any driver that appeared after install (unknown name) goes first,
+                        // then all known candidate names
+                        var freshNew = driversAtInstallStart.Count > 0
+                            ? freshDrivers
+                                .Except(driversAtInstallStart, StringComparer.OrdinalIgnoreCase)
+                                .ToList()
+                            : [];
+                        var knownCandidates = request.Driver.AllDriverNames().ToList();
+                        driverNamesToTry = [..freshNew, ..knownCandidates];
+                        _log.Info($"Probing {driverNamesToTry.Count} driver names ({freshNew.Count} newly detected + {knownCandidates.Count} known): [{string.Join(", ", driverNamesToTry)}]");
                     }
                 }
 
@@ -379,9 +398,21 @@ public class DriverInstaller : IDriverInstaller
                 if (!printerAdded)
                 {
                     _log.Error($"AddPrinterAsync failed for all candidates. port='{portName}' tried=[{string.Join(", ", driverNamesToTry)}]");
+
+                    // Diagnose: check if the USB port exists — a missing port causes Add-Printer
+                    // to fail for ALL driver names, producing a misleading "driver not accepted" error.
+                    if (request.ConnectionType == ConnectionType.USB && discoveredUsbPort == null)
+                    {
+                        return InstallResult.Fail(
+                            "Porta USB não encontrada no Windows.",
+                            "Verifique se a impressora está conectada e ligada. Desconecte e reconecte o cabo USB e tente novamente.",
+                            steps);
+                    }
+
                     return InstallResult.Fail(
-                        $"Falha ao criar impressora no Windows.",
-                        $"Nenhum driver foi aceito pelo Windows. Nomes tentados: {string.Join(", ", driverNamesToTry)}",
+                        "Falha ao criar impressora no Windows.",
+                        $"Nenhum driver foi aceito pelo Windows. Nomes tentados: {string.Join(", ", driverNamesToTry)}\n" +
+                        "Verifique o nome exato do driver em: Painel de Controle → Gerenciamento de Impressão → Drivers.",
                         steps);
                 }
 
