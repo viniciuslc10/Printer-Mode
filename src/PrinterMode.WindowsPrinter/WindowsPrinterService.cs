@@ -628,7 +628,7 @@ public class WindowsPrinterService : IWindowsPrinterService
         int hr = WNetApi.WNetOpenEnum(
             WNetApi.RESOURCE_GLOBALNET,
             WNetApi.RESOURCETYPE_ANY,
-            0,
+            WNetApi.RESOURCEUSAGE_CONTAINER,
             ref serverResource,
             out IntPtr hEnum);
 
@@ -646,7 +646,7 @@ public class WindowsPrinterService : IWindowsPrinterService
             {
                 while (true)
                 {
-                    int count = -1, size = bufSize;
+                    int count = bufSize / Marshal.SizeOf<WNetApi.NETRESOURCE>(), size = bufSize;
                     int err = WNetApi.WNetEnumResource(hEnum, ref count, buf, ref size);
                     if (err == WNetApi.ERROR_NO_MORE_ITEMS || count <= 0) break;
                     if (err != WNetApi.NO_ERROR) break;
@@ -1084,7 +1084,12 @@ public class WindowsPrinterService : IWindowsPrinterService
             printer["Shared"] = false;
 
             var result = printer.Put();
-            _log.Info($"Printer added via WMI: {printerName} (path={result?.Path})");
+            if (result == null)
+            {
+                _log.Error($"WMI printer creation returned null for {printerName}");
+                return false;
+            }
+            _log.Info($"Printer added via WMI: {printerName} (path={result.Path})");
             return true;
         }
         catch (ManagementException ex)
