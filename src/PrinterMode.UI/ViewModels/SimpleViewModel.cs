@@ -38,7 +38,7 @@ public partial class SimpleViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowSerialFields))]
     [NotifyPropertyChangedFor(nameof(ShowSharedFields))]
     [NotifyPropertyChangedFor(nameof(ShowUsbPortSelector))]
-    private bool _connectionUsb = true;
+    private bool _connectionUsb;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowNetworkFields))]
@@ -183,14 +183,6 @@ public partial class SimpleViewModel : ObservableObject
         foreach (var p in papers)
             Papers.Add(p);
         SelectedPaper = Papers.FirstOrDefault();
-
-        // Auto-select connection type from driver capabilities
-        if (value.SupportedPorts.Any(p => p.StartsWith("COM", StringComparison.OrdinalIgnoreCase) || p.Equals("Serial", StringComparison.OrdinalIgnoreCase)))
-        { ConnectionUsb = false; ConnectionNetwork = false; ConnectionSerial = true; ConnectionShared = false; }
-        else if (value.SupportedPorts.Any(p => p.Contains("TCP", StringComparison.OrdinalIgnoreCase) || p.Contains("Network", StringComparison.OrdinalIgnoreCase) || p.Contains("IP", StringComparison.OrdinalIgnoreCase)))
-        { ConnectionUsb = false; ConnectionNetwork = true; ConnectionSerial = false; ConnectionShared = false; }
-        else
-        { ConnectionUsb = true; ConnectionNetwork = false; ConnectionSerial = false; ConnectionShared = false; }
 
         StatusText = $"Modelo: {value.DisplayName}. Clique em Instalar para continuar.";
     }
