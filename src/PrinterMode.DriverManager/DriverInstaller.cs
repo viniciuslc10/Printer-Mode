@@ -302,17 +302,28 @@ public class DriverInstaller : IDriverInstaller
 
                 case ConnectionType.USB:
                 default:
-                    // Poll for the USB port — after spooler restart Windows takes a moment
-                    // to re-enumerate the USB device and register the port (usually < 4s).
-                    for (int usbPoll = 0; usbPoll < 5 && discoveredUsbPort == null; usbPoll++)
+                    // Quick poll (3×1s) — if the Spooler is already running and the port
+                    // is registered, we find it immediately.
+                    for (int p = 0; p < 3 && discoveredUsbPort == null; p++)
                     {
                         discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct);
-                        if (discoveredUsbPort == null)
+                        if (discoveredUsbPort == null) await Task.Delay(1000, ct);
+                    }
+
+                    if (discoveredUsbPort == null)
+                    {
+                        // Port not yet registered — the driver installer likely restarted
+                        // the Spooler itself. Restart it again so USB devices are re-enumerated
+                        // and the port (USB001/USB002/…) gets registered.
+                        progress?.Report("Detectando porta USB...");
+                        await _printerService.RestartSpoolerAsync(ct);
+                        for (int p = 0; p < 5 && discoveredUsbPort == null; p++)
                         {
-                            if (usbPoll == 0) progress?.Report("Aguardando porta USB...");
                             await Task.Delay(2000, ct);
+                            discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct);
                         }
                     }
+
                     portName = request.PortName ?? discoveredUsbPort ?? "USB001";
                     portCreated = true;
                     steps.Add($"Porta USB: {portName}");
@@ -330,21 +341,31 @@ public class DriverInstaller : IDriverInstaller
 
             if (printerExists)
             {
-                // Printer already registered — just redirect it to the new port
-                _log.Info($"Printer '{request.PrinterName}' already exists, updating port to '{portName}'.");
-                progress?.Report($"Impressora já existe, atualizando porta para '{portName}'...");
-
-                var updated = await _printerService.UpdatePrinterPortAsync(request.PrinterName, portName, ct);
-                if (!updated)
+                // If we have a confirmed USB port, update it. If not (port was not found
+                // even after Spooler restart), keep the existing port that Windows PnP
+                // assigned — changing it to "USB001" fallback would break the printer.
+                if (request.ConnectionType == ConnectionType.USB && discoveredUsbPort == null)
                 {
-                    return InstallResult.Fail(
-                        $"Falha ao atualizar a porta da impressora '{request.PrinterName}'.",
-                        "Verifique as permissões e tente novamente.",
-                        steps);
+                    _log.Info($"Printer '{request.PrinterName}' exists; USB port not found — keeping PnP-assigned port.");
+                    steps.Add($"Impressora '{request.PrinterName}' já configurada (porta preservada).");
                 }
+                else
+                {
+                    _log.Info($"Printer '{request.PrinterName}' already exists, updating port to '{portName}'.");
+                    progress?.Report($"Impressora já existe, atualizando porta para '{portName}'...");
 
-                steps.Add($"Porta atualizada: {request.PrinterName} → {portName}");
-                _log.Info($"Printer port updated: {request.PrinterName} → {portName}");
+                    var updated = await _printerService.UpdatePrinterPortAsync(request.PrinterName, portName, ct);
+                    if (!updated)
+                    {
+                        return InstallResult.Fail(
+                            $"Falha ao atualizar a porta da impressora '{request.PrinterName}'.",
+                            "Verifique as permissões e tente novamente.",
+                            steps);
+                    }
+
+                    steps.Add($"Porta atualizada: {request.PrinterName} → {portName}");
+                    _log.Info($"Printer port updated: {request.PrinterName} → {portName}");
+                }
             }
             else
             {
