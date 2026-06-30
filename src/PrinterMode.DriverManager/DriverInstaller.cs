@@ -159,60 +159,60 @@ public class DriverInstaller : IDriverInstaller
                     // Brief pause for installer to finish writing files and registry entries.
                     await Task.Delay(1500, ct);
 
-                    // FAST PATH: Windows PnP may have auto-created a print queue already
-                    // (visible in Device Manager as "Impressora Conectada"). Check Win32_Printer
-                    // before doing a costly Spooler restart.
-                    progress?.Report("Verificando driver instalado...");
+                    // Always restart the Spooler so the driver registers in Win32_PrinterDriver
+                    // AND USB ports (Win32_PrinterPort) have time to enumerate (~15-18s after start).
+                    // Skipping this restart causes USB port detection to fail in Step 2.
+                    progress?.Report("Reiniciando serviço de impressão para carregar o driver...");
+                    await _printerService.RestartSpoolerAsync(ct);
+
                     string? resolvedSilent = null;
-                    var fastAutoDriver = await _printerService.FindDriverNameFromAutoInstalledPrinterAsync(
-                        request.Driver.Manufacturer, request.Driver.Model, ct);
-                    if (fastAutoDriver != null)
+                    IReadOnlyList<string> driversAfterSilent = driversBefore;
+                    progress?.Report("Aguardando registro do driver...");
+                    for (int poll = 0; poll < 6 && resolvedSilent == null; poll++)
                     {
-                        resolvedSilent = fastAutoDriver;
-                        _log.Info($"Fast path: driver detected via auto-installed printer: '{fastAutoDriver}'");
+                        await Task.Delay(3000, ct);
+                        driversAfterSilent = await _printerService.GetInstalledDriversAsync(ct);
+                        resolvedSilent = ResolveActualDriverName(request.Driver, driversAfterSilent)
+                            ?? driversAfterSilent.Except(driversBefore, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+                        if (resolvedSilent != null)
+                        {
+                            _log.Info($"Driver detected on poll {poll + 1}: '{resolvedSilent}'");
+                        }
+                        else
+                        {
+                            // Also check if PnP auto-created a print queue — its DriverName is reliable
+                            var autoDriver = await _printerService.FindDriverNameFromAutoInstalledPrinterAsync(
+                                request.Driver.Manufacturer, request.Driver.Model, ct);
+                            if (autoDriver != null)
+                            {
+                                resolvedSilent = autoDriver;
+                                _log.Info($"Driver detected via PnP auto-queue on poll {poll + 1}: '{autoDriver}'");
+                            }
+                        }
                     }
 
-                    // If the fast path didn't work, restart the Spooler and poll Get-PrinterDriver.
                     if (resolvedSilent == null)
                     {
-                        progress?.Report("Reiniciando serviço de impressão para carregar o driver...");
-                        await _printerService.RestartSpoolerAsync(ct);
-
-                        IReadOnlyList<string> driversAfterSilent = driversBefore;
-                        progress?.Report("Aguardando registro do driver...");
-                        for (int poll = 0; poll < 6 && resolvedSilent == null; poll++)
+                        // DriverStore + pnputil fallback
+                        _log.Warning("Driver not detected after Spooler restart. Searching DriverStore...");
+                        progress?.Report("Buscando driver no DriverStore do Windows...");
+                        var newInfFiles = FindNewDriverStoreInfs(storeSnapBefore, request.Driver);
+                        foreach (var stagedInf in newInfFiles)
                         {
-                            await Task.Delay(3000, ct);
-                            driversAfterSilent = await _printerService.GetInstalledDriversAsync(ct);
-                            resolvedSilent = ResolveActualDriverName(request.Driver, driversAfterSilent)
-                                ?? driversAfterSilent.Except(driversBefore, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
-                            if (resolvedSilent != null)
-                                _log.Info($"Driver detected on poll {poll + 1}: '{resolvedSilent}'");
+                            _log.Info($"Found staged inf in DriverStore: '{stagedInf}'");
+                            var pnpOk = await InstallViaPnpUtilAsync(stagedInf, ct);
+                            if (pnpOk) break;
                         }
 
-                        if (resolvedSilent == null)
-                        {
-                            // DriverStore + pnputil fallback
-                            _log.Warning("Driver not detected after Spooler restart. Searching DriverStore...");
-                            progress?.Report("Buscando driver no DriverStore do Windows...");
-                            var newInfFiles = FindNewDriverStoreInfs(storeSnapBefore, request.Driver);
-                            foreach (var stagedInf in newInfFiles)
-                            {
-                                _log.Info($"Found staged inf in DriverStore: '{stagedInf}'");
-                                var pnpOk = await InstallViaPnpUtilAsync(stagedInf, ct);
-                                if (pnpOk) break;
-                            }
+                        await Task.Delay(4000, ct);
+                        var driversAfterStore = await _printerService.GetInstalledDriversAsync(ct);
+                        resolvedSilent = ResolveActualDriverName(request.Driver, driversAfterStore)
+                            ?? driversAfterStore.Except(driversBefore, StringComparer.OrdinalIgnoreCase).FirstOrDefault()
+                            ?? (await _printerService.FindDriverNameFromAutoInstalledPrinterAsync(
+                                    request.Driver.Manufacturer, request.Driver.Model, ct));
 
-                            await Task.Delay(4000, ct);
-                            var driversAfterStore = await _printerService.GetInstalledDriversAsync(ct);
-                            resolvedSilent = ResolveActualDriverName(request.Driver, driversAfterStore)
-                                ?? driversAfterStore.Except(driversBefore, StringComparer.OrdinalIgnoreCase).FirstOrDefault()
-                                ?? (await _printerService.FindDriverNameFromAutoInstalledPrinterAsync(
-                                        request.Driver.Manufacturer, request.Driver.Model, ct));
-
-                            if (resolvedSilent != null)
-                                _log.Info($"Driver found after DriverStore/pnputil: '{resolvedSilent}'");
-                        }
+                        if (resolvedSilent != null)
+                            _log.Info($"Driver found after DriverStore/pnputil: '{resolvedSilent}'");
                     }
 
                     if (resolvedSilent != null)
