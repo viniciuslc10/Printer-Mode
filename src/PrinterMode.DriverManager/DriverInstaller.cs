@@ -54,6 +54,7 @@ public class DriverInstaller : IDriverInstaller
             bool driverInstalled;
             string? detectedDriverName = null; // actual Windows driver name found after install
             IReadOnlyList<string> driversAtInstallStart = []; // snapshot for diff-based detection in Step 3
+            string? discoveredUsbPort = null; // populated during Step 1 polling so Step 2 doesn't race
 
             if (request.SkipDriverInstall)
             {
@@ -167,20 +168,25 @@ public class DriverInstaller : IDriverInstaller
 
                     string? resolvedSilent = null;
                     IReadOnlyList<string> driversAfterSilent = driversBefore;
+                    bool needsUsbPort = request.ConnectionType == ConnectionType.USB;
                     progress?.Report("Aguardando registro do driver...");
-                    for (int poll = 0; poll < 6 && resolvedSilent == null; poll++)
+                    // Run until BOTH the driver name AND the USB port (if needed) are found,
+                    // or until all 6 polls (18 s) are exhausted. This guarantees the Spooler
+                    // has been running long enough for USB ports to register before Step 2 runs.
+                    for (int poll = 0; poll < 6 && (resolvedSilent == null || (needsUsbPort && discoveredUsbPort == null)); poll++)
                     {
                         await Task.Delay(3000, ct);
+
+                        // Detect driver name
                         driversAfterSilent = await _printerService.GetInstalledDriversAsync(ct);
-                        resolvedSilent = ResolveActualDriverName(request.Driver, driversAfterSilent)
+                        resolvedSilent ??= ResolveActualDriverName(request.Driver, driversAfterSilent)
                             ?? driversAfterSilent.Except(driversBefore, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
                         if (resolvedSilent != null)
-                        {
                             _log.Info($"Driver detected on poll {poll + 1}: '{resolvedSilent}'");
-                        }
-                        else
+
+                        // Detect via PnP auto-queue if still not found
+                        if (resolvedSilent == null)
                         {
-                            // Also check if PnP auto-created a print queue — its DriverName is reliable
                             var autoDriver = await _printerService.FindDriverNameFromAutoInstalledPrinterAsync(
                                 request.Driver.Manufacturer, request.Driver.Model, ct);
                             if (autoDriver != null)
@@ -189,6 +195,10 @@ public class DriverInstaller : IDriverInstaller
                                 _log.Info($"Driver detected via PnP auto-queue on poll {poll + 1}: '{autoDriver}'");
                             }
                         }
+
+                        // Also detect USB port — needs ~15-18 s of Spooler uptime to register
+                        if (needsUsbPort && discoveredUsbPort == null)
+                            discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct);
                     }
 
                     if (resolvedSilent == null)
@@ -282,7 +292,6 @@ public class DriverInstaller : IDriverInstaller
             progress?.Report("Criando porta de impressão...");
             string portName;
             bool portCreated;
-            string? discoveredUsbPort = null; // accessible outside switch for error diagnosis
 
             switch (request.ConnectionType)
             {
