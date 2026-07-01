@@ -885,73 +885,85 @@ public class WindowsPrinterService : IWindowsPrinterService
     public async Task<string?> FindDriverNameFromAutoInstalledPrinterAsync(
         string manufacturerHint, string modelHint, CancellationToken ct = default)
     {
+        var (driver, _) = await FindAutoInstalledPrinterInfoAsync(manufacturerHint, modelHint, ct);
+        return driver;
+    }
+
+    public async Task<(string? DriverName, string? PortName)> FindAutoInstalledPrinterInfoAsync(
+        string manufacturerHint, string modelHint, CancellationToken ct = default)
+    {
         return await Task.Run(() =>
         {
             try
             {
-                // Search Win32_Printer for any printer that Windows auto-installed
-                // that matches our manufacturer or model keywords
-                using var searcher = new ManagementObjectSearcher("SELECT Name, DriverName FROM Win32_Printer");
+                using var searcher = new ManagementObjectSearcher(
+                    "SELECT Name, DriverName, PortName FROM Win32_Printer");
+
                 var mfgLow = manufacturerHint.ToLowerInvariant();
                 var mdlLow = modelHint.Replace("-", "").Replace(" ", "").ToLowerInvariant();
+
+                (string? DriverName, string? PortName) fallback = (null, null);
 
                 foreach (ManagementObject obj in searcher.Get())
                 {
                     ct.ThrowIfCancellationRequested();
-                    var name = obj["Name"]?.ToString() ?? "";
+                    var name       = obj["Name"]?.ToString() ?? "";
                     var driverName = obj["DriverName"]?.ToString();
+                    var portName   = obj["PortName"]?.ToString();
                     if (string.IsNullOrEmpty(driverName)) continue;
 
-                    var nameLow = name.ToLowerInvariant().Replace("-", "").Replace(" ", "");
-                    if (nameLow.Contains(mfgLow) || nameLow.Contains(mdlLow))
+                    var nameLow   = name.ToLowerInvariant().Replace("-", "").Replace(" ", "");
+                    var driverLow = driverName.ToLowerInvariant().Replace("-", "").Replace(" ", "");
+
+                    // Primary: name or driver matches manufacturer/model keywords
+                    if (nameLow.Contains(mfgLow) || nameLow.Contains(mdlLow) ||
+                        driverLow.Contains(mfgLow) || driverLow.Contains(mdlLow))
                     {
-                        _log.Info($"Found auto-installed printer '{name}' using driver '{driverName}'");
-                        return driverName;
+                        _log.Info($"FindAutoInfo: matched '{name}' driver='{driverName}' port='{portName}'");
+                        return (driverName, portName);
+                    }
+
+                    // Fallback: any non-system printer — keep first candidate
+                    if (fallback.DriverName == null &&
+                        !driverName.Contains("Microsoft",  StringComparison.OrdinalIgnoreCase) &&
+                        !driverName.Contains("OneNote",    StringComparison.OrdinalIgnoreCase) &&
+                        !driverName.Contains("Fax",        StringComparison.OrdinalIgnoreCase) &&
+                        !driverName.Contains("XPS",        StringComparison.OrdinalIgnoreCase) &&
+                        !driverName.Contains("PDF",        StringComparison.OrdinalIgnoreCase))
+                    {
+                        fallback = (driverName, portName);
                     }
                 }
 
-                // Broader fallback: any printer on a USB port that isn't a well-known system printer
-                using var usbSearcher = new ManagementObjectSearcher(
-                    "SELECT Name, DriverName, PortName FROM Win32_Printer WHERE PortName LIKE 'USB%'");
-                foreach (ManagementObject obj in usbSearcher.Get())
+                if (fallback.DriverName != null)
                 {
-                    ct.ThrowIfCancellationRequested();
-                    var driverName = obj["DriverName"]?.ToString();
-                    var name = obj["Name"]?.ToString() ?? "";
-                    if (string.IsNullOrEmpty(driverName)) continue;
-                    if (driverName.Contains("Microsoft", StringComparison.OrdinalIgnoreCase)) continue;
-                    if (driverName.Contains("OneNote", StringComparison.OrdinalIgnoreCase)) continue;
-
-                    _log.Info($"Found USB printer '{name}' using driver '{driverName}' — using as fallback");
-                    return driverName;
+                    _log.Info($"FindAutoInfo: fallback driver='{fallback.DriverName}' port='{fallback.PortName}'");
+                    return fallback;
                 }
             }
             catch (Exception ex)
             {
-                _log.Warning($"FindDriverNameFromAutoInstalledPrinterAsync failed: {ex.Message}");
+                _log.Warning($"FindAutoInstalledPrinterInfoAsync failed: {ex.Message}");
             }
-            return null;
+            return (null, null);
         }, ct);
     }
 
     public async Task RestartSpoolerAsync(CancellationToken ct = default)
     {
-        _log.Info("Restarting Print Spooler to ensure driver is loaded...");
+        _log.Info("Restarting Print Spooler...");
         try
         {
-            await Task.Run(() =>
-            {
-                RunProcess("net", "stop spooler");
-            }, ct);
+            // Stop-Service -Force kills the spooler immediately without waiting for
+            // pending print jobs to drain, cutting stop time from up to 15 s to ~1 s.
+            var stopScript  = "Stop-Service -Name Spooler -Force -ErrorAction SilentlyContinue";
+            var stopEncoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(stopScript));
+            await Task.Run(() => RunProcess("powershell.exe",
+                $"-NoProfile -NonInteractive -EncodedCommand {stopEncoded}"), ct);
 
-            await Task.Delay(2000, ct);
-
-            await Task.Run(() =>
-            {
-                RunProcess("net", "start spooler");
-            }, ct);
-
-            await Task.Delay(3000, ct);
+            await Task.Delay(800, ct);
+            await Task.Run(() => RunProcess("net", "start spooler"), ct);
+            await Task.Delay(1500, ct);
             _log.Info("Print Spooler restarted.");
         }
         catch (Exception ex)

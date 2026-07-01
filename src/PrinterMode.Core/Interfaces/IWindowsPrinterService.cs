@@ -22,6 +22,7 @@ public interface IWindowsPrinterService
     Task<IReadOnlyList<PortEntry>> GetSerialPortsWithNamesAsync(CancellationToken ct = default);
     Task<IReadOnlyList<PortEntry>> GetUsbPrinterPortsWithNamesAsync(CancellationToken ct = default);
     Task<string?> FindDriverNameFromAutoInstalledPrinterAsync(string manufacturerHint, string modelHint, CancellationToken ct = default);
+    Task<(string? DriverName, string? PortName)> FindAutoInstalledPrinterInfoAsync(string manufacturerHint, string modelHint, CancellationToken ct = default);
     Task RestartSpoolerAsync(CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetSharedPrintersAsync(string host, CancellationToken ct = default);
 }
