@@ -163,11 +163,21 @@ public class DriverInstaller : IDriverInstaller
                     bool needsUsbPort = request.ConnectionType == ConnectionType.USB;
                     string? resolvedSilent = null;
 
+                    // ── Quick driver-list check (one PowerShell call) ─────────────────────
+                    // Network and serial installers register the driver directly with the
+                    // Print Spooler — they never create a PnP print queue, so they won't
+                    // appear in Win32_Printer. Get-PrinterDriver reflects them immediately.
+                    progress?.Report("Verificando driver instalado...");
+                    var quickList = await _printerService.GetInstalledDriversAsync(ct);
+                    resolvedSilent = ResolveActualDriverName(request.Driver, quickList)
+                        ?? quickList.Except(driversBefore, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+                    if (resolvedSilent != null)
+                        _log.Info($"Quick driver-list check found: '{resolvedSilent}'");
+
                     // ── Phase 1: Fast WMI check — no Spooler restart ──────────────────────
                     // Win32_Printer already contains the driver name AND port name that PnP
                     // assigned. Query it directly (no PowerShell process spawn → fast).
                     // 5 polls × 1.5 s ≈ 7-8 s max. Covers the common USB plug-and-play case.
-                    progress?.Report("Verificando driver instalado...");
                     for (int q = 0; q < 5 && (resolvedSilent == null || (needsUsbPort && discoveredUsbPort == null)); q++)
                     {
                         if (q > 0) await Task.Delay(1500, ct);
@@ -318,14 +328,22 @@ public class DriverInstaller : IDriverInstaller
             switch (request.ConnectionType)
             {
                 case ConnectionType.Network:
+                    if (string.IsNullOrWhiteSpace(request.IpAddress))
+                        return InstallResult.Fail(
+                            "Endereço IP não informado para conexão de rede.",
+                            "Informe o IP da impressora no campo correspondente.", steps);
                     portName = request.PortName ?? $"IP_{request.IpAddress}";
                     portCreated = await _printerService.CreateTcpIpPortAsync(
-                        portName, request.IpAddress!, request.NetworkPort, ct);
+                        portName, request.IpAddress, request.NetworkPort, ct);
                     steps.Add($"Porta TCP/IP criada: {portName} → {request.IpAddress}:{request.NetworkPort}");
                     break;
 
                 case ConnectionType.Serial:
-                    portName = request.PortName ?? "COM1";
+                    if (string.IsNullOrWhiteSpace(request.PortName))
+                        return InstallResult.Fail(
+                            "Porta serial não selecionada.",
+                            "Selecione a porta COM da impressora antes de instalar.", steps);
+                    portName = request.PortName!;
                     await ConfigureSerialPortAsync(portName, request.SerialConfig, ct);
                     portCreated = true;
                     steps.Add($"Porta serial configurada: {portName}");
@@ -333,25 +351,38 @@ public class DriverInstaller : IDriverInstaller
 
                 case ConnectionType.USB:
                 default:
-                    // Quick poll (3×1s) — if the Spooler is already running and the port
-                    // is registered, we find it immediately.
+                    // Quick poll (3×1s) — check both USB ports registered with the Spooler
+                    // and any port already assigned by PnP auto-printer creation.
                     for (int p = 0; p < 3 && discoveredUsbPort == null; p++)
                     {
                         discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct);
+                        if (discoveredUsbPort == null)
+                        {
+                            var (_, pnpPort) = await _printerService.FindAutoInstalledPrinterInfoAsync(
+                                request.Driver.Manufacturer, request.Driver.Model, ct);
+                            if (!string.IsNullOrEmpty(pnpPort) && pnpPort.StartsWith("USB", StringComparison.OrdinalIgnoreCase))
+                                discoveredUsbPort = pnpPort;
+                        }
                         if (discoveredUsbPort == null) await Task.Delay(1000, ct);
                     }
 
                     if (discoveredUsbPort == null)
                     {
-                        // Port not yet registered — the driver installer likely restarted
-                        // the Spooler itself. Restart it again so USB devices are re-enumerated
-                        // and the port (USB001/USB002/…) gets registered.
+                        // Port not yet registered — restart Spooler so USB devices are
+                        // re-enumerated and the port (USB001/USB002/…) gets registered.
                         progress?.Report("Detectando porta USB...");
                         await _printerService.RestartSpoolerAsync(ct);
                         for (int p = 0; p < 5 && discoveredUsbPort == null; p++)
                         {
                             await Task.Delay(2000, ct);
                             discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct);
+                            if (discoveredUsbPort == null)
+                            {
+                                var (_, pnpPort2) = await _printerService.FindAutoInstalledPrinterInfoAsync(
+                                    request.Driver.Manufacturer, request.Driver.Model, ct);
+                                if (!string.IsNullOrEmpty(pnpPort2) && pnpPort2.StartsWith("USB", StringComparison.OrdinalIgnoreCase))
+                                    discoveredUsbPort = pnpPort2;
+                            }
                         }
                     }
 

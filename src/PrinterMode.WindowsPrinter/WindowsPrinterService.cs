@@ -74,9 +74,17 @@ public class WindowsPrinterService : IWindowsPrinterService
         {
             try
             {
-                // Use WMI to create TCP/IP printer port
                 var scope = new ManagementScope(@"\\.\root\cimv2");
                 scope.Connect();
+
+                // Reuse existing port instead of failing — common on re-install
+                using var existing = new ManagementObjectSearcher(scope,
+                    new ObjectQuery($"SELECT Name FROM Win32_TCPIPPrinterPort WHERE Name='{EscapeWmi(portName)}'"));
+                foreach (ManagementObject _ in existing.Get())
+                {
+                    _log.Info($"TCP/IP port '{portName}' already exists — reusing.");
+                    return true;
+                }
 
                 var path = new ManagementPath("Win32_TCPIPPrinterPort");
                 using var mc = new ManagementClass(scope, path, null);
@@ -88,7 +96,7 @@ public class WindowsPrinterService : IWindowsPrinterService
                 port_["Protocol"] = (uint)1; // RAW
                 port_["SNMPEnabled"] = false;
 
-                var result = port_.Put();
+                port_.Put();
                 _log.Info($"TCP/IP port created: {portName} → {ipAddress}:{port}");
                 return true;
             }
@@ -937,8 +945,11 @@ public class WindowsPrinterService : IWindowsPrinterService
 
                 if (fallback.DriverName != null)
                 {
-                    _log.Info($"FindAutoInfo: fallback driver='{fallback.DriverName}' port='{fallback.PortName}'");
-                    return fallback;
+                    // Suppress PortName for the fallback case — no keyword match means we can't
+                    // be sure this is the right printer, so we don't want to assign its port to
+                    // another device (e.g. returning a COM port entry for a USB install).
+                    _log.Info($"FindAutoInfo: fallback driver='{fallback.DriverName}' (port suppressed — no keyword match)");
+                    return (fallback.DriverName, null);
                 }
             }
             catch (Exception ex)
