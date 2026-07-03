@@ -191,6 +191,34 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    public async Task<string?> FindUsbPortFromRegistryAsync(CancellationToken ct = default)
+    {
+        // The USB Print Monitor writes port names to the registry as soon as a USB
+        // printer device is matched. This key updates faster than Win32_PrinterPort
+        // (which lags the WMI cache), so it catches ports that WMI hasn't surfaced yet.
+        // Works for standard USB001 and vendor-specific names (BEMATECHUSB001 etc.).
+        return await Task.Run(() =>
+        {
+            try
+            {
+                using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                    @"SYSTEM\CurrentControlSet\Control\Print\Monitors\USB Monitor\Ports");
+                if (key == null) return null;
+
+                var first = key.GetSubKeyNames()
+                    .FirstOrDefault(s => !string.IsNullOrEmpty(s));
+                if (first != null)
+                    _log.Info($"FindUsbPortFromRegistry: found '{first}'");
+                return first;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"FindUsbPortFromRegistryAsync: {ex.Message}");
+                return null;
+            }
+        }, ct);
+    }
+
     // Ports that are purely software (not a physical device connection) and should
     // never be returned as the result of a USB-printer-port diff.
     private static bool IsNonHardwarePort(string name) =>
@@ -275,15 +303,22 @@ public class WindowsPrinterService : IWindowsPrinterService
         {
             try
             {
+                // Targets all USB devices that could be printers:
+                // 1. Printer-class USB (any status — a device bound to a generic driver with
+                //    Status=OK is exactly what we need to force-rebind after a driver install).
+                // 2. Any USB VID device that is NOT a hub, controller, storage, HID, or audio
+                //    device — catches printers in Unknown/Error state and custom USB classes.
                 var script =
-                    // 1. Printer-class USB devices (driver already matched)
                     "$printerDevs = @(Get-PnpDevice -Class Printer -ErrorAction SilentlyContinue | " +
                     "  Where-Object { $_.InstanceId -like 'USB\\*' });" +
-                    // 2. Unknown/Error USB devices with vendor ID — likely the unmatched printer
-                    "$unknownUsb = @(Get-PnpDevice -ErrorAction SilentlyContinue | " +
-                    "  Where-Object { $_.InstanceId -like 'USB\\VID_*' -and $_.Status -ne 'OK' -and " +
-                    "    $_.FriendlyName -notlike '*Hub*' -and $_.FriendlyName -notlike '*Controller*' });" +
-                    "$allDevs = @(@($printerDevs) + @($unknownUsb) | Select-Object -Unique);" +
+                    "$usbCandidates = @(Get-PnpDevice -ErrorAction SilentlyContinue | " +
+                    "  Where-Object { $_.InstanceId -like 'USB\\VID_*' -and " +
+                    "    $_.FriendlyName -notlike '*Hub*' -and $_.FriendlyName -notlike '*Controller*' -and " +
+                    "    $_.FriendlyName -notlike '*Storage*' -and $_.FriendlyName -notlike '*Mass Storage*' -and " +
+                    "    $_.FriendlyName -notlike '*Keyboard*' -and $_.FriendlyName -notlike '*Mouse*' -and " +
+                    "    $_.FriendlyName -notlike '*Camera*' -and $_.FriendlyName -notlike '*Audio*' -and " +
+                    "    $_.FriendlyName -notlike '*Bluetooth*' });" +
+                    "$allDevs = @(@($printerDevs) + @($usbCandidates) | Sort-Object InstanceId -Unique);" +
                     "if ($allDevs.Count -gt 0) {" +
                     "  $allDevs | ForEach-Object {" +
                     "    Disable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false -ErrorAction SilentlyContinue" +
