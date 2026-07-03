@@ -467,27 +467,52 @@ public class DriverInstaller : IDriverInstaller
 
                     if (discoveredUsbPort == null)
                     {
-                        // Port still not registered — full recovery sequence:
-                        // 1) pnputil /add-driver /install with the driver's own INF: forces Windows
-                        //    to match the INF against ALL connected USB devices — this is the key step
-                        //    that triggers usbprint.sys to create USB001 when the printer was connected
-                        //    before the silent installer ran (common fresh-machine scenario).
-                        // 2) Re-enumerate Unknown USB devices (disable+enable) as second sweep.
-                        // 3) Spooler restart so newly created ports become visible to Add-Printer.
+                        // Port still not registered — full recovery sequence.
                         progress?.Report("Detectando porta USB...");
-                        var repoInfPath = _repository.ResolveInfPath(request.Driver);
-                        if (!string.IsNullOrEmpty(repoInfPath) && File.Exists(repoInfPath))
+
+                        // 1) Targeted VID/PID device cycle — forces Windows to re-run driver matching
+                        //    for the exact device. This is the most reliable method for printers that
+                        //    use a vendor-specific USB class (not standard 07h) and need explicit binding.
+                        if (!string.IsNullOrEmpty(request.Driver.VendorId) &&
+                            !string.IsNullOrEmpty(request.Driver.ProductId))
                         {
-                            _log.Info($"Forcing pnputil /add-driver /install to match USB device: '{repoInfPath}'");
+                            _log.Info($"Recovery: VID/PID re-enumeration ({request.Driver.VendorId}/{request.Driver.ProductId})");
                             progress?.Report("Associando driver ao dispositivo USB...");
-                            await InstallViaPnpUtilAsync(repoInfPath, ct);
+                            await _printerService.ReEnumerateDeviceByVidPidAsync(
+                                request.Driver.VendorId!, request.Driver.ProductId!, ct);
                             await Task.Delay(4000, ct);
                             discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
                                 ?? await _printerService.FindAnyUsbPrinterPortAsync(ct)
                                 ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
                                 ?? await _printerService.FindUsbPortFromRegistryAsync(ct);
+                            if (discoveredUsbPort != null)
+                                _log.Info($"Recovery VID/PID: port found '{discoveredUsbPort}'");
                         }
 
+                        // 2) DriverStore INF pnputil: find any INF in DriverStore matching this
+                        //    driver (staged by the installer EXE) and force-install it against all
+                        //    connected devices. This handles the case where VID/PID re-enum alone
+                        //    isn't enough to trigger usbprint.sys binding.
+                        if (discoveredUsbPort == null)
+                        {
+                            var storeInfs = FindNewDriverStoreInfs(new HashSet<string>(), request.Driver);
+                            var bestInf = storeInfs.FirstOrDefault();
+                            if (bestInf != null)
+                            {
+                                _log.Info($"Recovery: pnputil /add-driver /install with DriverStore INF '{bestInf}'");
+                                progress?.Report("Associando driver ao dispositivo USB via DriverStore...");
+                                await InstallViaPnpUtilAsync(bestInf, ct);
+                                await Task.Delay(4000, ct);
+                                discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
+                                    ?? await _printerService.FindAnyUsbPrinterPortAsync(ct)
+                                    ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
+                                    ?? await _printerService.FindUsbPortFromRegistryAsync(ct);
+                                if (discoveredUsbPort != null)
+                                    _log.Info($"Recovery DriverStore INF: port found '{discoveredUsbPort}'");
+                            }
+                        }
+
+                        // 3) Broad USB re-enumeration (disable+enable all USB printer/unknown devices).
                         if (discoveredUsbPort == null)
                         {
                             await _printerService.ReEnumerateUsbPrinterDevicesAsync(ct);
