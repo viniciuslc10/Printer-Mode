@@ -458,6 +458,7 @@ public class WindowsPrinterService : IWindowsPrinterService
     // They are filtered out before any printer names are shown to the user.
     public const string DiagPortClosed    = "__DIAG:PORT_CLOSED__";
     public const string DiagAccessDenied  = "__DIAG:ACCESS_DENIED__";
+    public const string DiagLpdAvailable  = "__DIAG:LPD_AVAILABLE__";
 
     public async Task<IReadOnlyList<string>> GetSharedPrintersAsync(string host, CancellationToken ct = default)
     {
@@ -469,9 +470,16 @@ public class WindowsPrinterService : IWindowsPrinterService
             () => IsTcpPortOpen(host, 445, 1500), 2500, false, "port445");
         _log.Info($"Port 445 on {host}: {(port445Open ? "open" : "CLOSED")}");
 
+        // Check LPD port 515 in parallel — this doesn't need SMB auth and works on any network.
+        bool lpdAvailable = await RunWithTimeoutAsync(
+            () => IsTcpPortOpen(host, 515, 1500), 2500, false, "port515");
+        _log.Info($"Port 515 (LPD) on {host}: {(lpdAvailable ? "open" : "closed")}");
+        if (lpdAvailable)
+            result.Add(DiagLpdAvailable);
+
         if (!port445Open)
         {
-            // Nothing else can work without SMB — return the diagnostic immediately.
+            // SMB unavailable — return diagnostic so the ViewModel can offer LPD path.
             result.Add(DiagPortClosed);
             return result;
         }
@@ -1136,4 +1144,90 @@ public class WindowsPrinterService : IWindowsPrinterService
 
     private static string EscapeWmi(string value) =>
         value.Replace("'", "\\'").Replace("\\", "\\\\");
+
+    // ──────────────────────────────────────────────────────────────────────────────
+    // LPD / LPR support
+    // LPD (port 515) doesn't require Windows credentials — it bypasses the SMB
+    // authentication barrier that blocks shared-printer discovery on workgroups.
+    // ──────────────────────────────────────────────────────────────────────────────
+
+    public async Task EnableLpdServiceAsync(CancellationToken ct = default)
+    {
+        await Task.Run(() =>
+        {
+            try
+            {
+                // Enable the "LPD Service" Windows optional feature silently.
+                // This installs the LPDSVC service that exposes Windows shared printers
+                // on TCP port 515 using the printer's share name as the LPD queue name.
+                var enableScript =
+                    "if ((Get-WindowsOptionalFeature -Online -FeatureName 'LPD-Service').State -ne 'Enabled') {" +
+                    " Enable-WindowsOptionalFeature -Online -FeatureName 'LPD-Service' -NoRestart | Out-Null };" +
+                    "Start-Service -Name LPDSVC -ErrorAction SilentlyContinue";
+                var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(enableScript));
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                using var proc = Process.Start(psi)!;
+                proc.WaitForExit(60_000);
+                _log.Info($"EnableLpdService exit={proc.ExitCode}");
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"EnableLpdServiceAsync failed (non-fatal): {ex.Message}");
+            }
+        }, ct);
+    }
+
+    public async Task<bool> IsLpdAvailableAsync(string host, CancellationToken ct = default)
+    {
+        return await RunWithTimeoutAsync(() => IsTcpPortOpen(host, 515, 1500), 2500, false, "IsLpdAvailable");
+    }
+
+    public async Task<bool> CreateLprPortAsync(string portName, string host, string queueName, CancellationToken ct = default)
+    {
+        return await Task.Run(() =>
+        {
+            try
+            {
+                var scope = new ManagementScope(@"\\.\root\cimv2");
+                scope.Connect();
+
+                // Reuse an existing LPR port rather than failing on re-install
+                using var existing = new ManagementObjectSearcher(scope,
+                    new ObjectQuery($"SELECT Name FROM Win32_TCPIPPrinterPort WHERE Name='{EscapeWmi(portName)}'"));
+                foreach (ManagementObject _ in existing.Get())
+                {
+                    _log.Info($"LPR port '{portName}' already exists — reusing.");
+                    return true;
+                }
+
+                var path = new ManagementPath("Win32_TCPIPPrinterPort");
+                using var mc = new ManagementClass(scope, path, null);
+                using var port = mc.CreateInstance();
+
+                port["Name"] = portName;
+                port["HostAddress"] = host;
+                port["PortNumber"] = (uint)515;
+                port["Protocol"] = (uint)2;        // 2 = LPR (vs 1 = RAW)
+                port["Queue"] = queueName;          // LPD queue name = Windows share name
+                port["SNMPEnabled"] = false;
+
+                port.Put();
+                _log.Info($"LPR port created: {portName} → {host}:515 queue='{queueName}'");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _log.Error($"Failed to create LPR port {portName}", ex);
+                return false;
+            }
+        }, ct);
+    }
 }

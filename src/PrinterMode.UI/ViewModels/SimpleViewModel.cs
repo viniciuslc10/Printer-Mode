@@ -288,6 +288,7 @@ public partial class SimpleViewModel : ObservableObject
 
             bool portClosed   = raw.Contains(WindowsPrinterService.DiagPortClosed);
             bool accessDenied = raw.Contains(WindowsPrinterService.DiagAccessDenied);
+            bool lpdAvailable = raw.Contains(WindowsPrinterService.DiagLpdAvailable);
 
             // Real printer/share names — exclude diagnostic sentinel values
             var printers = raw.Where(p => !p.StartsWith("__DIAG:")).ToList();
@@ -298,11 +299,7 @@ public partial class SimpleViewModel : ObservableObject
             {
                 if (string.IsNullOrWhiteSpace(SharedPrinterName))
                     SharedPrinterName = SharedPrinterList[0];
-
-                var label = portClosed
-                    ? $"{SharedPrinterList.Count} compartilhamento(s) encontrado(s) via navegação de rede."
-                    : $"{SharedPrinterList.Count} impressora(s)/compartilhamento(s) encontrado(s).";
-                StatusText = $"{label} Selecione e clique em Instalar.";
+                StatusText = $"{SharedPrinterList.Count} impressora(s) encontrada(s). Selecione e clique em Instalar.";
             }
             else
             {
@@ -310,39 +307,46 @@ public partial class SimpleViewModel : ObservableObject
 
                 if (!hostReachable)
                 {
-                    StatusText = $"Host '{host}' não encontrado na rede.\n" +
-                                 $"Verifique o IP, se o computador está ligado e se ambos estão na mesma rede.";
+                    StatusText = $"Computador '{host}' não encontrado na rede.\n" +
+                                 "Verifique o IP, se o computador está ligado e na mesma rede.";
+                    return;
+                }
+
+                // LPD available: the remote PC has our app installed and enabled LPD automatically.
+                // The user just needs to type the share name — no firewall/credential changes needed.
+                if (lpdAvailable)
+                {
+                    StatusText = $"✓ Serviço LPD detectado em '{host}' (porta 515).\n\n" +
+                                 $"Digite o nome do compartilhamento da impressora no campo abaixo e clique em Instalar.\n" +
+                                 $"A conexão será feita via LPD — sem necessidade de senha.\n\n" +
+                                 $"Para encontrar o nome: no computador '{host}' → clique direito na impressora → " +
+                                 $"Propriedades → aba Compartilhamento → campo 'Nome do compartilhamento'.";
                     return;
                 }
 
                 if (portClosed)
                 {
-                    StatusText = $"Computador '{host}' encontrado, mas a porta 445 (SMB) está bloqueada.\n\n" +
-                                 $"No computador '{host}' (com a impressora), abra o Painel de Controle → " +
-                                 $"Central de Rede e Compartilhamento → Configurações de compartilhamento avançadas → " +
-                                 $"ative 'Ativar descoberta de rede' e 'Ativar compartilhamento de arquivo e impressora'.\n\n" +
-                                 $"Se souber o nome do compartilhamento, digite-o abaixo e clique em Instalar.";
+                    StatusText = $"Computador '{host}' encontrado mas porta 445 (SMB) bloqueada e LPD (515) não ativo.\n\n" +
+                                 $"Se você usa nosso aplicativo no computador '{host}', reinstale a impressora lá — " +
+                                 $"o LPD é habilitado automaticamente na instalação.\n\n" +
+                                 $"Ou informe manualmente o nome do compartilhamento abaixo e clique em Instalar.";
                     return;
                 }
 
                 if (accessDenied)
                 {
-                    StatusText = $"Computador '{host}' encontrado e porta 445 aberta, mas acesso negado.\n\n" +
-                                 $"No computador '{host}' (com a impressora):\n" +
-                                 $"1. Painel de Controle → Opções de Pasta → aba Exibir → desative 'Usar Assistente de Compartilhamento'\n" +
-                                 $"2. Central de Rede → perfil atual → mude para 'Rede Privada'\n" +
-                                 $"3. Configurações de Compartilhamento → ative 'Desativar compartilhamento protegido por senha' (temporariamente)\n\n" +
-                                 $"Ou anote o nome do compartilhamento (clique direito na impressora → Propriedades → aba Compartilhamento) " +
-                                 $"e digite-o abaixo para instalar sem a descoberta automática.";
+                    StatusText = $"Porta 445 aberta mas acesso negado — as senhas dos dois computadores são diferentes.\n\n" +
+                                 $"Se você usa nosso aplicativo no computador '{host}', reinstale a impressora lá — " +
+                                 $"o serviço LPD (sem senha) é habilitado automaticamente na instalação.\n\n" +
+                                 $"Por enquanto: no computador '{host}', clique direito na impressora → Propriedades → " +
+                                 $"aba Compartilhamento → anote o nome e digite abaixo → clique Instalar.";
                     return;
                 }
 
-                // Connected and authenticated but genuinely no shared printers were found
-                StatusText = $"Computador '{host}' acessível, mas nenhuma impressora compartilhada foi encontrada.\n\n" +
-                             $"Verifique no computador '{host}':\n" +
-                             $"1. Clique direito na impressora → Propriedades → aba 'Compartilhamento' → marque 'Compartilhar esta impressora'\n" +
-                             $"2. Anote o 'Nome do compartilhamento' e digite-o no campo abaixo → clique em Instalar\n\n" +
-                             $"O nome do compartilhamento é diferente do nome da impressora — verifique na aba Compartilhamento.";
+                StatusText = $"Computador '{host}' acessível mas nenhuma impressora compartilhada encontrada.\n\n" +
+                             $"No computador '{host}': clique direito na impressora → Propriedades → " +
+                             $"aba Compartilhamento → marque 'Compartilhar' e anote o nome.\n" +
+                             $"Digite o nome abaixo e clique em Instalar.";
             }
         }
         finally

@@ -517,6 +517,10 @@ public class DriverInstaller : IDriverInstaller
             progress?.Report("Instalação concluída com sucesso!");
             _log.Info($"Installation complete for {request.PrinterName}");
 
+            // Enable LPD service so other PCs on the network can connect to this printer
+            // without needing SMB credentials (LPD uses port 515, no authentication).
+            _ = _printerService.EnableLpdServiceAsync(ct);
+
             return InstallResult.Ok(
                 $"Impressora '{request.PrinterName}' instalada com sucesso!",
                 request.PrinterName,
@@ -584,73 +588,143 @@ public class DriverInstaller : IDriverInstaller
             return InstallResult.Fail(
                 "Informe o nome ou IP do computador que compartilha a impressora.", null, steps);
 
-        // Build candidate share names to try in order:
-        // 1. Explicit share name typed by the user
-        // 2. Auto-discovered names from Get-Printer -ComputerName
-        // 3. The printer display name as last resort
-        var candidates = new List<string>();
+        var shareName = (request.SharedPrinterName ?? "").Trim();
 
-        if (!string.IsNullOrWhiteSpace(request.SharedPrinterName))
-            candidates.Add(request.SharedPrinterName.Trim());
+        // ── Path 1: SMB (Windows share connection) ────────────────────────────────
+        // Try to connect via \\host\share. This is the standard approach but requires
+        // that SMB auth succeeds (same account on both PCs, or password sharing disabled).
+
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(shareName))
+            candidates.Add(shareName);
 
         if (candidates.Count == 0)
         {
-            progress?.Report($"Descobrindo impressoras compartilhadas em {host}...");
+            progress?.Report($"Descobrindo impressoras em {host}...");
             var discovered = await _printerService.GetSharedPrintersAsync(host, ct);
-            candidates.AddRange(discovered.Where(n => !string.IsNullOrWhiteSpace(n)));
+            candidates.AddRange(discovered.Where(n => !n.StartsWith("__DIAG:") && !string.IsNullOrWhiteSpace(n)));
         }
 
         if (candidates.Count == 0)
-            candidates.Add(request.PrinterName); // last resort
+            candidates.Add(request.PrinterName);
 
-        string? lastError = null;
-        string? connectedAs = null;
+        string? lastSmbError = null;
+        string? connectedViaSmbAs = null;
 
-        foreach (var shareName in candidates)
+        foreach (var candidate in candidates)
         {
-            var connectionName = $@"\\{host}\{shareName}";
-            progress?.Report($"Conectando a {connectionName}...");
-            _log.Info($"Trying shared printer: {connectionName}");
+            var connectionName = $@"\\{host}\{candidate}";
+            progress?.Report($"Conectando via SMB: {connectionName}...");
+            _log.Info($"Trying SMB: {connectionName}");
 
             var (ok, psError) = await _printerService.AddSharedPrinterInternalAsync(connectionName, ct);
             if (ok)
             {
-                connectedAs = connectionName;
-                steps.Add($"Conectado: {connectionName}");
+                connectedViaSmbAs = connectionName;
+                steps.Add($"Conectado via SMB: {connectionName}");
                 break;
             }
-            lastError = string.IsNullOrEmpty(psError)
-                ? "Acesso negado ou impressora não encontrada."
-                : psError;
-            _log.Warning($"Failed to connect to '{connectionName}': {lastError}");
+            lastSmbError = string.IsNullOrEmpty(psError) ? "Acesso negado." : psError;
+            _log.Warning($"SMB failed for '{connectionName}': {lastSmbError}");
         }
 
-        if (connectedAs == null)
+        if (connectedViaSmbAs != null)
         {
-            var triedNames = string.Join(", ", candidates);
-            var detail = $"Nomes tentados: {triedNames}.\n" +
-                         "Verifique se:\n" +
-                         "• A impressora está compartilhada no host (Painel de Controle → Impressoras → Propriedades → Compartilhamento)\n" +
-                         "• O Compartilhamento de Arquivo e Impressora está ativado no host\n" +
-                         $"• Último erro: {lastError}";
-            return InstallResult.Fail("Não foi possível conectar à impressora compartilhada.", detail, steps);
+            if (request.SetAsDefault)
+            {
+                var part = connectedViaSmbAs.TrimStart('\\').Split('\\').LastOrDefault() ?? request.PrinterName;
+                await _printerService.SetDefaultPrinterAsync(part, ct);
+                steps.Add("Definida como impressora padrão.");
+            }
+            progress?.Report("Impressora compartilhada conectada com sucesso!");
+            return InstallResult.Ok($"Impressora conectada: {connectedViaSmbAs}", request.PrinterName, steps);
         }
 
-        _log.Info($"Shared printer connected: {connectedAs}");
+        // ── Path 2: LPD/LPR fallback ─────────────────────────────────────────────
+        // SMB failed (typically: access denied / authentication). LPD (port 515) exposes
+        // Windows shared printers without any password. When our app installed the printer
+        // on the host PC it automatically enabled the Windows LPD service for this reason.
+
+        if (string.IsNullOrWhiteSpace(shareName))
+        {
+            return InstallResult.Fail(
+                "Não foi possível conectar via SMB e o nome do compartilhamento não foi informado para tentar LPD.",
+                $"SMB: {lastSmbError}\n\n" +
+                "Clique em Buscar para tentar descobrir o nome, ou informe-o manualmente no campo 'Nome do compartilhamento'.",
+                steps);
+        }
+
+        progress?.Report($"SMB negado — tentando LPD (porta 515) em {host}...");
+        bool lpdUp = await _printerService.IsLpdAvailableAsync(host, ct);
+
+        if (!lpdUp)
+        {
+            return InstallResult.Fail(
+                "Conexão via SMB e LPD falharam.",
+                $"SMB: {lastSmbError}\n" +
+                $"LPD (porta 515): não respondeu em {host}.\n\n" +
+                "No computador com a impressora, execute o PrinterMode e instale a impressora. " +
+                "O aplicativo habilita o serviço LPD automaticamente durante a instalação.",
+                steps);
+        }
+
+        // Create an LPR port (Protocol=2, queue=shareName) and add the printer locally.
+        // We need a local driver — use whatever is already installed on this machine that
+        // matches; fall back to "Generic / Text Only" if nothing is found.
+        progress?.Report("LPD disponível — instalando via LPR...");
+
+        var lprPortName = $"LPR_{host.Replace('.', '_')}_{shareName}";
+        bool portCreated = await _printerService.CreateLprPortAsync(lprPortName, host, shareName, ct);
+        if (!portCreated)
+            return InstallResult.Fail("Falha ao criar porta LPR.", null, steps);
+
+        steps.Add($"Porta LPR criada: {lprPortName}");
+
+        // Resolve driver: prefer the one from the request, then any installed non-system driver,
+        // then fall back to the Windows built-in "Generic / Text Only".
+        string? driverName = null;
+        if (!string.IsNullOrWhiteSpace(request.Driver?.DriverName))
+            driverName = request.Driver.DriverName;
+
+        if (driverName == null)
+        {
+            var (foundDriver, _) = await _printerService.FindAutoInstalledPrinterInfoAsync(
+                request.Driver?.Manufacturer ?? "", request.Driver?.Model ?? "", ct);
+            driverName = foundDriver;
+        }
+
+        if (driverName == null)
+        {
+            var allDrivers = await _printerService.GetInstalledDriversAsync(ct);
+            driverName = allDrivers.FirstOrDefault(d =>
+                !d.Contains("Microsoft", StringComparison.OrdinalIgnoreCase) &&
+                !d.Contains("OneNote", StringComparison.OrdinalIgnoreCase) &&
+                !d.Contains("Fax", StringComparison.OrdinalIgnoreCase) &&
+                !d.Contains("XPS", StringComparison.OrdinalIgnoreCase) &&
+                !d.Contains("PDF", StringComparison.OrdinalIgnoreCase));
+        }
+
+        driverName ??= "Generic / Text Only";
+
+        var printerDisplayName = string.IsNullOrWhiteSpace(request.PrinterName) ? shareName : request.PrinterName;
+        progress?.Report($"Adicionando impressora '{printerDisplayName}' (driver: {driverName})...");
+
+        bool added = await _printerService.AddPrinterAsync(printerDisplayName, driverName, lprPortName, ct);
+        if (!added)
+            return InstallResult.Fail($"Falha ao criar a impressora via LPR com driver '{driverName}'.", null, steps);
+
+        steps.Add($"Impressora criada via LPD: '{printerDisplayName}' driver='{driverName}'");
 
         if (request.SetAsDefault)
         {
-            // After Add-Printer -ConnectionName, Windows names the printer by the share name from the server.
-            // Use the share name component of the UNC path as best-effort default name.
-            var sharePart = connectedAs.TrimStart('\\').Split('\\').LastOrDefault() ?? request.PrinterName;
-            await _printerService.SetDefaultPrinterAsync(sharePart, ct);
+            await _printerService.SetDefaultPrinterAsync(printerDisplayName, ct);
             steps.Add("Definida como impressora padrão.");
         }
 
-        progress?.Report("Impressora compartilhada conectada com sucesso!");
+        progress?.Report("Impressora instalada via LPD com sucesso!");
         return InstallResult.Ok(
-            $"Impressora conectada: {connectedAs}",
-            request.PrinterName, steps);
+            $"Impressora '{printerDisplayName}' instalada via LPD (sem senha necessária).",
+            printerDisplayName, steps);
     }
 
     private async Task<(bool success, string output)> InstallWinRarSfxAsync(

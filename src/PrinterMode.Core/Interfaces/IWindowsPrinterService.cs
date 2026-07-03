@@ -25,4 +25,7 @@ public interface IWindowsPrinterService
     Task<(string? DriverName, string? PortName)> FindAutoInstalledPrinterInfoAsync(string manufacturerHint, string modelHint, CancellationToken ct = default);
     Task RestartSpoolerAsync(CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetSharedPrintersAsync(string host, CancellationToken ct = default);
+    Task<bool> CreateLprPortAsync(string portName, string host, string queueName, CancellationToken ct = default);
+    Task EnableLpdServiceAsync(CancellationToken ct = default);
+    Task<bool> IsLpdAvailableAsync(string host, CancellationToken ct = default);
 }
