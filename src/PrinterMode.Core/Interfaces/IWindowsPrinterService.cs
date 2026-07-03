@@ -26,6 +26,7 @@ public interface IWindowsPrinterService
     Task TriggerPnpScanAsync(CancellationToken ct = default);
     Task ReEnumerateUsbPrinterDevicesAsync(CancellationToken ct = default);
     Task ReEnumerateDeviceByVidPidAsync(string vid, string pid, CancellationToken ct = default);
+    Task<string?> ForceUsbPortFromUsbPrintAsync(string vid, string pid, CancellationToken ct = default);
     Task<IReadOnlyList<PortEntry>> GetSerialPortsWithNamesAsync(CancellationToken ct = default);
     Task<IReadOnlyList<PortEntry>> GetUsbPrinterPortsWithNamesAsync(CancellationToken ct = default);
     Task<string?> FindDriverNameFromAutoInstalledPrinterAsync(string manufacturerHint, string modelHint, CancellationToken ct = default);

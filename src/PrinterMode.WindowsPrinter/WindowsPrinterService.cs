@@ -127,10 +127,12 @@ public class WindowsPrinterService : IWindowsPrinterService
         {
             try
             {
-                // USB and DOT4 ports registered with the print spooler.
+                // USB, DOT4 and WSD ports registered with the print spooler.
+                // WSD (Web Services for Devices) is used by modern Windows 10/11 for USB printers
+                // alongside traditional USB001/DOT4USB001 names.
                 // DOT4 is used by some HP and Epson models (IEEE 1284.4 protocol).
                 using var searcher = new ManagementObjectSearcher(
-                    "SELECT Name FROM Win32_PrinterPort WHERE Name LIKE 'USB%' OR Name LIKE 'DOT4%'");
+                    "SELECT Name FROM Win32_PrinterPort WHERE Name LIKE 'USB%' OR Name LIKE 'DOT4%' OR Name LIKE 'WSD%'");
 
                 string? best = null;
                 foreach (ManagementObject obj in searcher.Get())
@@ -351,6 +353,81 @@ public class WindowsPrinterService : IWindowsPrinterService
             catch (Exception ex)
             {
                 _log.Warning($"ReEnumerateUsbPrinterDevicesAsync failed (non-fatal): {ex.Message}");
+            }
+        }, ct);
+    }
+
+    public async Task<string?> ForceUsbPortFromUsbPrintAsync(string vid, string pid, CancellationToken ct = default)
+    {
+        // When usbprint.sys is already bound to the device (USBPRINT\ node exists in PnP),
+        // the USB Print Monitor should create the spooler port on the next Spooler start.
+        // This method: (a) detects whether usbprint.sys is bound, (b) triggers a Spooler
+        // restart if it is, (c) waits up to 12 s for the port to appear, and (d) returns the
+        // port name — or null if usbprint.sys is not yet bound.
+        return await Task.Run(() =>
+        {
+            try
+            {
+                // Check USBPRINT PnP tree — only populated when usbprint.sys is loaded for a device.
+                using var usbprintEnum = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                    @"SYSTEM\CurrentControlSet\Enum\USBPRINT");
+                if (usbprintEnum == null)
+                {
+                    _log.Info($"ForceUsbPortFromUsbPrint: USBPRINT registry key absent — usbprint.sys not bound for any device.");
+                    return null;
+                }
+
+                bool deviceFound = false;
+                foreach (var hwId in usbprintEnum.GetSubKeyNames())
+                {
+                    if (hwId.IndexOf($"VID_{vid}", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        hwId.IndexOf($"VID{vid}", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        deviceFound = true;
+                        _log.Info($"ForceUsbPortFromUsbPrint: found USBPRINT device '{hwId}' — usbprint.sys IS bound.");
+                        break;
+                    }
+                }
+
+                // Even without VID match, if USBPRINT has ANY entry it might be our printer
+                if (!deviceFound && usbprintEnum.GetSubKeyNames().Length > 0)
+                {
+                    deviceFound = true;
+                    _log.Info($"ForceUsbPortFromUsbPrint: USBPRINT has entries (no VID match, using first).");
+                }
+
+                if (!deviceFound) return null;
+
+                // usbprint.sys is bound but Spooler may not have created the port yet.
+                // Restart Spooler so USB Monitor enumerates USBPRINT devices and creates ports.
+                _log.Info("ForceUsbPortFromUsbPrint: usbprint.sys bound — restarting Spooler to flush USB Monitor.");
+                var stopScript = "Stop-Service -Name Spooler -Force -ErrorAction SilentlyContinue";
+                var stopEnc = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(stopScript));
+                RunProcess("powershell.exe", $"-NoProfile -NonInteractive -EncodedCommand {stopEnc}");
+                Thread.Sleep(1500);
+                RunProcess("net.exe", "start spooler");
+                Thread.Sleep(8000); // extended wait — USB Monitor enumeration can be slow
+
+                // Check USB Monitor registry for the new port.
+                using var monPorts = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                    @"SYSTEM\CurrentControlSet\Control\Print\Monitors\USB Monitor\Ports");
+                if (monPorts != null)
+                {
+                    var portName = monPorts.GetSubKeyNames().FirstOrDefault(s => !string.IsNullOrEmpty(s));
+                    if (portName != null)
+                    {
+                        _log.Info($"ForceUsbPortFromUsbPrint: port '{portName}' found in USB Monitor registry.");
+                        return portName;
+                    }
+                }
+
+                _log.Info("ForceUsbPortFromUsbPrint: no port in USB Monitor registry after restart.");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"ForceUsbPortFromUsbPrintAsync: {ex.Message}");
+                return null;
             }
         }, ct);
     }

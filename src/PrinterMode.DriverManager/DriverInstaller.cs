@@ -230,12 +230,24 @@ public class DriverInstaller : IDriverInstaller
                                 }
                             }
 
-                            // Final fallback: broad USB device re-enumeration
+                            // Broad re-enumeration fallback
                             if (discoveredUsbPort == null)
                             {
                                 _log.Info("USB port still not registered — broad device re-enumeration...");
                                 await _printerService.ReEnumerateUsbPrinterDevicesAsync(ct);
                                 await Task.Delay(3000, ct);
+                            }
+
+                            // Check if usbprint.sys is now bound even though no port is visible yet
+                            if (discoveredUsbPort == null && !string.IsNullOrEmpty(request.Driver.VendorId))
+                            {
+                                var forced = await _printerService.ForceUsbPortFromUsbPrintAsync(
+                                    request.Driver.VendorId!, request.Driver.ProductId ?? "", ct);
+                                if (forced != null)
+                                {
+                                    discoveredUsbPort = forced;
+                                    _log.Info($"Early block nuclear: ForceUsbPortFromUsbPrint returned '{forced}'");
+                                }
                             }
                         }
                     }
@@ -561,6 +573,39 @@ public class DriverInstaller : IDriverInstaller
                                 break;
                             }
                         }
+                    }
+
+                    // Nuclear option: if usbprint.sys IS already bound to the device (detectable
+                    // via HKLM\...\Enum\USBPRINT) but the Spooler just hasn't created the port
+                    // entry yet, trigger a dedicated Spooler restart with an extended wait window.
+                    if (discoveredUsbPort == null && !string.IsNullOrEmpty(request.Driver.VendorId))
+                    {
+                        progress?.Report("Aguardando reconhecimento USB pelo Windows...");
+                        var forcedPort = await _printerService.ForceUsbPortFromUsbPrintAsync(
+                            request.Driver.VendorId!, request.Driver.ProductId ?? "", ct);
+                        if (forcedPort != null)
+                        {
+                            _log.Info($"Nuclear option: ForceUsbPortFromUsbPrint returned '{forcedPort}'");
+                            discoveredUsbPort = forcedPort;
+                        }
+                    }
+
+                    // If still null after everything: do one final VID/PID cycle + long Spooler restart.
+                    // This covers edge cases where the previous Spooler restart didn't give enough time.
+                    if (discoveredUsbPort == null && !string.IsNullOrEmpty(request.Driver.VendorId))
+                    {
+                        _log.Info("Final attempt: VID/PID cycle + 10s Spooler restart...");
+                        progress?.Report("Última tentativa de reconhecimento USB...");
+                        await _printerService.ReEnumerateDeviceByVidPidAsync(
+                            request.Driver.VendorId!, request.Driver.ProductId ?? "", ct);
+                        await _printerService.RestartSpoolerAsync(ct);
+                        await Task.Delay(10000, ct);
+                        discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
+                            ?? await _printerService.FindUsbPortFromRegistryAsync(ct)
+                            ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
+                            ?? await _printerService.FindAnyUsbPrinterPortAsync(ct);
+                        if (discoveredUsbPort != null)
+                            _log.Info($"Final attempt found port: '{discoveredUsbPort}'");
                     }
 
                     portName = request.PortName ?? discoveredUsbPort ?? "USB001";
@@ -1198,6 +1243,25 @@ public class DriverInstaller : IDriverInstaller
             var modelLower = driver.Model.Replace("-", "").Replace(" ", "").ToLowerInvariant();
 
             var newFiles = after.Where(f => !before.Contains(f)).ToList();
+
+            // Priority 0 (highest): INF content contains the exact VID/PID of the device.
+            // This catches INFs with generic names (e.g., "thermal_pos.inf") that would be
+            // missed by the name/class checks below. A real installer can stage its INF with
+            // any file name — VID/PID matching is the only reliable indicator.
+            if (!string.IsNullOrEmpty(driver.VendorId) && !string.IsNullOrEmpty(driver.ProductId))
+            {
+                var byVidPid = newFiles.Where(f =>
+                {
+                    try
+                    {
+                        var content = File.ReadAllText(f, System.Text.Encoding.Latin1);
+                        return content.IndexOf($"VID_{driver.VendorId}", StringComparison.OrdinalIgnoreCase) >= 0
+                            && content.IndexOf($"PID_{driver.ProductId}", StringComparison.OrdinalIgnoreCase) >= 0;
+                    }
+                    catch { return false; }
+                }).ToList();
+                if (byVidPid.Count > 0) return byVidPid;
+            }
 
             // Priority 1: new .inf whose path/name matches manufacturer or model
             var byName = newFiles.Where(f =>
