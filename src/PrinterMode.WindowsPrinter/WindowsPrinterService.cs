@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Management;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using PrinterMode.Core.Interfaces;
@@ -10,7 +11,8 @@ namespace PrinterMode.WindowsPrinter;
 // winspool.drv — same API used by the Windows "Add Printer" wizard to list remote printers
 internal static class WinspoolApi
 {
-    public const int PRINTER_ENUM_NAME = 0x00000008;
+    public const int PRINTER_ENUM_NAME   = 0x00000008;
+    public const int PRINTER_ENUM_SHARED = 0x00000020;
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     public struct PRINTER_INFO_1
@@ -55,12 +57,14 @@ internal static class NetApi32
 // mpr.dll — WNet share enumeration (secondary fallback)
 internal static class WNetApi
 {
-    public const int NO_ERROR             = 0;
-    public const int ERROR_NO_MORE_ITEMS  = 259;
-    public const int RESOURCE_GLOBALNET   = 0x00000002;
-    public const int RESOURCETYPE_ANY     = 0x00000000;
-    public const int RESOURCETYPE_PRINT   = 0x00000002;
-    public const int RESOURCEDISPLAY_SERVER = 0x00000003;
+    public const int NO_ERROR                = 0;
+    public const int ERROR_NO_MORE_ITEMS     = 259;
+    public const int RESOURCE_GLOBALNET      = 0x00000002;
+    public const int RESOURCETYPE_ANY        = 0x00000000;
+    public const int RESOURCETYPE_PRINT      = 0x00000002;
+    public const int RESOURCEDISPLAY_SERVER  = 0x00000003;
+    public const int RESOURCEUSAGE_ALL        = 0x00000000;
+    public const int RESOURCEUSAGE_CONNECTABLE = 0x00000001;
     public const int RESOURCEUSAGE_CONTAINER = 0x00000002;
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -494,7 +498,18 @@ public class WindowsPrinterService : IWindowsPrinterService
         {
             var result = new List<string>();
 
-            // Strategy 1: EnumPrinters(PRINTER_ENUM_NAME) from winspool.drv.
+            // Pre-step: verify TCP port 445 is reachable before attempting any SMB strategy.
+            // All SMB-based methods (EnumPrinters, NetShareEnum, WNet, net view) need port 445.
+            bool port445Open = IsTcpPortOpen(host, 445, 2000);
+            _log.Info($"Port 445 on {host}: {(port445Open ? "open" : "CLOSED")}");
+
+            // Pre-step: establish a null IPC$ session to pre-authenticate with the remote host.
+            // Many SMB enumeration calls fail with ERROR_ACCESS_DENIED (5) or "no printers" (0)
+            // without this credential exchange step.
+            if (port445Open)
+                TryEstablishIpcSession(host);
+
+            // Strategy 1: EnumPrinters(PRINTER_ENUM_NAME|PRINTER_ENUM_SHARED) from winspool.drv.
             // Uses the print spooler's named pipe (\\host\pipe\spoolss over SMB 445).
             // This is the exact API the Windows "Add Printer" wizard uses.
             try
@@ -657,13 +672,58 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    private bool IsTcpPortOpen(string host, int port, int timeoutMs)
+    {
+        try
+        {
+            using var tcp = new TcpClient();
+            var ar = tcp.BeginConnect(host, port, null, null);
+            if (!ar.AsyncWaitHandle.WaitOne(timeoutMs)) return false;
+            tcp.EndConnect(ar);
+            return true;
+        }
+        catch { return false; }
+    }
+
+    private void TryEstablishIpcSession(string host)
+    {
+        try
+        {
+            // "net use \\host\IPC$" opens a null session to the target host.
+            // This authenticates the connection so that subsequent calls (EnumPrinters,
+            // NetShareEnum, WNetOpenEnum) can traverse the SMB named pipe without getting
+            // ERROR_ACCESS_DENIED (5) or silently returning zero entries.
+            var netExe = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.System), "net.exe");
+            var psi = new ProcessStartInfo(netExe, $@"use \\{host}\IPC$")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            using var proc = Process.Start(psi)!;
+            proc.WaitForExit(5_000);
+            _log.Info($"IPC$ session to {host}: exit={proc.ExitCode}");
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"TryEstablishIpcSession({host}) failed: {ex.Message}");
+        }
+    }
+
     private List<string> EnumeratePrinterSharesViaEnumPrinters(string host)
     {
         var shares = new List<string>();
         var serverName = $@"\\{host}";
 
+        // PRINTER_ENUM_NAME|PRINTER_ENUM_SHARED: list printers shared on the named remote server.
+        // PRINTER_ENUM_SHARED alone lists only shared printers; combined with PRINTER_ENUM_NAME
+        // it scopes the query to the specific host instead of the whole network.
+        int enumFlags = WinspoolApi.PRINTER_ENUM_NAME | WinspoolApi.PRINTER_ENUM_SHARED;
+
         // First call: get required buffer size (returns false with needed > 0)
-        WinspoolApi.EnumPrinters(WinspoolApi.PRINTER_ENUM_NAME, serverName, 1,
+        WinspoolApi.EnumPrinters(enumFlags, serverName, 1,
             IntPtr.Zero, 0, out int needed, out _);
 
         if (needed == 0)
@@ -686,7 +746,7 @@ public class WindowsPrinterService : IWindowsPrinterService
         var buf = Marshal.AllocHGlobal(needed);
         try
         {
-            if (!WinspoolApi.EnumPrinters(WinspoolApi.PRINTER_ENUM_NAME, serverName, 1,
+            if (!WinspoolApi.EnumPrinters(enumFlags, serverName, 1,
                     buf, needed, out _, out int count))
             {
                 _log.Warning($"EnumPrinters({host}) 2nd call failed: Win32={Marshal.GetLastWin32Error()}");
@@ -763,6 +823,9 @@ public class WindowsPrinterService : IWindowsPrinterService
     private List<string> EnumeratePrinterSharesViaWNet(string host)
     {
         var shares = new List<string>();
+
+        // Describe the server as a container resource we want to enumerate inside.
+        // dwUsage here describes the server resource itself (it IS a container).
         var serverResource = new WNetApi.NETRESOURCE
         {
             dwScope       = WNetApi.RESOURCE_GLOBALNET,
@@ -772,10 +835,12 @@ public class WindowsPrinterService : IWindowsPrinterService
             lpRemoteName  = $@"\\{host}"
         };
 
+        // dwUsage=0 (RESOURCEUSAGE_ALL) is required — RESOURCEUSAGE_CONTAINER (2) would only
+        // return sub-containers (workgroups/domains), never connectable shares like printers.
         int hr = WNetApi.WNetOpenEnum(
             WNetApi.RESOURCE_GLOBALNET,
-            WNetApi.RESOURCETYPE_ANY,
-            WNetApi.RESOURCEUSAGE_CONTAINER,
+            WNetApi.RESOURCETYPE_PRINT,   // only printer shares
+            WNetApi.RESOURCEUSAGE_ALL,    // 0 = connectable AND container resources
             ref serverResource,
             out IntPtr hEnum);
 
@@ -803,14 +868,15 @@ public class WindowsPrinterService : IWindowsPrinterService
                     {
                         var res = Marshal.PtrToStructure<WNetApi.NETRESOURCE>(ptr);
 
-                        // dwType 2 = RESOURCETYPE_PRINT (printer share)
-                        if (res.dwType == WNetApi.RESOURCETYPE_PRINT
-                            && !string.IsNullOrEmpty(res.lpRemoteName))
+                        if (!string.IsNullOrEmpty(res.lpRemoteName))
                         {
                             int slash = res.lpRemoteName.LastIndexOf('\\');
                             var name = slash >= 0 ? res.lpRemoteName[(slash + 1)..] : res.lpRemoteName;
                             if (!string.IsNullOrEmpty(name) && !name.EndsWith("$"))
+                            {
+                                _log.Info($"  WNet share: '{name}' type={res.dwType} remote='{res.lpRemoteName}'");
                                 shares.Add(name);
+                            }
                         }
                         ptr = IntPtr.Add(ptr, Marshal.SizeOf<WNetApi.NETRESOURCE>());
                     }
