@@ -371,7 +371,9 @@ public class DriverInstaller : IDriverInstaller
                     portName = request.PortName ?? $"IP_{request.IpAddress}";
                     portCreated = await _printerService.CreateTcpIpPortAsync(
                         portName, request.IpAddress, request.NetworkPort, ct);
-                    steps.Add($"Porta TCP/IP criada: {portName} → {request.IpAddress}:{request.NetworkPort}");
+                    steps.Add(portCreated
+                        ? $"Porta TCP/IP criada: {portName} → {request.IpAddress}:{request.NetworkPort}"
+                        : $"Falha ao criar porta TCP/IP: {portName} → {request.IpAddress}:{request.NetworkPort}");
                     break;
 
                 case ConnectionType.Serial:
