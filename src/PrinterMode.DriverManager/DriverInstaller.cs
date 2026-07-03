@@ -519,8 +519,13 @@ public class DriverInstaller : IDriverInstaller
                 steps.Add("Definida como impressora padrão.");
             }
 
+            // Auto-share the printer so LPD can expose it to other PCs on the network.
+            // Share name: printer name sanitized (letters/digits/hyphens only, max 30 chars).
+            var shareName = ToShareName(request.PrinterName);
+            _ = _printerService.SharePrinterAsync(request.PrinterName, shareName, CancellationToken.None);
+
             progress?.Report("Instalação concluída com sucesso!");
-            _log.Info($"Installation complete for {request.PrinterName}");
+            _log.Info($"Installation complete for {request.PrinterName}, sharing as '{shareName}'");
 
             return InstallResult.Ok(
                 $"Impressora '{request.PrinterName}' instalada com sucesso!",
@@ -925,5 +930,14 @@ public class DriverInstaller : IDriverInstaller
         using var identity = WindowsIdentity.GetCurrent();
         var principal = new WindowsPrincipal(identity);
         return principal.IsInRole(WindowsBuiltInRole.Administrator);
+    }
+
+    private static string ToShareName(string printerName)
+    {
+        var name = new string(printerName
+            .Where(c => char.IsLetterOrDigit(c) || c == '-' || c == '_')
+            .ToArray());
+        if (name.Length > 30) name = name[..30];
+        return name.Length > 0 ? name : "Impressora";
     }
 }

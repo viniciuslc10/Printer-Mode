@@ -1278,6 +1278,41 @@ public class WindowsPrinterService : IWindowsPrinterService
         return await RunWithTimeoutAsync(() => IsTcpPortOpen(host, 515, 1500), 2500, false, "IsLpdAvailable");
     }
 
+    public async Task<bool> SharePrinterAsync(string printerName, string shareName, CancellationToken ct = default)
+    {
+        return await Task.Run(() =>
+        {
+            try
+            {
+                var safe = EscapePs(printerName);
+                var safeShare = EscapePs(shareName);
+                var script = $"Set-Printer -Name '{safe}' -Shared $true -ShareName '{safeShare}'";
+                var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                using var proc = Process.Start(psi)!;
+                proc.WaitForExit(15_000);
+                _log.Info($"SharePrinter '{printerName}' as '{shareName}': exit={proc.ExitCode}");
+                return proc.ExitCode == 0;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"SharePrinterAsync failed: {ex.Message}");
+                return false;
+            }
+        }, ct);
+    }
+
+    private static string EscapePs(string value) =>
+        value.Replace("'", "''");
+
     public async Task<bool> TryEnableLpdRemotelyAsync(string host, CancellationToken ct = default)
     {
         // Attempt to start LPDSVC on the remote machine via sc.exe.

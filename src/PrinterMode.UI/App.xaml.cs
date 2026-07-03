@@ -37,6 +37,11 @@ public partial class App : Application
                 MessageBoxImage.Error);
             args.Handled = true;
         };
+
+        // Enable LPD service as soon as the app opens so other PCs on the network
+        // can always connect to shared printers without needing credentials.
+        var printerService = Services.GetRequiredService<IWindowsPrinterService>();
+        _ = printerService.EnableLpdServiceAsync(CancellationToken.None);
     }
 
     private static void ConfigureServices(IServiceCollection services)

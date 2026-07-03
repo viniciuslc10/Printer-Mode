@@ -29,4 +29,5 @@ public interface IWindowsPrinterService
     Task EnableLpdServiceAsync(CancellationToken ct = default);
     Task<bool> TryEnableLpdRemotelyAsync(string host, CancellationToken ct = default);
     Task<bool> IsLpdAvailableAsync(string host, CancellationToken ct = default);
+    Task<bool> SharePrinterAsync(string printerName, string shareName, CancellationToken ct = default);
 }
