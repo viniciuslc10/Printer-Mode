@@ -37,6 +37,10 @@ public class DriverInstaller : IDriverInstaller
         if (request.ConnectionType == ConnectionType.Shared)
             return await ConnectSharedPrinterAsync(request, progress, ct);
 
+        // Enable LPD service in the background for all connection types so other PCs
+        // can always find and connect to this printer via LPD (port 515, no password).
+        _ = _printerService.EnableLpdServiceAsync(ct);
+
         if (!_repository.DriverFilesExist(request.Driver))
         {
             return InstallResult.Fail(
@@ -516,10 +520,6 @@ public class DriverInstaller : IDriverInstaller
 
             progress?.Report("Instalação concluída com sucesso!");
             _log.Info($"Installation complete for {request.PrinterName}");
-
-            // Enable LPD service so other PCs on the network can connect to this printer
-            // without needing SMB credentials (LPD uses port 515, no authentication).
-            _ = _printerService.EnableLpdServiceAsync(ct);
 
             return InstallResult.Ok(
                 $"Impressora '{request.PrinterName}' instalada com sucesso!",
