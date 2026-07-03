@@ -19,7 +19,10 @@ internal sealed class LpdServer
 
     public void Start()
     {
-        OpenFirewallPort();
+        // Run netsh firewall commands on a background thread so they don't block the
+        // caller (which is the UI startup thread). The listener is started immediately;
+        // connections already allowed by an existing rule work while the rule is updated.
+        _ = Task.Run(OpenFirewallPort);
         _ = Task.Run(ListenAsync);
         _log.Info("PrinterMode internal LPD server started on port 515.");
     }

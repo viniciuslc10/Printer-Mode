@@ -406,6 +406,25 @@ public class DriverInstaller : IDriverInstaller
 
             var printerExists = await _printerService.PrinterExistsAsync(request.PrinterName, ct);
 
+            // If the printer already exists but has a wrong driver (e.g., ghost printer from
+            // a previous failed install), delete it first so we recreate it with the correct driver.
+            if (printerExists && detectedDriverName != null)
+            {
+                var existingDriver = await _printerService.GetPrinterDriverAsync(request.PrinterName, ct);
+                bool driverOk = existingDriver != null &&
+                    existingDriver.Equals(detectedDriverName, StringComparison.OrdinalIgnoreCase);
+
+                if (!driverOk)
+                {
+                    _log.Info($"Printer '{request.PrinterName}' exists with driver '{existingDriver}', " +
+                              $"expected '{detectedDriverName}' — deleting ghost printer to recreate.");
+                    progress?.Report("Impressora existente com driver incorreto — recriando...");
+                    await _printerService.DeletePrinterAsync(request.PrinterName, ct);
+                    await Task.Delay(1500, ct);
+                    printerExists = false;
+                }
+            }
+
             if (printerExists)
             {
                 // If we have a confirmed USB port, update it. If not (port was not found
@@ -505,6 +524,20 @@ public class DriverInstaller : IDriverInstaller
 
                 steps.Add($"Impressora criada: {request.PrinterName} (driver: {usedDriverName})");
                 _log.Info($"Printer created: {request.PrinterName} with driver '{usedDriverName}'");
+
+                // Verify the printer was actually registered by the Spooler.
+                // AddPrinterAsync can return success (exit code 0) while the Spooler
+                // processes the request asynchronously — a brief wait + check catches this.
+                await Task.Delay(1000, ct);
+                var verified = await _printerService.PrinterExistsAsync(request.PrinterName, ct);
+                if (!verified)
+                {
+                    _log.Error($"Post-install verification failed: '{request.PrinterName}' not found after creation.");
+                    return InstallResult.Fail(
+                        $"Impressora '{request.PrinterName}' não foi encontrada no Windows após a instalação.",
+                        "O Windows pode ter rejeitado a criação silenciosamente. Tente reinstalar o driver manualmente.",
+                        steps);
+                }
             }
 
             // Step 4: Configure paper

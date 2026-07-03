@@ -740,6 +740,26 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    public async Task<string?> GetPrinterDriverAsync(string printerName, CancellationToken ct = default)
+    {
+        return await Task.Run(() =>
+        {
+            try
+            {
+                using var searcher = new ManagementObjectSearcher(
+                    $"SELECT DriverName FROM Win32_Printer WHERE Name='{EscapeWmi(printerName)}'");
+                foreach (ManagementObject obj in searcher.Get())
+                    return obj["DriverName"]?.ToString();
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"GetPrinterDriverAsync failed: {ex.Message}");
+                return null;
+            }
+        }, ct);
+    }
+
     public async Task<bool> UpdatePrinterPortAsync(string printerName, string newPortName, CancellationToken ct = default)
     {
         return await Task.Run(() =>
@@ -1039,8 +1059,13 @@ public class WindowsPrinterService : IWindowsPrinterService
 
             _log.Info($"AddPrinterViaPowerShell: script='{script}'");
             using var process = Process.Start(psi)!;
-            var stderr = process.StandardError.ReadToEnd();
+            // Drain both streams concurrently — not draining stdout while stderr is read
+            // can deadlock when the pipe buffer fills (typically at 4 KB).
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
             process.WaitForExit(30_000);
+            var stderr = stderrTask.GetAwaiter().GetResult();
+            stdoutTask.GetAwaiter().GetResult(); // discard stdout
 
             _log.Info($"PowerShell Add-Printer exit={process.ExitCode} stderr='{stderr.Trim()}'");
             return process.ExitCode == 0;
@@ -1298,7 +1323,11 @@ public class WindowsPrinterService : IWindowsPrinterService
                     RedirectStandardError = true
                 };
                 using var proc = Process.Start(psi)!;
+                var shareStderrTask = proc.StandardError.ReadToEndAsync();
+                var shareStdoutTask = proc.StandardOutput.ReadToEndAsync();
                 proc.WaitForExit(15_000);
+                shareStderrTask.GetAwaiter().GetResult();
+                shareStdoutTask.GetAwaiter().GetResult();
                 _log.Info($"SharePrinter '{printerName}' as '{shareName}': exit={proc.ExitCode}");
                 return proc.ExitCode == 0;
             }
