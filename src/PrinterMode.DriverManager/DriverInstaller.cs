@@ -194,22 +194,46 @@ public class DriverInstaller : IDriverInstaller
                         }
                         else
                         {
-                            // Port still not created — use pnputil /add-driver /install to force
-                            // Windows to bind the driver to the connected USB device and create the port.
-                            var earlyInfPath = _repository.ResolveInfPath(request.Driver);
-                            if (!string.IsNullOrEmpty(earlyInfPath) && File.Exists(earlyInfPath))
+                            // Port still not created — cycle the exact USB device (by VID/PID) to force
+                            // Windows to re-run driver matching now that the real INF is staged.
+                            if (!string.IsNullOrEmpty(request.Driver.VendorId) &&
+                                !string.IsNullOrEmpty(request.Driver.ProductId))
                             {
-                                _log.Info($"USB port missing — pnputil /install: '{earlyInfPath}'");
-                                await InstallViaPnpUtilAsync(earlyInfPath, ct);
-                                await Task.Delay(3000, ct);
+                                _log.Info($"USB port missing — targeted VID/PID re-enumeration ({request.Driver.VendorId}/{request.Driver.ProductId})");
+                                progress?.Report("Forçando reconhecimento do dispositivo USB...");
+                                await _printerService.ReEnumerateDeviceByVidPidAsync(
+                                    request.Driver.VendorId!, request.Driver.ProductId!, ct);
+                                await Task.Delay(4000, ct);
                                 discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
                                     ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
                                     ?? await _printerService.FindUsbPortFromRegistryAsync(ct);
+                                if (discoveredUsbPort != null)
+                                    _log.Info($"USB port found after VID/PID re-enumeration: '{discoveredUsbPort}'");
                             }
 
+                            // If still missing, try pnputil with the real DriverStore INF
+                            // (staged by the installer EXE — NOT the template in the repository).
                             if (discoveredUsbPort == null)
                             {
-                                _log.Info("USB port still not registered — forcing device re-enumeration...");
+                                var storeInfsEarly = FindNewDriverStoreInfs(storeSnapBefore, request.Driver);
+                                var bestStoreInf = storeInfsEarly.FirstOrDefault();
+                                if (bestStoreInf != null)
+                                {
+                                    _log.Info($"USB port missing — pnputil /install with DriverStore INF: '{bestStoreInf}'");
+                                    await InstallViaPnpUtilAsync(bestStoreInf, ct);
+                                    await Task.Delay(4000, ct);
+                                    discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
+                                        ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
+                                        ?? await _printerService.FindUsbPortFromRegistryAsync(ct);
+                                    if (discoveredUsbPort != null)
+                                        _log.Info($"USB port found after DriverStore pnputil: '{discoveredUsbPort}'");
+                                }
+                            }
+
+                            // Final fallback: broad USB device re-enumeration
+                            if (discoveredUsbPort == null)
+                            {
+                                _log.Info("USB port still not registered — broad device re-enumeration...");
                                 await _printerService.ReEnumerateUsbPrinterDevicesAsync(ct);
                                 await Task.Delay(3000, ct);
                             }

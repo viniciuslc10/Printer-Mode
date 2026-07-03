@@ -355,6 +355,47 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    public async Task ReEnumerateDeviceByVidPidAsync(string vid, string pid, CancellationToken ct = default)
+    {
+        // Targeted disable/enable of the exact USB device (by VID/PID) to force Windows to
+        // re-run driver matching. After the installer EXE stages the real INF, the device is
+        // already connected but Windows hasn't bound usbprint.sys yet. Cycling the device via
+        // PnP forces the match and causes the USB Print Monitor to create the spooler port.
+        await Task.Run(() =>
+        {
+            try
+            {
+                var script =
+                    $"$dev = Get-PnpDevice -ErrorAction SilentlyContinue | " +
+                    $"  Where-Object {{ $_.InstanceId -match 'VID_{vid}&PID_{pid}' }} | Select-Object -First 1; " +
+                    $"if ($dev) {{ " +
+                    $"  Write-Output \"Found: $($dev.InstanceId)\"; " +
+                    $"  Disable-PnpDevice -InstanceId $dev.InstanceId -Confirm:$false -ErrorAction SilentlyContinue; " +
+                    $"  Start-Sleep -Seconds 2; " +
+                    $"  Enable-PnpDevice -InstanceId $dev.InstanceId -Confirm:$false -ErrorAction SilentlyContinue; " +
+                    $"  Start-Sleep -Seconds 2; " +
+                    $"  pnputil /scan-devices | Out-Null " +
+                    $"}} else {{ Write-Output 'Device not found' }}";
+                var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+                    UseShellExecute = false, CreateNoWindow = true,
+                    RedirectStandardOutput = true, RedirectStandardError = true
+                };
+                using var proc = Process.Start(psi)!;
+                var outTask = proc.StandardOutput.ReadToEndAsync();
+                var errTask = proc.StandardError.ReadToEndAsync();
+                proc.WaitForExit(20_000);
+                var stdout = outTask.GetAwaiter().GetResult();
+                errTask.GetAwaiter().GetResult();
+                _log.Info($"ReEnumerateDeviceByVidPid({vid},{pid}) exit={proc.ExitCode} out='{stdout.Trim()}'");
+            }
+            catch (Exception ex) { _log.Warning($"ReEnumerateDeviceByVidPidAsync: {ex.Message}"); }
+        }, ct);
+    }
+
     public async Task<bool> SetPaperFormAsync(string printerName, PaperConfig paper, CancellationToken ct = default)
     {
         return await Task.Run(() =>
@@ -1130,11 +1171,9 @@ public class WindowsPrinterService : IWindowsPrinterService
 
                 if (fallback.DriverName != null)
                 {
-                    // Suppress PortName for the fallback case — no keyword match means we can't
-                    // be sure this is the right printer, so we don't want to assign its port to
-                    // another device (e.g. returning a COM port entry for a USB install).
-                    _log.Info($"FindAutoInfo: fallback driver='{fallback.DriverName}' (port suppressed — no keyword match)");
-                    return (fallback.DriverName, null);
+                    var fbPort = fallback.PortName;
+                    _log.Info($"FindAutoInfo: fallback driver='{fallback.DriverName}' port='{fbPort ?? "none"}'");
+                    return (fallback.DriverName, fbPort);
                 }
             }
             catch (Exception ex)
