@@ -524,6 +524,64 @@ public class DriverInstaller : IDriverInstaller
             if (!portCreated)
                 return InstallResult.Fail($"Falha ao criar porta {portName}.", null, steps);
 
+            // Validate the selected USB port is actually registered with the Print Spooler.
+            // A port found via the USB Monitor registry may not yet appear in Win32_PrinterPort
+            // — there is a race between the registry being updated and the Spooler enumerating
+            // the port. We wait up to ~18 s (6×3 s), then do a forced Spooler restart.
+            // Without this wait, AddPrinterAsync fails for ALL driver names (the error looks like
+            // "driver not accepted" but the real cause is "port does not exist in Spooler").
+            if (request.ConnectionType == ConnectionType.USB && discoveredUsbPort != null)
+            {
+                var spoolerPorts = await _printerService.GetAvailablePortsAsync(ct);
+                if (!spoolerPorts.Contains(portName, StringComparer.OrdinalIgnoreCase))
+                {
+                    _log.Warning($"Port '{portName}' not yet in Spooler — waiting for USB Monitor sync...");
+                    progress?.Report("Aguardando porta USB ser registrada no Windows...");
+                    string? confirmedPort = null;
+                    for (int w = 0; w < 6 && confirmedPort == null; w++)
+                    {
+                        if (w > 0) await Task.Delay(3000, ct);
+                        confirmedPort = await _printerService.FindBestUsbPortAsync(ct)
+                            ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct);
+                        if (confirmedPort == null)
+                        {
+                            // Also re-check whether the original portName is now visible
+                            var updated = await _printerService.GetAvailablePortsAsync(ct);
+                            if (updated.Contains(portName, StringComparer.OrdinalIgnoreCase))
+                                confirmedPort = portName;
+                        }
+                    }
+                    if (confirmedPort == null)
+                    {
+                        _log.Info("USB port still absent after polling — forcing final Spooler restart to flush USB Monitor.");
+                        progress?.Report("Reiniciando serviço de impressão para registrar porta USB...");
+                        await _printerService.RestartSpoolerAsync(ct);
+                        await Task.Delay(5000, ct);
+                        confirmedPort = await _printerService.FindBestUsbPortAsync(ct)
+                            ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct);
+                        if (confirmedPort == null)
+                        {
+                            // Check original portName one last time
+                            var finalPorts = await _printerService.GetAvailablePortsAsync(ct);
+                            if (finalPorts.Contains(portName, StringComparer.OrdinalIgnoreCase))
+                                confirmedPort = portName;
+                        }
+                    }
+                    if (confirmedPort != null)
+                    {
+                        portName = confirmedPort;
+                        discoveredUsbPort = confirmedPort;
+                        _log.Info($"USB port confirmed in Spooler: '{portName}'");
+                        steps.Add($"Porta USB confirmada: {portName}");
+                    }
+                    else
+                    {
+                        _log.Warning($"USB port absent from Spooler after all waits — proceeding but AddPrinterAsync may fail.");
+                        discoveredUsbPort = null; // mark as unconfirmed so the error path shows the right message
+                    }
+                }
+            }
+
             // Step 3: Create the printer (always fresh — delete any existing ghost first)
             progress?.Report("Configurando impressora no Windows...");
 
@@ -637,14 +695,20 @@ public class DriverInstaller : IDriverInstaller
                 {
                     _log.Error($"AddPrinterAsync failed for all candidates. port='{portName}' tried=[{string.Join(", ", driverNamesToTry)}]");
 
-                    // Diagnose: check if the USB port exists — a missing port causes Add-Printer
-                    // to fail for ALL driver names, producing a misleading "driver not accepted" error.
-                    if (request.ConnectionType == ConnectionType.USB && discoveredUsbPort == null)
+                    // Diagnose root cause: a missing port causes Add-Printer to fail for ALL
+                    // driver names, masquerading as "driver not accepted". Check the port first.
+                    if (request.ConnectionType == ConnectionType.USB)
                     {
-                        return InstallResult.Fail(
-                            "Porta USB não encontrada no Windows.",
-                            "Verifique se a impressora está conectada e ligada. Desconecte e reconecte o cabo USB e tente novamente.",
-                            steps);
+                        var currentPorts = await _printerService.GetAvailablePortsAsync(ct);
+                        bool portMissing = !currentPorts.Contains(portName, StringComparer.OrdinalIgnoreCase);
+                        if (portMissing || discoveredUsbPort == null)
+                        {
+                            _log.Error($"Root cause: port '{portName}' absent from Spooler. Available: [{string.Join(", ", currentPorts.Take(10))}]");
+                            return InstallResult.Fail(
+                                "Porta USB não encontrada no Windows.",
+                                "Verifique se a impressora está conectada e ligada. Desconecte e reconecte o cabo USB e tente novamente.",
+                                steps);
+                        }
                     }
 
                     return InstallResult.Fail(
