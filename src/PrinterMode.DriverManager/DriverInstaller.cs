@@ -401,59 +401,22 @@ public class DriverInstaller : IDriverInstaller
             if (!portCreated)
                 return InstallResult.Fail($"Falha ao criar porta {portName}.", null, steps);
 
-            // Step 3: Add printer or update port if it already exists
+            // Step 3: Create the printer (always fresh — delete any existing ghost first)
             progress?.Report("Configurando impressora no Windows...");
 
+            // The user explicitly clicked Install, so we always want a clean printer with the
+            // correct driver and port. Any existing printer with this name is either a ghost
+            // (in the spooler but invisible in the UI) or an old install with possibly wrong
+            // driver/port. Delete it unconditionally so the create path always runs.
             var printerExists = await _printerService.PrinterExistsAsync(request.PrinterName, ct);
-
-            // If the printer already exists but has a wrong driver (e.g., ghost printer from
-            // a previous failed install), delete it first so we recreate it with the correct driver.
-            if (printerExists && detectedDriverName != null)
-            {
-                var existingDriver = await _printerService.GetPrinterDriverAsync(request.PrinterName, ct);
-                bool driverOk = existingDriver != null &&
-                    existingDriver.Equals(detectedDriverName, StringComparison.OrdinalIgnoreCase);
-
-                if (!driverOk)
-                {
-                    _log.Info($"Printer '{request.PrinterName}' exists with driver '{existingDriver}', " +
-                              $"expected '{detectedDriverName}' — deleting ghost printer to recreate.");
-                    progress?.Report("Impressora existente com driver incorreto — recriando...");
-                    await _printerService.DeletePrinterAsync(request.PrinterName, ct);
-                    await Task.Delay(1500, ct);
-                    printerExists = false;
-                }
-            }
-
             if (printerExists)
             {
-                // If we have a confirmed USB port, update it. If not (port was not found
-                // even after Spooler restart), keep the existing port that Windows PnP
-                // assigned — changing it to "USB001" fallback would break the printer.
-                if (request.ConnectionType == ConnectionType.USB && discoveredUsbPort == null)
-                {
-                    _log.Info($"Printer '{request.PrinterName}' exists; USB port not found — keeping PnP-assigned port.");
-                    steps.Add($"Impressora '{request.PrinterName}' já configurada (porta preservada).");
-                }
-                else
-                {
-                    _log.Info($"Printer '{request.PrinterName}' already exists, updating port to '{portName}'.");
-                    progress?.Report($"Impressora já existe, atualizando porta para '{portName}'...");
-
-                    var updated = await _printerService.UpdatePrinterPortAsync(request.PrinterName, portName, ct);
-                    if (!updated)
-                    {
-                        return InstallResult.Fail(
-                            $"Falha ao atualizar a porta da impressora '{request.PrinterName}'.",
-                            "Verifique as permissões e tente novamente.",
-                            steps);
-                    }
-
-                    steps.Add($"Porta atualizada: {request.PrinterName} → {portName}");
-                    _log.Info($"Printer port updated: {request.PrinterName} → {portName}");
-                }
+                _log.Info($"Printer '{request.PrinterName}' already registered in spooler — removing for clean reinstall.");
+                progress?.Report("Removendo impressora existente para reinstalação limpa...");
+                await _printerService.DeletePrinterAsync(request.PrinterName, ct);
+                await Task.Delay(1500, ct);
             }
-            else
+
             {
                 // Build ordered list of driver names to try.
                 // When detectedDriverName is set we use it first; otherwise probe all known names.
