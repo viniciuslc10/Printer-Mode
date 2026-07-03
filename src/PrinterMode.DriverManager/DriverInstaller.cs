@@ -182,7 +182,7 @@ public class DriverInstaller : IDriverInstaller
                     {
                         progress?.Report("Preparando serviço de impressão USB...");
                         await _printerService.RestartSpoolerAsync(ct);
-                        await Task.Delay(2000, ct);
+                        await Task.Delay(4000, ct);
 
                         var earlyPort = await _printerService.FindBestUsbPortAsync(ct)
                             ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
@@ -569,7 +569,7 @@ public class DriverInstaller : IDriverInstaller
                                 .Except(driversAtInstallStart, StringComparer.OrdinalIgnoreCase)
                                 .Where(d => !IsSystemDriver(d))
                                 .ToList()
-                            : [];
+                            : freshDrivers.Where(d => !IsSystemDriver(d)).ToList();
                         var knownCandidates = request.Driver.AllDriverNames()
                             .Where(n => !string.IsNullOrWhiteSpace(n) && !IsSystemDriver(n))
                             .ToList();
@@ -600,6 +600,36 @@ public class DriverInstaller : IDriverInstaller
                         printerAdded = true;
                         usedDriverName = candidateName;
                         break;
+                    }
+                }
+
+                if (!printerAdded)
+                {
+                    // Last resort: try every installed non-system driver not already in the candidate list.
+                    // This handles cases where the actual Windows driver name is completely unknown —
+                    // not in the catalog and not discoverable via diff (e.g. driver was already present
+                    // on this machine under a different name, or the snapshot was taken on a restarting spooler).
+                    var allNow = await _printerService.GetInstalledDriversAsync(ct);
+                    var untried = allNow
+                        .Where(d => !IsSystemDriver(d) &&
+                                    !driverNamesToTry.Contains(d, StringComparer.OrdinalIgnoreCase))
+                        .ToList();
+
+                    if (untried.Count > 0)
+                    {
+                        _log.Info($"Last resort: trying {untried.Count} additional drivers not in catalog: [{string.Join(", ", untried)}]");
+                        progress?.Report("Tentando drivers alternativos instalados...");
+                        foreach (var candidateName in untried)
+                        {
+                            _log.Info($"Last resort AddPrinterAsync: driver='{candidateName}'");
+                            if (await _printerService.AddPrinterAsync(request.PrinterName, candidateName, portName, ct))
+                            {
+                                printerAdded = true;
+                                usedDriverName = candidateName;
+                                _log.Info($"Last resort succeeded with driver: '{candidateName}'");
+                                break;
+                            }
+                        }
                     }
                 }
 
