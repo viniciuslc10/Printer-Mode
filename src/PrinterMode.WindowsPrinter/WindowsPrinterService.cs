@@ -469,9 +469,8 @@ public class WindowsPrinterService : IWindowsPrinterService
             var result = new List<string>();
 
             // Strategy 1: EnumPrinters(PRINTER_ENUM_NAME) from winspool.drv.
-            // This is the exact API the Windows "Add Printer" wizard uses to list
-            // remote shared printers. Works from elevated processes via the print
-            // spooler's named pipe (\\host\pipe\spoolss over SMB port 445).
+            // Uses the print spooler's named pipe (\\host\pipe\spoolss over SMB 445).
+            // This is the exact API the Windows "Add Printer" wizard uses.
             try
             {
                 var spoolShares = EnumeratePrinterSharesViaEnumPrinters(host);
@@ -486,7 +485,7 @@ public class WindowsPrinterService : IWindowsPrinterService
             if (result.Count > 0)
                 return (IReadOnlyList<string>)result;
 
-            // Strategy 2: WNetOpenEnum via mpr.dll
+            // Strategy 2: WNetOpenEnum via mpr.dll — SMB-based, already filtered to RESOURCETYPE_PRINT
             try
             {
                 var wnetShares = EnumeratePrinterSharesViaWNet(host);
@@ -501,7 +500,8 @@ public class WindowsPrinterService : IWindowsPrinterService
             if (result.Count > 0)
                 return (IReadOnlyList<string>)result;
 
-            // Strategy 2: net view \\host — SMB port 445, column-aware parsing.
+            // Strategy 3: net view \\host — SMB port 445, column-aware parsing.
+            // ParseNetViewShares filters to print-type shares only.
             try
             {
                 var netExe = Path.Combine(
@@ -515,6 +515,7 @@ public class WindowsPrinterService : IWindowsPrinterService
                 };
                 using var proc = Process.Start(psi)!;
                 var output = proc.StandardOutput.ReadToEnd();
+                var stderr = proc.StandardError.ReadToEnd().Trim();
                 proc.WaitForExit(10_000);
 
                 if (proc.ExitCode == 0)
@@ -525,7 +526,6 @@ public class WindowsPrinterService : IWindowsPrinterService
                 }
                 else
                 {
-                    var stderr = proc.StandardError.ReadToEnd().Trim();
                     _log.Warning($"net view exited {proc.ExitCode} for {host}: {stderr}");
                 }
             }
@@ -537,35 +537,77 @@ public class WindowsPrinterService : IWindowsPrinterService
             if (result.Count > 0)
                 return (IReadOnlyList<string>)result;
 
-            // Strategy 3: Get-Printer -ComputerName (needs WMI/RPC — often blocked by firewall)
+            // Strategy 4: wmic /node — WMI via DCOM (port 135 + dynamic RPC).
+            // Works when SMB (port 445) is blocked but WMI firewall rules are enabled.
+            // Note: wmic.exe is deprecated in Windows 11 24H2+ — we fall through to PS if missing.
             try
             {
-                var script = $"Get-Printer -ComputerName '{host.Replace("'", "''")}' | Select-Object -ExpandProperty ShareName | Where-Object {{ $_ -ne $null -and $_ -ne '' }}";
-                var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
-                var psi = new ProcessStartInfo
+                var safeHost = host.Replace("\"", "").Replace(";", "").Replace("&", "");
+                var wmicPsi = new ProcessStartInfo
                 {
-                    FileName = "powershell.exe",
-                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+                    FileName = "wmic",
+                    Arguments = $"/node:\"{safeHost}\" printer where \"Shared=TRUE\" get ShareName /format:list",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true
                 };
-                using var proc = Process.Start(psi)!;
-                var output = proc.StandardOutput.ReadToEnd();
-                proc.WaitForExit(10_000);
+                using var wmicProc = Process.Start(wmicPsi)!;
+                var wmicOut = wmicProc.StandardOutput.ReadToEnd();
+                wmicProc.WaitForExit(10_000);
 
-                foreach (var line in output.Split('\n'))
+                foreach (var line in wmicOut.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (!line.StartsWith("ShareName=", StringComparison.OrdinalIgnoreCase)) continue;
+                    var name = line["ShareName=".Length..].Trim();
+                    if (!string.IsNullOrEmpty(name) && !result.Contains(name, StringComparer.OrdinalIgnoreCase))
+                        result.Add(name);
+                }
+                _log.Info($"wmic /node '{host}': [{string.Join(", ", result)}]");
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"wmic /node failed for {host}: {ex.Message}");
+            }
+
+            if (result.Count > 0)
+                return (IReadOnlyList<string>)result;
+
+            // Strategy 5: Get-WmiObject Win32_Printer -ComputerName — DCOM-based WMI via PowerShell.
+            // More reliable than Get-Printer -ComputerName which requires the Print Management
+            // feature (not installed by default on consumer Windows).
+            try
+            {
+                var safeHost5 = host.Replace("'", "''");
+                var script5 = $"Get-WmiObject -Class Win32_Printer -ComputerName '{safeHost5}'" +
+                              $" | Where-Object {{ $_.Shared -eq $true }}" +
+                              $" | Select-Object -ExpandProperty ShareName" +
+                              $" | Where-Object {{ $_ -ne $null -and $_ -ne '' }}";
+                var encoded5 = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script5));
+                var psi5 = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded5}",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                using var proc5 = Process.Start(psi5)!;
+                var out5 = proc5.StandardOutput.ReadToEnd();
+                proc5.WaitForExit(15_000);
+
+                foreach (var line in out5.Split('\n'))
                 {
                     var name = line.Trim();
                     if (!string.IsNullOrEmpty(name) && !result.Contains(name, StringComparer.OrdinalIgnoreCase))
                         result.Add(name);
                 }
-                _log.Info($"Get-Printer -ComputerName {host}: [{string.Join(", ", result)}]");
+                _log.Info($"Get-WmiObject Win32_Printer -ComputerName {host}: [{string.Join(", ", result)}]");
             }
             catch (Exception ex)
             {
-                _log.Warning($"Get-Printer -ComputerName failed: {ex.Message}");
+                _log.Warning($"Get-WmiObject Win32_Printer -ComputerName failed: {ex.Message}");
             }
 
             return (IReadOnlyList<string>)result;
@@ -738,16 +780,16 @@ public class WindowsPrinterService : IWindowsPrinterService
             if (string.IsNullOrEmpty(shareName)) continue;
             if (shareName.EndsWith("$")) continue; // skip admin/hidden shares
 
-            // When type info is available, validate it to filter out the footer line
+            // When type info is available, only keep printer-type shares.
+            // Disk and IPC shares are excluded — they can't be used as printer connections.
+            // When type is unknown (column not detected), we include the entry and let the
+            // caller filter by attempting connection.
             if (!string.IsNullOrEmpty(typeField))
             {
-                bool isKnownType =
-                    typeField.StartsWith("Disk",  StringComparison.OrdinalIgnoreCase) ||
+                bool isPrint =
                     typeField.StartsWith("Print", StringComparison.OrdinalIgnoreCase) ||
-                    typeField.StartsWith("IPC",   StringComparison.OrdinalIgnoreCase) ||
-                    typeField.StartsWith("Disco", StringComparison.OrdinalIgnoreCase) ||
                     typeField.StartsWith("Impr",  StringComparison.OrdinalIgnoreCase);
-                if (!isKnownType) continue;
+                if (!isPrint) continue;
             }
 
             if (!shares.Contains(shareName, StringComparer.OrdinalIgnoreCase))

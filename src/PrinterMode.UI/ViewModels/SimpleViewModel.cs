@@ -297,7 +297,10 @@ public partial class SimpleViewModel : ObservableObject
                 StatusText = "Verificando conectividade com o host...";
                 var hostReachable = await PingHostAsync(host);
                 StatusText = hostReachable
-                    ? $"Host '{host}' encontrado, mas nenhuma impressora compartilhada foi descoberta. Verifique se o 'Compartilhamento de Arquivo e Impressora' está habilitado no Firewall do Windows em '{host}' (Painel de Controle → Firewall → Permitir app). Ou digite o nome do compartilhamento manualmente."
+                    ? $"Host '{host}' encontrado, mas nenhuma impressora foi descoberta automaticamente.\n\n" +
+                      $"No computador '{host}', abra: Painel de Controle → Firewall do Windows → Permitir um app → habilite 'Compartilhamento de Arquivo e Impressora'.\n" +
+                      $"Também verifique: Centro de Rede → altere o perfil de 'Rede Pública' para 'Rede Privada'.\n\n" +
+                      $"Ou, se souber o nome do compartilhamento, digite-o no campo abaixo e clique em Instalar."
                     : $"Host '{host}' não encontrado na rede. Verifique o IP ou nome do computador e se ele está ligado e na mesma rede.";
             }
         }
