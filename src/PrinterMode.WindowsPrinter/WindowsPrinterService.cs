@@ -492,6 +492,11 @@ public class WindowsPrinterService : IWindowsPrinterService
         return ok;
     }
 
+    // Tag constants written into the result list to signal diagnostic states to the ViewModel.
+    // They are filtered out before any printer names are shown to the user.
+    public const string DiagPortClosed    = "__DIAG:PORT_CLOSED__";
+    public const string DiagAccessDenied  = "__DIAG:ACCESS_DENIED__";
+
     public async Task<IReadOnlyList<string>> GetSharedPrintersAsync(string host, CancellationToken ct = default)
     {
         return await Task.Run(() =>
@@ -499,15 +504,31 @@ public class WindowsPrinterService : IWindowsPrinterService
             var result = new List<string>();
 
             // Pre-step: verify TCP port 445 is reachable before attempting any SMB strategy.
-            // All SMB-based methods (EnumPrinters, NetShareEnum, WNet, net view) need port 445.
             bool port445Open = IsTcpPortOpen(host, 445, 2000);
             _log.Info($"Port 445 on {host}: {(port445Open ? "open" : "CLOSED")}");
 
-            // Pre-step: establish a null IPC$ session to pre-authenticate with the remote host.
-            // Many SMB enumeration calls fail with ERROR_ACCESS_DENIED (5) or "no printers" (0)
-            // without this credential exchange step.
-            if (port445Open)
-                TryEstablishIpcSession(host);
+            if (!port445Open)
+            {
+                result.Add(DiagPortClosed);
+                // Fall through to DCOM strategies (they don't need port 445)
+            }
+            else
+            {
+                // Try current-user credentials first, then guest as fallback.
+                // On workgroup setups both may fail if no matching account exists on remote PC,
+                // but UNC browsing (strategy 8) will still succeed via NTLM negotiation.
+                bool ipcOk = TryEstablishIpcSession(host);
+                if (!ipcOk)
+                {
+                    _log.Info($"Current-user IPC$ failed — trying Guest session");
+                    ipcOk = TryEstablishGuestSession(host);
+                }
+                if (!ipcOk)
+                    result.Add(DiagAccessDenied);
+            }
+
+            // Helper: true if result has real printer names (not just diagnostic tags)
+            bool HasPrinters() => result.Any(s => !s.StartsWith("__DIAG:"));
 
             // Strategy 1: EnumPrinters(PRINTER_ENUM_NAME|PRINTER_ENUM_SHARED) from winspool.drv.
             // Uses the print spooler's named pipe (\\host\pipe\spoolss over SMB 445).
@@ -516,15 +537,14 @@ public class WindowsPrinterService : IWindowsPrinterService
             {
                 var spoolShares = EnumeratePrinterSharesViaEnumPrinters(host);
                 result.AddRange(spoolShares);
-                _log.Info($"EnumPrinters {host}: [{string.Join(", ", result)}]");
+                _log.Info($"EnumPrinters {host}: [{string.Join(", ", spoolShares)}]");
             }
             catch (Exception ex)
             {
                 _log.Warning($"EnumPrinters failed: {ex.Message}");
             }
 
-            if (result.Count > 0)
-                return (IReadOnlyList<string>)result;
+            if (HasPrinters()) return (IReadOnlyList<string>)result;
 
             // Strategy 2: NetShareEnum via netapi32.dll (\\host\pipe\srvsvc — Server service).
             // Different named pipe from EnumPrinters (\pipe\spoolss). Can succeed when the
@@ -540,8 +560,7 @@ public class WindowsPrinterService : IWindowsPrinterService
                 _log.Warning($"NetShareEnum failed: {ex.Message}");
             }
 
-            if (result.Count > 0)
-                return (IReadOnlyList<string>)result;
+            if (HasPrinters()) return (IReadOnlyList<string>)result;
 
             // Strategy 4: WNetOpenEnum via mpr.dll — SMB-based, already filtered to RESOURCETYPE_PRINT
             try
@@ -555,8 +574,7 @@ public class WindowsPrinterService : IWindowsPrinterService
                 _log.Warning($"WNet enumeration failed: {ex.Message}");
             }
 
-            if (result.Count > 0)
-                return (IReadOnlyList<string>)result;
+            if (HasPrinters()) return (IReadOnlyList<string>)result;
 
             // Strategy 5: net view \\host — SMB port 445, column-aware parsing.
             // ParseNetViewShares filters to print-type shares only.
@@ -592,8 +610,7 @@ public class WindowsPrinterService : IWindowsPrinterService
                 _log.Warning($"net view failed: {ex.Message}");
             }
 
-            if (result.Count > 0)
-                return (IReadOnlyList<string>)result;
+            if (HasPrinters()) return (IReadOnlyList<string>)result;
 
             // Strategy 6: wmic /node — WMI via DCOM (port 135 + dynamic RPC).
             // Works when SMB (port 445) is blocked but WMI firewall rules are enabled.
@@ -628,8 +645,7 @@ public class WindowsPrinterService : IWindowsPrinterService
                 _log.Warning($"wmic /node failed for {host}: {ex.Message}");
             }
 
-            if (result.Count > 0)
-                return (IReadOnlyList<string>)result;
+            if (HasPrinters()) return (IReadOnlyList<string>)result;
 
             // Strategy 7: Get-WmiObject Win32_Printer -ComputerName — DCOM-based WMI via PowerShell.
             // More reliable than Get-Printer -ComputerName which requires the Print Management
@@ -668,6 +684,17 @@ public class WindowsPrinterService : IWindowsPrinterService
                 _log.Warning($"Get-WmiObject Win32_Printer -ComputerName failed: {ex.Message}");
             }
 
+            if (HasPrinters()) return (IReadOnlyList<string>)result;
+
+            // Strategy 8: .NET Directory.GetDirectories — last resort UNC browse.
+            // Unlike every strategy above, this uses the current user's Windows NTLM token
+            // automatically (same mechanism as Windows Explorer browsing \\192.168.1.100).
+            // It returns ALL non-hidden shares (disk + print), because at this point any
+            // enumeration beats returning nothing.  The caller shows all results and lets
+            // the user pick; they know their own printer share name.
+            var uncShares = TryListAllSharesViaUncBrowsing(host);
+            result.AddRange(uncShares.Where(s => !result.Contains(s, StringComparer.OrdinalIgnoreCase)));
+
             return (IReadOnlyList<string>)result;
         }, ct);
     }
@@ -685,14 +712,13 @@ public class WindowsPrinterService : IWindowsPrinterService
         catch { return false; }
     }
 
-    private void TryEstablishIpcSession(string host)
+    private bool TryEstablishIpcSession(string host)
     {
         try
         {
-            // "net use \\host\IPC$" opens a null session to the target host.
-            // This authenticates the connection so that subsequent calls (EnumPrinters,
-            // NetShareEnum, WNetOpenEnum) can traverse the SMB named pipe without getting
-            // ERROR_ACCESS_DENIED (5) or silently returning zero entries.
+            // "net use \\host\IPC$" opens a session using the current user's NTLM credentials.
+            // This pre-authenticates the SMB connection so subsequent API calls (EnumPrinters,
+            // NetShareEnum, WNetOpenEnum) can traverse named pipes without ACCESS_DENIED (5).
             var netExe = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.System), "net.exe");
             var psi = new ProcessStartInfo(netExe, $@"use \\{host}\IPC$")
@@ -703,13 +729,70 @@ public class WindowsPrinterService : IWindowsPrinterService
                 RedirectStandardError = true
             };
             using var proc = Process.Start(psi)!;
+            var stderr = proc.StandardError.ReadToEnd().Trim();
             proc.WaitForExit(5_000);
-            _log.Info($"IPC$ session to {host}: exit={proc.ExitCode}");
+            _log.Info($"IPC$ session (current user) to {host}: exit={proc.ExitCode} err='{stderr}'");
+            return proc.ExitCode == 0;
         }
         catch (Exception ex)
         {
             _log.Warning($"TryEstablishIpcSession({host}) failed: {ex.Message}");
+            return false;
         }
+    }
+
+    private bool TryEstablishGuestSession(string host)
+    {
+        try
+        {
+            // Try connecting as Guest with empty password — works when the remote PC has
+            // Guest sharing enabled ("Allow anyone" or classic sharing model).
+            var netExe = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.System), "net.exe");
+            var psi = new ProcessStartInfo(netExe, $@"use \\{host}\IPC$ """" /user:guest")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            using var proc = Process.Start(psi)!;
+            var stderr = proc.StandardError.ReadToEnd().Trim();
+            proc.WaitForExit(5_000);
+            _log.Info($"IPC$ session (guest) to {host}: exit={proc.ExitCode} err='{stderr}'");
+            return proc.ExitCode == 0;
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"TryEstablishGuestSession({host}) failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    // Last-resort: use .NET file system APIs which automatically carry the current user's
+    // NTLM token — exactly what Windows Explorer uses when browsing \\192.168.1.100.
+    // Returns ALL non-hidden shares (disk + print), not filtered to print-only,
+    // because at this point any enumeration is better than returning nothing.
+    private List<string> TryListAllSharesViaUncBrowsing(string host)
+    {
+        var shares = new List<string>();
+        try
+        {
+            var dirs = Directory.GetDirectories($@"\\{host}");
+            foreach (var dir in dirs)
+            {
+                var name = Path.GetFileName(dir);
+                if (string.IsNullOrEmpty(name) || name.EndsWith("$")) continue;
+                _log.Info($"  UNC share: '{name}'");
+                shares.Add(name);
+            }
+            _log.Info($"UNC browse \\\\{host}: [{string.Join(", ", shares)}]");
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"UNC browse \\\\{host} failed: {ex.Message}");
+        }
+        return shares;
     }
 
     private List<string> EnumeratePrinterSharesViaEnumPrinters(string host)
