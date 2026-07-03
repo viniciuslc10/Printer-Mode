@@ -26,6 +26,32 @@ internal static class WinspoolApi
         IntPtr pPrinterEnum, int cbBuf, out int pcbNeeded, out int pcReturned);
 }
 
+// netapi32.dll — NetShareEnum: enumerates ALL shares on a remote server via \pipe\srvsvc.
+// This is a different named pipe from \pipe\spoolss (EnumPrinters), so it can succeed
+// when the Spooler pipe is blocked, as long as the Server service pipe is accessible.
+internal static class NetApi32
+{
+    public const int NERR_Success = 0;
+    public const int MAX_PREFERRED_LENGTH = -1;
+    public const uint STYPE_PRINTQ    = 1;       // print queue share
+    public const uint STYPE_TYPE_MASK = 0x000000FF; // low byte = share type
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct SHARE_INFO_1
+    {
+        [MarshalAs(UnmanagedType.LPWStr)] public string? shi1_netname;
+        public uint shi1_type;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? shi1_remark;
+    }
+
+    [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
+    public static extern int NetShareEnum(string lpServerName, int dwLevel, ref IntPtr lpBuf,
+        int dwPrefMaxLen, out int pEntriesRead, out int pTotalEntries, ref int pResumeHandle);
+
+    [DllImport("netapi32.dll")]
+    public static extern int NetApiBufferFree(IntPtr lpBuffer);
+}
+
 // mpr.dll — WNet share enumeration (secondary fallback)
 internal static class WNetApi
 {
@@ -485,7 +511,24 @@ public class WindowsPrinterService : IWindowsPrinterService
             if (result.Count > 0)
                 return (IReadOnlyList<string>)result;
 
-            // Strategy 2: WNetOpenEnum via mpr.dll — SMB-based, already filtered to RESOURCETYPE_PRINT
+            // Strategy 2: NetShareEnum via netapi32.dll (\\host\pipe\srvsvc — Server service).
+            // Different named pipe from EnumPrinters (\pipe\spoolss). Can succeed when the
+            // Spooler pipe is blocked but the "File Sharing" firewall rule is open.
+            try
+            {
+                var netApiShares = EnumeratePrintSharesViaNetApi(host);
+                result.AddRange(netApiShares.Where(s => !result.Contains(s, StringComparer.OrdinalIgnoreCase)));
+                _log.Info($"NetShareEnum {host}: [{string.Join(", ", netApiShares)}]");
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"NetShareEnum failed: {ex.Message}");
+            }
+
+            if (result.Count > 0)
+                return (IReadOnlyList<string>)result;
+
+            // Strategy 4: WNetOpenEnum via mpr.dll — SMB-based, already filtered to RESOURCETYPE_PRINT
             try
             {
                 var wnetShares = EnumeratePrinterSharesViaWNet(host);
@@ -500,7 +543,7 @@ public class WindowsPrinterService : IWindowsPrinterService
             if (result.Count > 0)
                 return (IReadOnlyList<string>)result;
 
-            // Strategy 3: net view \\host — SMB port 445, column-aware parsing.
+            // Strategy 5: net view \\host — SMB port 445, column-aware parsing.
             // ParseNetViewShares filters to print-type shares only.
             try
             {
@@ -537,7 +580,7 @@ public class WindowsPrinterService : IWindowsPrinterService
             if (result.Count > 0)
                 return (IReadOnlyList<string>)result;
 
-            // Strategy 4: wmic /node — WMI via DCOM (port 135 + dynamic RPC).
+            // Strategy 6: wmic /node — WMI via DCOM (port 135 + dynamic RPC).
             // Works when SMB (port 445) is blocked but WMI firewall rules are enabled.
             // Note: wmic.exe is deprecated in Windows 11 24H2+ — we fall through to PS if missing.
             try
@@ -573,7 +616,7 @@ public class WindowsPrinterService : IWindowsPrinterService
             if (result.Count > 0)
                 return (IReadOnlyList<string>)result;
 
-            // Strategy 5: Get-WmiObject Win32_Printer -ComputerName — DCOM-based WMI via PowerShell.
+            // Strategy 7: Get-WmiObject Win32_Printer -ComputerName — DCOM-based WMI via PowerShell.
             // More reliable than Get-Printer -ComputerName which requires the Print Management
             // feature (not installed by default on consumer Windows).
             try
@@ -625,7 +668,18 @@ public class WindowsPrinterService : IWindowsPrinterService
 
         if (needed == 0)
         {
-            _log.Warning($"EnumPrinters({host}): needed=0, Win32={Marshal.GetLastWin32Error()}");
+            var w32 = Marshal.GetLastWin32Error();
+            var desc = w32 switch
+            {
+                0    => "no printers on server",
+                5    => "access denied",
+                53   => "network path not found",
+                64   => "network name no longer available",
+                1722 => "RPC server unavailable (Spooler not reachable)",
+                1723 => "RPC server too busy",
+                _    => $"Win32={w32}"
+            };
+            _log.Warning($"EnumPrinters({host}): {desc}");
             return shares;
         }
 
@@ -659,6 +713,49 @@ public class WindowsPrinterService : IWindowsPrinterService
             }
         }
         finally { Marshal.FreeHGlobal(buf); }
+
+        return shares;
+    }
+
+    private List<string> EnumeratePrintSharesViaNetApi(string host)
+    {
+        var shares = new List<string>();
+        IntPtr bufPtr = IntPtr.Zero;
+        int resumeHandle = 0;
+
+        try
+        {
+            int err = NetApi32.NetShareEnum(
+                $@"\\{host}", 1, ref bufPtr,
+                NetApi32.MAX_PREFERRED_LENGTH,
+                out int entriesRead, out _, ref resumeHandle);
+
+            if (err != NetApi32.NERR_Success)
+            {
+                _log.Warning($"NetShareEnum({host}) error {err} (0x{err:X8})");
+                return shares;
+            }
+
+            _log.Info($"NetShareEnum({host}) returned {entriesRead} share(s)");
+            int structSize = Marshal.SizeOf<NetApi32.SHARE_INFO_1>();
+            for (int i = 0; i < entriesRead; i++)
+            {
+                var info = Marshal.PtrToStructure<NetApi32.SHARE_INFO_1>(
+                    IntPtr.Add(bufPtr, i * structSize));
+                if ((info.shi1_type & NetApi32.STYPE_TYPE_MASK) == NetApi32.STYPE_PRINTQ &&
+                    !string.IsNullOrEmpty(info.shi1_netname) &&
+                    !info.shi1_netname!.EndsWith("$"))
+                {
+                    _log.Info($"  PrintShare[{i}]: '{info.shi1_netname}'");
+                    shares.Add(info.shi1_netname);
+                }
+            }
+        }
+        finally
+        {
+            if (bufPtr != IntPtr.Zero)
+                NetApi32.NetApiBufferFree(bufPtr);
+        }
 
         return shares;
     }
