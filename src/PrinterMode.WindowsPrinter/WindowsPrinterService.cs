@@ -54,44 +54,6 @@ internal static class NetApi32
     public static extern int NetApiBufferFree(IntPtr lpBuffer);
 }
 
-// mpr.dll — WNet share enumeration (secondary fallback)
-internal static class WNetApi
-{
-    public const int NO_ERROR                = 0;
-    public const int ERROR_NO_MORE_ITEMS     = 259;
-    public const int RESOURCE_GLOBALNET      = 0x00000002;
-    public const int RESOURCETYPE_ANY        = 0x00000000;
-    public const int RESOURCETYPE_PRINT      = 0x00000002;
-    public const int RESOURCEDISPLAY_SERVER  = 0x00000003;
-    public const int RESOURCEUSAGE_ALL        = 0x00000000;
-    public const int RESOURCEUSAGE_CONNECTABLE = 0x00000001;
-    public const int RESOURCEUSAGE_CONTAINER = 0x00000002;
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    public struct NETRESOURCE
-    {
-        public int    dwScope;
-        public int    dwType;
-        public int    dwDisplayType;
-        public int    dwUsage;
-        [MarshalAs(UnmanagedType.LPWStr)] public string? lpLocalName;
-        [MarshalAs(UnmanagedType.LPWStr)] public string? lpRemoteName;
-        [MarshalAs(UnmanagedType.LPWStr)] public string? lpComment;
-        [MarshalAs(UnmanagedType.LPWStr)] public string? lpProvider;
-    }
-
-    [DllImport("mpr.dll", CharSet = CharSet.Unicode)]
-    public static extern int WNetOpenEnum(int dwScope, int dwType, int dwUsage,
-        ref NETRESOURCE lpNetResource, out IntPtr lphEnum);
-
-    [DllImport("mpr.dll", CharSet = CharSet.Unicode)]
-    public static extern int WNetEnumResource(IntPtr hEnum, ref int lpcCount,
-        IntPtr lpBuffer, ref int lpBufferSize);
-
-    [DllImport("mpr.dll")]
-    public static extern int WNetCloseEnum(IntPtr hEnum);
-}
-
 public class WindowsPrinterService : IWindowsPrinterService
 {
     private readonly ILogService _log;
@@ -499,204 +461,79 @@ public class WindowsPrinterService : IWindowsPrinterService
 
     public async Task<IReadOnlyList<string>> GetSharedPrintersAsync(string host, CancellationToken ct = default)
     {
-        return await Task.Run(() =>
+        var result = new List<string>();
+
+        // Step 1 — reachability. Port 445 (SMB) is required by every strategy below.
+        // Fast 1.5s probe so an unreachable host fails almost immediately.
+        bool port445Open = await RunWithTimeoutAsync(
+            () => IsTcpPortOpen(host, 445, 1500), 2500, false, "port445");
+        _log.Info($"Port 445 on {host}: {(port445Open ? "open" : "CLOSED")}");
+
+        if (!port445Open)
         {
-            var result = new List<string>();
+            // Nothing else can work without SMB — return the diagnostic immediately.
+            result.Add(DiagPortClosed);
+            return result;
+        }
 
-            // Pre-step: verify TCP port 445 is reachable before attempting any SMB strategy.
-            bool port445Open = IsTcpPortOpen(host, 445, 2000);
-            _log.Info($"Port 445 on {host}: {(port445Open ? "open" : "CLOSED")}");
+        // Step 2 — authenticate the SMB session with the current user's credentials so the
+        // enumeration APIs below don't get ACCESS_DENIED. Bounded at 5s by net.exe itself.
+        bool ipcOk = await RunWithTimeoutAsync(
+            () => TryEstablishIpcSession(host), 6000, false, "ipc-session");
 
-            if (!port445Open)
-            {
-                result.Add(DiagPortClosed);
-                // Fall through to DCOM strategies (they don't need port 445)
-            }
-            else
-            {
-                // Try current-user credentials first, then guest as fallback.
-                // On workgroup setups both may fail if no matching account exists on remote PC,
-                // but UNC browsing (strategy 8) will still succeed via NTLM negotiation.
-                bool ipcOk = TryEstablishIpcSession(host);
-                if (!ipcOk)
-                {
-                    _log.Info($"Current-user IPC$ failed — trying Guest session");
-                    ipcOk = TryEstablishGuestSession(host);
-                }
-                if (!ipcOk)
-                    result.Add(DiagAccessDenied);
-            }
+        bool HasPrinters() => result.Any(s => !s.StartsWith("__DIAG:"));
 
-            // Helper: true if result has real printer names (not just diagnostic tags)
-            bool HasPrinters() => result.Any(s => !s.StartsWith("__DIAG:"));
+        // Strategy A — EnumPrinters (winspool.drv, \pipe\spoolss). The exact API the Windows
+        // "Add Printer" wizard uses. Wrapped in a 5s timeout so a stalled RPC can't hang the UI.
+        var spoolShares = await RunWithTimeoutAsync(
+            () => EnumeratePrinterSharesViaEnumPrinters(host), 5000, new List<string>(), "EnumPrinters");
+        result.AddRange(spoolShares);
+        if (HasPrinters()) return result;
 
-            // Strategy 1: EnumPrinters(PRINTER_ENUM_NAME|PRINTER_ENUM_SHARED) from winspool.drv.
-            // Uses the print spooler's named pipe (\\host\pipe\spoolss over SMB 445).
-            // This is the exact API the Windows "Add Printer" wizard uses.
-            try
-            {
-                var spoolShares = EnumeratePrinterSharesViaEnumPrinters(host);
-                result.AddRange(spoolShares);
-                _log.Info($"EnumPrinters {host}: [{string.Join(", ", spoolShares)}]");
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"EnumPrinters failed: {ex.Message}");
-            }
+        // Strategy B — NetShareEnum (netapi32.dll, \pipe\srvsvc). Different named pipe;
+        // succeeds when file sharing is on but the spooler pipe is blocked.
+        var netApiShares = await RunWithTimeoutAsync(
+            () => EnumeratePrintSharesViaNetApi(host), 5000, new List<string>(), "NetShareEnum");
+        result.AddRange(netApiShares.Where(s => !result.Contains(s, StringComparer.OrdinalIgnoreCase)));
+        if (HasPrinters()) return result;
 
-            if (HasPrinters()) return (IReadOnlyList<string>)result;
+        // Strategy C — .NET UNC browse (Directory.GetDirectories). Uses the current user's
+        // NTLM token automatically, exactly like Explorer browsing \\host. Returns all
+        // non-hidden shares (disk + print) — at this point any result beats nothing.
+        // Hard 6s timeout: this call has no native timeout and is the main hang risk.
+        var uncShares = await RunWithTimeoutAsync(
+            () => TryListAllSharesViaUncBrowsing(host), 6000, new List<string>(), "UNC-browse");
+        result.AddRange(uncShares.Where(s => !result.Contains(s, StringComparer.OrdinalIgnoreCase)));
+        if (HasPrinters()) return result;
 
-            // Strategy 2: NetShareEnum via netapi32.dll (\\host\pipe\srvsvc — Server service).
-            // Different named pipe from EnumPrinters (\pipe\spoolss). Can succeed when the
-            // Spooler pipe is blocked but the "File Sharing" firewall rule is open.
-            try
-            {
-                var netApiShares = EnumeratePrintSharesViaNetApi(host);
-                result.AddRange(netApiShares.Where(s => !result.Contains(s, StringComparer.OrdinalIgnoreCase)));
-                _log.Info($"NetShareEnum {host}: [{string.Join(", ", netApiShares)}]");
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"NetShareEnum failed: {ex.Message}");
-            }
+        // Nothing found. If we never got an authenticated session, surface access-denied so the
+        // ViewModel can give sharing/permission guidance instead of a generic message.
+        if (!ipcOk)
+            result.Add(DiagAccessDenied);
 
-            if (HasPrinters()) return (IReadOnlyList<string>)result;
+        return result;
+    }
 
-            // Strategy 4: WNetOpenEnum via mpr.dll — SMB-based, already filtered to RESOURCETYPE_PRINT
-            try
-            {
-                var wnetShares = EnumeratePrinterSharesViaWNet(host);
-                result.AddRange(wnetShares.Where(s => !result.Contains(s, StringComparer.OrdinalIgnoreCase)));
-                _log.Info($"WNet {host}: [{string.Join(", ", wnetShares)}]");
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"WNet enumeration failed: {ex.Message}");
-            }
+    // Runs a (potentially blocking) synchronous function on a background thread and gives up
+    // after timeoutMs. If it times out, the background work is abandoned (it can't be force-
+    // killed) but the caller returns immediately with defaultValue so the UI never hangs.
+    private async Task<T> RunWithTimeoutAsync<T>(Func<T> func, int timeoutMs, T defaultValue, string label)
+    {
+        try
+        {
+            var task = Task.Run(func);
+            var completed = await Task.WhenAny(task, Task.Delay(timeoutMs));
+            if (completed == task)
+                return await task;
 
-            if (HasPrinters()) return (IReadOnlyList<string>)result;
-
-            // Strategy 5: net view \\host — SMB port 445, column-aware parsing.
-            // ParseNetViewShares filters to print-type shares only.
-            try
-            {
-                var netExe = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.System), "net.exe");
-                var psi = new ProcessStartInfo(netExe, $"view \\\\{host}")
-                {
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-                using var proc = Process.Start(psi)!;
-                var output = proc.StandardOutput.ReadToEnd();
-                var stderr = proc.StandardError.ReadToEnd().Trim();
-                proc.WaitForExit(10_000);
-
-                if (proc.ExitCode == 0)
-                {
-                    var parsed = ParseNetViewShares(output);
-                    result.AddRange(parsed.Where(s => !result.Contains(s, StringComparer.OrdinalIgnoreCase)));
-                    _log.Info($"net view {host}: [{string.Join(", ", parsed)}]");
-                }
-                else
-                {
-                    _log.Warning($"net view exited {proc.ExitCode} for {host}: {stderr}");
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"net view failed: {ex.Message}");
-            }
-
-            if (HasPrinters()) return (IReadOnlyList<string>)result;
-
-            // Strategy 6: wmic /node — WMI via DCOM (port 135 + dynamic RPC).
-            // Works when SMB (port 445) is blocked but WMI firewall rules are enabled.
-            // Note: wmic.exe is deprecated in Windows 11 24H2+ — we fall through to PS if missing.
-            try
-            {
-                var safeHost = host.Replace("\"", "").Replace(";", "").Replace("&", "");
-                var wmicPsi = new ProcessStartInfo
-                {
-                    FileName = "wmic",
-                    Arguments = $"/node:\"{safeHost}\" printer where \"Shared=TRUE\" get ShareName /format:list",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-                using var wmicProc = Process.Start(wmicPsi)!;
-                var wmicOut = wmicProc.StandardOutput.ReadToEnd();
-                wmicProc.WaitForExit(10_000);
-
-                foreach (var line in wmicOut.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
-                {
-                    if (!line.StartsWith("ShareName=", StringComparison.OrdinalIgnoreCase)) continue;
-                    var name = line["ShareName=".Length..].Trim();
-                    if (!string.IsNullOrEmpty(name) && !result.Contains(name, StringComparer.OrdinalIgnoreCase))
-                        result.Add(name);
-                }
-                _log.Info($"wmic /node '{host}': [{string.Join(", ", result)}]");
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"wmic /node failed for {host}: {ex.Message}");
-            }
-
-            if (HasPrinters()) return (IReadOnlyList<string>)result;
-
-            // Strategy 7: Get-WmiObject Win32_Printer -ComputerName — DCOM-based WMI via PowerShell.
-            // More reliable than Get-Printer -ComputerName which requires the Print Management
-            // feature (not installed by default on consumer Windows).
-            try
-            {
-                var safeHost5 = host.Replace("'", "''");
-                var script5 = $"Get-WmiObject -Class Win32_Printer -ComputerName '{safeHost5}'" +
-                              $" | Where-Object {{ $_.Shared -eq $true }}" +
-                              $" | Select-Object -ExpandProperty ShareName" +
-                              $" | Where-Object {{ $_ -ne $null -and $_ -ne '' }}";
-                var encoded5 = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script5));
-                var psi5 = new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded5}",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-                using var proc5 = Process.Start(psi5)!;
-                var out5 = proc5.StandardOutput.ReadToEnd();
-                proc5.WaitForExit(15_000);
-
-                foreach (var line in out5.Split('\n'))
-                {
-                    var name = line.Trim();
-                    if (!string.IsNullOrEmpty(name) && !result.Contains(name, StringComparer.OrdinalIgnoreCase))
-                        result.Add(name);
-                }
-                _log.Info($"Get-WmiObject Win32_Printer -ComputerName {host}: [{string.Join(", ", result)}]");
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"Get-WmiObject Win32_Printer -ComputerName failed: {ex.Message}");
-            }
-
-            if (HasPrinters()) return (IReadOnlyList<string>)result;
-
-            // Strategy 8: .NET Directory.GetDirectories — last resort UNC browse.
-            // Unlike every strategy above, this uses the current user's Windows NTLM token
-            // automatically (same mechanism as Windows Explorer browsing \\192.168.1.100).
-            // It returns ALL non-hidden shares (disk + print), because at this point any
-            // enumeration beats returning nothing.  The caller shows all results and lets
-            // the user pick; they know their own printer share name.
-            var uncShares = TryListAllSharesViaUncBrowsing(host);
-            result.AddRange(uncShares.Where(s => !result.Contains(s, StringComparer.OrdinalIgnoreCase)));
-
-            return (IReadOnlyList<string>)result;
-        }, ct);
+            _log.Warning($"{label} timed out after {timeoutMs}ms — skipping");
+            return defaultValue;
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"{label} failed: {ex.Message}");
+            return defaultValue;
+        }
     }
 
     private bool IsTcpPortOpen(string host, int port, int timeoutMs)
@@ -718,7 +555,7 @@ public class WindowsPrinterService : IWindowsPrinterService
         {
             // "net use \\host\IPC$" opens a session using the current user's NTLM credentials.
             // This pre-authenticates the SMB connection so subsequent API calls (EnumPrinters,
-            // NetShareEnum, WNetOpenEnum) can traverse named pipes without ACCESS_DENIED (5).
+            // NetShareEnum) can traverse named pipes without ACCESS_DENIED (5).
             var netExe = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.System), "net.exe");
             var psi = new ProcessStartInfo(netExe, $@"use \\{host}\IPC$")
@@ -737,34 +574,6 @@ public class WindowsPrinterService : IWindowsPrinterService
         catch (Exception ex)
         {
             _log.Warning($"TryEstablishIpcSession({host}) failed: {ex.Message}");
-            return false;
-        }
-    }
-
-    private bool TryEstablishGuestSession(string host)
-    {
-        try
-        {
-            // Try connecting as Guest with empty password — works when the remote PC has
-            // Guest sharing enabled ("Allow anyone" or classic sharing model).
-            var netExe = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.System), "net.exe");
-            var psi = new ProcessStartInfo(netExe, $@"use \\{host}\IPC$ """" /user:guest")
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-            using var proc = Process.Start(psi)!;
-            var stderr = proc.StandardError.ReadToEnd().Trim();
-            proc.WaitForExit(5_000);
-            _log.Info($"IPC$ session (guest) to {host}: exit={proc.ExitCode} err='{stderr}'");
-            return proc.ExitCode == 0;
-        }
-        catch (Exception ex)
-        {
-            _log.Warning($"TryEstablishGuestSession({host}) failed: {ex.Message}");
             return false;
         }
     }
@@ -898,148 +707,6 @@ public class WindowsPrinterService : IWindowsPrinterService
         {
             if (bufPtr != IntPtr.Zero)
                 NetApi32.NetApiBufferFree(bufPtr);
-        }
-
-        return shares;
-    }
-
-    private List<string> EnumeratePrinterSharesViaWNet(string host)
-    {
-        var shares = new List<string>();
-
-        // Describe the server as a container resource we want to enumerate inside.
-        // dwUsage here describes the server resource itself (it IS a container).
-        var serverResource = new WNetApi.NETRESOURCE
-        {
-            dwScope       = WNetApi.RESOURCE_GLOBALNET,
-            dwType        = WNetApi.RESOURCETYPE_ANY,
-            dwDisplayType = WNetApi.RESOURCEDISPLAY_SERVER,
-            dwUsage       = WNetApi.RESOURCEUSAGE_CONTAINER,
-            lpRemoteName  = $@"\\{host}"
-        };
-
-        // dwUsage=0 (RESOURCEUSAGE_ALL) is required — RESOURCEUSAGE_CONTAINER (2) would only
-        // return sub-containers (workgroups/domains), never connectable shares like printers.
-        int hr = WNetApi.WNetOpenEnum(
-            WNetApi.RESOURCE_GLOBALNET,
-            WNetApi.RESOURCETYPE_PRINT,   // only printer shares
-            WNetApi.RESOURCEUSAGE_ALL,    // 0 = connectable AND container resources
-            ref serverResource,
-            out IntPtr hEnum);
-
-        if (hr != WNetApi.NO_ERROR)
-        {
-            _log.Warning($"WNetOpenEnum({host}) error {hr} (0x{hr:X8})");
-            return shares;
-        }
-
-        try
-        {
-            const int bufSize = 65536;
-            IntPtr buf = Marshal.AllocHGlobal(bufSize);
-            try
-            {
-                while (true)
-                {
-                    int count = bufSize / Marshal.SizeOf<WNetApi.NETRESOURCE>(), size = bufSize;
-                    int err = WNetApi.WNetEnumResource(hEnum, ref count, buf, ref size);
-                    if (err == WNetApi.ERROR_NO_MORE_ITEMS || count <= 0) break;
-                    if (err != WNetApi.NO_ERROR) break;
-
-                    IntPtr ptr = buf;
-                    for (int i = 0; i < count; i++)
-                    {
-                        var res = Marshal.PtrToStructure<WNetApi.NETRESOURCE>(ptr);
-
-                        if (!string.IsNullOrEmpty(res.lpRemoteName))
-                        {
-                            int slash = res.lpRemoteName.LastIndexOf('\\');
-                            var name = slash >= 0 ? res.lpRemoteName[(slash + 1)..] : res.lpRemoteName;
-                            if (!string.IsNullOrEmpty(name) && !name.EndsWith("$"))
-                            {
-                                _log.Info($"  WNet share: '{name}' type={res.dwType} remote='{res.lpRemoteName}'");
-                                shares.Add(name);
-                            }
-                        }
-                        ptr = IntPtr.Add(ptr, Marshal.SizeOf<WNetApi.NETRESOURCE>());
-                    }
-                }
-            }
-            finally { Marshal.FreeHGlobal(buf); }
-        }
-        finally { WNetApi.WNetCloseEnum(hEnum); }
-
-        return shares;
-    }
-
-    // Parses "net view \\host" output using fixed-width column detection so share names
-    // with spaces (e.g. "Gertec G250") are extracted correctly. Locale-independent.
-    private static List<string> ParseNetViewShares(string output)
-    {
-        var shares = new List<string>();
-        var lines = output.Split('\n').Select(l => l.TrimEnd()).ToArray();
-
-        int separatorIdx = -1;
-        int typeColStart = -1;
-
-        // Find the separator line and detect the Type column position from the header above it
-        for (int i = 0; i < lines.Length; i++)
-        {
-            if (!lines[i].TrimStart().StartsWith("---")) continue;
-            separatorIdx = i;
-
-            for (int j = i - 1; j >= 0; j--)
-            {
-                if (string.IsNullOrWhiteSpace(lines[j])) continue;
-                var header = lines[j];
-                var pos = header.IndexOf("Type", StringComparison.OrdinalIgnoreCase);
-                if (pos < 0) pos = header.IndexOf("Tipo", StringComparison.OrdinalIgnoreCase);
-                if (pos > 0) typeColStart = pos;
-                break;
-            }
-            break;
-        }
-
-        if (separatorIdx < 0) return shares;
-
-        for (int i = separatorIdx + 1; i < lines.Length; i++)
-        {
-            var line = lines[i];
-            if (string.IsNullOrWhiteSpace(line)) continue;
-
-            string shareName;
-            string typeField = string.Empty;
-
-            if (typeColStart > 0)
-            {
-                if (line.Length <= typeColStart) continue; // footer/short line
-                shareName = line[..typeColStart].Trim();
-                typeField = line[typeColStart..].TrimStart();
-            }
-            else
-            {
-                // No column info: first space-delimited token (won't capture spaces in share name)
-                var parts = line.TrimStart().Split(new[] { ' ', '\t' }, 2, StringSplitOptions.RemoveEmptyEntries);
-                shareName = parts.Length > 0 ? parts[0].Trim() : string.Empty;
-            }
-
-            if (string.IsNullOrEmpty(shareName)) continue;
-            if (shareName.EndsWith("$")) continue; // skip admin/hidden shares
-
-            // When type info is available, only keep printer-type shares.
-            // Disk and IPC shares are excluded — they can't be used as printer connections.
-            // When type is unknown (column not detected), we include the entry and let the
-            // caller filter by attempting connection.
-            if (!string.IsNullOrEmpty(typeField))
-            {
-                bool isPrint =
-                    typeField.StartsWith("Print", StringComparison.OrdinalIgnoreCase) ||
-                    typeField.StartsWith("Impr",  StringComparison.OrdinalIgnoreCase);
-                if (!isPrint) continue;
-            }
-
-            if (!shares.Contains(shareName, StringComparer.OrdinalIgnoreCase))
-                shares.Add(shareName);
         }
 
         return shares;
