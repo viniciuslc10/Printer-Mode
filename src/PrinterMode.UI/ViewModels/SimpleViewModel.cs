@@ -294,6 +294,15 @@ public partial class SimpleViewModel : ObservableObject
             StatusText = $"Verificando serviço LPD em '{host}'...";
             bool lpdAvailable = await _printerService.IsLpdAvailableAsync(host);
 
+            if (!lpdAvailable)
+            {
+                // Try to start LPDSVC on the remote PC automatically (works when credentials match).
+                StatusText = $"Ativando serviço LPD em '{host}'...";
+                await _printerService.TryEnableLpdRemotelyAsync(host);
+                await Task.Delay(2000);
+                lpdAvailable = await _printerService.IsLpdAvailableAsync(host);
+            }
+
             if (lpdAvailable)
             {
                 StatusText = $"✓ Serviço LPD ativo em '{host}'.\n\n" +
@@ -303,10 +312,10 @@ public partial class SimpleViewModel : ObservableObject
             }
             else
             {
-                StatusText = $"Computador '{host}' encontrado, mas o serviço LPD (porta 515) não está ativo.\n\n" +
-                             $"Instale o PrinterMode no computador '{host}' e instale a impressora lá — " +
-                             $"o serviço LPD é ativado automaticamente durante a instalação.\n\n" +
-                             $"Após instalar no outro computador, clique em Buscar novamente.";
+                StatusText = $"Serviço LPD não está ativo no computador '{host}'.\n\n" +
+                             $"No computador '{host}': abra o PrinterMode como Administrador e reinstale a impressora. " +
+                             $"O serviço LPD será ativado automaticamente.\n\n" +
+                             $"Após reinstalar, clique em Buscar novamente.";
             }
         }
         finally

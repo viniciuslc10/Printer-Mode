@@ -1157,26 +1157,63 @@ public class WindowsPrinterService : IWindowsPrinterService
         {
             try
             {
-                // Enable the "LPD Service" Windows optional feature silently.
-                // This installs the LPDSVC service that exposes Windows shared printers
-                // on TCP port 515 using the printer's share name as the LPD queue name.
-                var enableScript =
-                    "if ((Get-WindowsOptionalFeature -Online -FeatureName 'LPD-Service').State -ne 'Enabled') {" +
-                    " Enable-WindowsOptionalFeature -Online -FeatureName 'LPD-Service' -NoRestart | Out-Null };" +
-                    "Start-Service -Name LPDSVC -ErrorAction SilentlyContinue";
-                var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(enableScript));
-                var psi = new ProcessStartInfo
+                // If already running, nothing to do.
+                if (LpdServiceIsRunning())
                 {
-                    FileName = "powershell.exe",
-                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+                    _log.Info("LPD service already running.");
+                    return;
+                }
+
+                // If service binary exists but is just stopped, start it immediately
+                // (avoids the slow DISM path when the feature is already installed).
+                if (LpdServiceExists())
+                {
+                    _log.Info("LPD service installed but not running — starting.");
+                    LpdServiceStart();
+                    if (LpdServiceIsRunning()) return;
+                }
+
+                // Feature not installed: use DISM — more reliable than PowerShell
+                // Enable-WindowsOptionalFeature, works offline without internet.
+                _log.Info("Enabling LPD-Service feature via DISM...");
+                var dismPsi = new ProcessStartInfo
+                {
+                    FileName = "dism.exe",
+                    Arguments = "/Online /Enable-Feature /FeatureName:LPD-Service /All /NoRestart /Quiet",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true
                 };
-                using var proc = Process.Start(psi)!;
-                proc.WaitForExit(60_000);
-                _log.Info($"EnableLpdService exit={proc.ExitCode}");
+                using (var dism = Process.Start(dismPsi)!)
+                {
+                    dism.WaitForExit(120_000);
+                    _log.Info($"DISM LPD-Service exit={dism.ExitCode}");
+                }
+
+                // PowerShell fallback if DISM failed (e.g. in some ARM/Server editions).
+                if (!LpdServiceExists())
+                {
+                    _log.Info("DISM did not install service — trying PowerShell fallback.");
+                    var script =
+                        "Enable-WindowsOptionalFeature -Online -FeatureName 'LPD-Service' " +
+                        "-All -NoRestart -ErrorAction SilentlyContinue | Out-Null";
+                    var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+                    var psPsi = new ProcessStartInfo
+                    {
+                        FileName = "powershell.exe",
+                        Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    using var ps = Process.Start(psPsi)!;
+                    ps.WaitForExit(90_000);
+                    _log.Info($"PowerShell LPD fallback exit={ps.ExitCode}");
+                }
+
+                // Set to auto-start and launch.
+                LpdServiceStart();
+                _log.Info(LpdServiceIsRunning() ? "LPD service started successfully." : "LPD service did not start.");
             }
             catch (Exception ex)
             {
@@ -1185,9 +1222,93 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    private static bool LpdServiceIsRunning()
+    {
+        try
+        {
+            var psi = new ProcessStartInfo("sc.exe", "query LPDSVC")
+            {
+                UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true
+            };
+            using var p = Process.Start(psi)!;
+            p.WaitForExit(5_000);
+            return p.StandardOutput.ReadToEnd().Contains("RUNNING", StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
+    }
+
+    private static bool LpdServiceExists()
+    {
+        try
+        {
+            var psi = new ProcessStartInfo("sc.exe", "query LPDSVC")
+            {
+                UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true
+            };
+            using var p = Process.Start(psi)!;
+            p.WaitForExit(5_000);
+            return p.ExitCode == 0;
+        }
+        catch { return false; }
+    }
+
+    private static void LpdServiceStart()
+    {
+        try
+        {
+            var cfg = new ProcessStartInfo("sc.exe", "config LPDSVC start=auto")
+            {
+                UseShellExecute = false, CreateNoWindow = true
+            };
+            using var c = Process.Start(cfg)!;
+            c.WaitForExit(5_000);
+
+            var start = new ProcessStartInfo("sc.exe", "start LPDSVC")
+            {
+                UseShellExecute = false, CreateNoWindow = true
+            };
+            using var s = Process.Start(start)!;
+            s.WaitForExit(10_000);
+        }
+        catch { }
+    }
+
     public async Task<bool> IsLpdAvailableAsync(string host, CancellationToken ct = default)
     {
         return await RunWithTimeoutAsync(() => IsTcpPortOpen(host, 515, 1500), 2500, false, "IsLpdAvailable");
+    }
+
+    public async Task<bool> TryEnableLpdRemotelyAsync(string host, CancellationToken ct = default)
+    {
+        // Attempt to start LPDSVC on the remote machine via sc.exe.
+        // Works when both PCs share the same admin credentials (e.g. same domain or same local account).
+        // Fails silently when authentication is denied — caller checks IsLpdAvailableAsync afterwards.
+        return await Task.Run(() =>
+        {
+            try
+            {
+                var cfg = new ProcessStartInfo("sc.exe", $@"\\{host} config LPDSVC start=auto")
+                {
+                    UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true
+                };
+                using (var c = Process.Start(cfg)!) c.WaitForExit(6_000);
+
+                var start = new ProcessStartInfo("sc.exe", $@"\\{host} start LPDSVC")
+                {
+                    UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true
+                };
+                using var s = Process.Start(start)!;
+                s.WaitForExit(8_000);
+                // exit 0 = started, 1056 = already running — both count as success
+                _log.Info($"TryEnableLpdRemotely {host}: sc exit={s.ExitCode}");
+                return s.ExitCode == 0 || s.ExitCode == 1056;
+            }
+            catch (Exception ex)
+            {
+                _log.Info($"TryEnableLpdRemotely {host} failed (non-fatal): {ex.Message}");
+                return false;
+            }
+        }, ct);
     }
 
     public async Task<bool> CreateLprPortAsync(string portName, string host, string queueName, CancellationToken ct = default)

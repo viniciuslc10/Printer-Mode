@@ -39,7 +39,8 @@ public class DriverInstaller : IDriverInstaller
 
         // Enable LPD service in the background for all connection types so other PCs
         // can always find and connect to this printer via LPD (port 515, no password).
-        _ = _printerService.EnableLpdServiceAsync(ct);
+        // CancellationToken.None: must not be cancelled when the install flow finishes.
+        _ = _printerService.EnableLpdServiceAsync(CancellationToken.None);
 
         if (!_repository.DriverFilesExist(request.Driver))
         {
