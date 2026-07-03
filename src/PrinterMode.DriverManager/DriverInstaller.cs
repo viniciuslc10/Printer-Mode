@@ -175,7 +175,8 @@ public class DriverInstaller : IDriverInstaller
                     progress?.Report("Verificando driver instalado...");
                     var quickList = await _printerService.GetInstalledDriversAsync(ct);
                     resolvedSilent = ResolveActualDriverName(request.Driver, quickList)
-                        ?? quickList.Except(driversBefore, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+                        ?? quickList.Except(driversBefore, StringComparer.OrdinalIgnoreCase)
+                                    .FirstOrDefault(d => !IsSystemDriver(d));
                     if (resolvedSilent != null)
                         _log.Info($"Quick driver-list check found: '{resolvedSilent}'");
 
@@ -219,7 +220,8 @@ public class DriverInstaller : IDriverInstaller
 
                             driversAfterSilent = await _printerService.GetInstalledDriversAsync(ct);
                             resolvedSilent ??= ResolveActualDriverName(request.Driver, driversAfterSilent)
-                                ?? driversAfterSilent.Except(driversBefore, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+                                ?? driversAfterSilent.Except(driversBefore, StringComparer.OrdinalIgnoreCase)
+                                                     .FirstOrDefault(d => !IsSystemDriver(d));
                             if (resolvedSilent != null)
                                 _log.Info($"Phase2 poll {poll + 1}: driver='{resolvedSilent}'");
 
@@ -250,7 +252,8 @@ public class DriverInstaller : IDriverInstaller
                         await Task.Delay(3000, ct);
                         var driversAfterStore = await _printerService.GetInstalledDriversAsync(ct);
                         resolvedSilent = ResolveActualDriverName(request.Driver, driversAfterStore)
-                            ?? driversAfterStore.Except(driversBefore, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+                            ?? driversAfterStore.Except(driversBefore, StringComparer.OrdinalIgnoreCase)
+                                               .FirstOrDefault(d => !IsSystemDriver(d));
 
                         var (storeAutoDriver, storeAutoPort) = await _printerService.FindAutoInstalledPrinterInfoAsync(
                             request.Driver.Manufacturer, request.Driver.Model, ct);
@@ -437,17 +440,33 @@ public class DriverInstaller : IDriverInstaller
                     }
                     else
                     {
-                        // Any driver that appeared after install (unknown name) goes first,
-                        // then all known candidate names
+                        // Any non-system driver that appeared after install (unknown name) goes first,
+                        // then all known candidate names.
+                        // System/Microsoft drivers are explicitly excluded — they can appear as
+                        // "new" when the pre-install snapshot was incomplete due to a slow spooler.
                         var freshNew = driversAtInstallStart.Count > 0
                             ? freshDrivers
                                 .Except(driversAtInstallStart, StringComparer.OrdinalIgnoreCase)
+                                .Where(d => !IsSystemDriver(d))
                                 .ToList()
                             : [];
-                        var knownCandidates = request.Driver.AllDriverNames().ToList();
+                        var knownCandidates = request.Driver.AllDriverNames()
+                            .Where(n => !string.IsNullOrWhiteSpace(n) && !IsSystemDriver(n))
+                            .ToList();
                         driverNamesToTry = [..freshNew, ..knownCandidates];
                         _log.Info($"Probing {driverNamesToTry.Count} driver names ({freshNew.Count} newly detected + {knownCandidates.Count} known): [{string.Join(", ", driverNamesToTry)}]");
                     }
+                }
+
+                if (driverNamesToTry.Count == 0)
+                {
+                    _log.Error("No driver names to try — driver detection produced no usable names.");
+                    var allVisible = await _printerService.GetInstalledDriversAsync(ct);
+                    return InstallResult.Fail(
+                        "Não foi possível detectar o driver instalado pelo Windows.",
+                        $"Drivers visíveis: [{string.Join(", ", allVisible.Take(15))}]\n" +
+                        "Verifique o nome do driver em: Gerenciamento de Impressão → Drivers.",
+                        steps);
                 }
 
                 bool printerAdded = false;
@@ -1035,6 +1054,16 @@ public class DriverInstaller : IDriverInstaller
         var principal = new WindowsPrincipal(identity);
         return principal.IsInRole(WindowsBuiltInRole.Administrator);
     }
+
+    // Returns true for built-in Windows printer drivers that should never be treated
+    // as a "newly installed" third-party driver during diff-based detection.
+    private static bool IsSystemDriver(string name) =>
+        name.Contains("Microsoft",     StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("OneNote",       StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Fax",           StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("XPS",           StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("PDF",           StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Remote Desktop", StringComparison.OrdinalIgnoreCase);
 
     private static string ToShareName(string printerName)
     {
