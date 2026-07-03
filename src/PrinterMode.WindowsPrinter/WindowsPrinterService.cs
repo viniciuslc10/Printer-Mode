@@ -154,6 +154,52 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    public async Task<string?> FindNewPortSinceSnapshotAsync(
+        IReadOnlyList<string> portsBefore, CancellationToken ct = default)
+    {
+        // Returns the first port registered in Win32_PrinterPort that was NOT in portsBefore.
+        // Unlike FindBestUsbPortAsync, this catches vendor-specific port names (BEMATECHUSB001,
+        // ELGINUSB001, etc.) that don't match the USB%/DOT4%/WSD% prefixes.
+        // Returns null if portsBefore is empty — an empty snapshot means we cannot diff.
+        if (portsBefore.Count == 0)
+            return null;
+
+        return await Task.Run(() =>
+        {
+            try
+            {
+                using var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_PrinterPort");
+                foreach (ManagementObject obj in searcher.Get())
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var name = obj["Name"]?.ToString();
+                    if (string.IsNullOrEmpty(name)) continue;
+                    if (IsNonHardwarePort(name)) continue;
+                    if (!portsBefore.Contains(name, StringComparer.OrdinalIgnoreCase))
+                    {
+                        _log.Info($"FindNewPortSinceSnapshot: new port detected '{name}'");
+                        return name;
+                    }
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"FindNewPortSinceSnapshotAsync failed: {ex.Message}");
+                return null;
+            }
+        }, ct);
+    }
+
+    // Ports that are purely software (not a physical device connection) and should
+    // never be returned as the result of a USB-printer-port diff.
+    private static bool IsNonHardwarePort(string name) =>
+        name.Equals("FILE:", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("PORTPROMPT:", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("SHRFAX", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("IP_",    StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("LPR_",   StringComparison.OrdinalIgnoreCase);
+
     public async Task<string?> FindAnyUsbPrinterPortAsync(CancellationToken ct = default)
     {
         // Last-resort: find a USB/DOT4/WSD port already assigned to ANY printer in the
@@ -262,7 +308,7 @@ public class WindowsPrinterService : IWindowsPrinterService
                 using var proc = Process.Start(psi)!;
                 var stderrTask = proc.StandardError.ReadToEndAsync();
                 var stdoutTask = proc.StandardOutput.ReadToEndAsync();
-                proc.WaitForExit(35_000);
+                proc.WaitForExit(20_000);
                 stderrTask.GetAwaiter().GetResult();
                 stdoutTask.GetAwaiter().GetResult();
                 _log.Info($"ReEnumerateUsbPrinterDevices exit={proc.ExitCode}");

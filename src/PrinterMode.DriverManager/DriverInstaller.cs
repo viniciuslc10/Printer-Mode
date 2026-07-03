@@ -60,6 +60,7 @@ public class DriverInstaller : IDriverInstaller
             string? detectedDriverName = null; // actual Windows driver name found after install
             IReadOnlyList<string> driversAtInstallStart = []; // snapshot for diff-based detection in Step 3
             string? discoveredUsbPort = null; // populated during Step 1 polling so Step 2 doesn't race
+            IReadOnlyList<string> portsBeforeInstall = []; // snapshot for diff-based USB port detection
 
             if (request.SkipDriverInstall)
             {
@@ -144,6 +145,13 @@ public class DriverInstaller : IDriverInstaller
                         CreateNoWindow = true
                     };
 
+                    // Snapshot ports BEFORE the installer runs so we can detect any new USB print
+                    // port by diff after install — catches vendor-specific names (BEMATECHUSB001,
+                    // ELGINUSB001, etc.) that prefix-based searches (USB%, DOT4%) would miss.
+                    bool needsUsbPort = request.ConnectionType == ConnectionType.USB;
+                    if (needsUsbPort)
+                        portsBeforeInstall = await _printerService.GetAvailablePortsAsync(ct);
+
                     try
                     {
                         using var proc = Process.Start(psi)!;
@@ -165,8 +173,6 @@ public class DriverInstaller : IDriverInstaller
                     // Brief pause for installer to finish writing files/registry.
                     await Task.Delay(1000, ct);
 
-                    bool needsUsbPort = request.ConnectionType == ConnectionType.USB;
-
                     // For USB: force Windows to re-enumerate connected devices immediately after
                     // the installer exits. Without this, the USB print-monitor port (USB001 etc.)
                     // may not appear in the Print Spooler for 30+ seconds after a silent install.
@@ -177,7 +183,8 @@ public class DriverInstaller : IDriverInstaller
                         await Task.Delay(3000, ct);
 
                         // Quick check: if the scan was enough, capture the port now.
-                        var earlyPort = await _printerService.FindBestUsbPortAsync(ct);
+                        var earlyPort = await _printerService.FindBestUsbPortAsync(ct)
+                            ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct);
                         if (earlyPort != null)
                         {
                             discoveredUsbPort = earlyPort;
@@ -194,7 +201,8 @@ public class DriverInstaller : IDriverInstaller
                                 _log.Info($"USB port missing after pnp scan — pnputil install: '{earlyInfPath}'");
                                 await InstallViaPnpUtilAsync(earlyInfPath, ct);
                                 await Task.Delay(3000, ct);
-                                discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct);
+                                discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
+                                    ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct);
                             }
 
                             if (discoveredUsbPort == null)
@@ -237,6 +245,8 @@ public class DriverInstaller : IDriverInstaller
                                 discoveredUsbPort ??= autoPort;
                             _log.Info($"Phase1 poll {q + 1}: driver='{autoDriver}' port='{autoPort ?? "n/a"}'");
                         }
+                        if (needsUsbPort && discoveredUsbPort == null)
+                            discoveredUsbPort = await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct);
                     }
 
                     // ── Phase 2: Restart Spooler only if Phase 1 didn't resolve ──────────
@@ -271,7 +281,8 @@ public class DriverInstaller : IDriverInstaller
                                 discoveredUsbPort ??= autoPort2;
 
                             if (needsUsbPort && discoveredUsbPort == null)
-                                discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct);
+                                discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
+                                    ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct);
                         }
                     }
 
@@ -299,6 +310,8 @@ public class DriverInstaller : IDriverInstaller
                         resolvedSilent ??= storeAutoDriver;
                         if (needsUsbPort && !string.IsNullOrEmpty(storeAutoPort))
                             discoveredUsbPort ??= storeAutoPort;
+                        if (needsUsbPort && discoveredUsbPort == null)
+                            discoveredUsbPort = await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct);
 
                         if (resolvedSilent != null)
                             _log.Info($"Driver found after DriverStore/pnputil: '{resolvedSilent}'");
@@ -418,6 +431,8 @@ public class DriverInstaller : IDriverInstaller
                         }
                         if (discoveredUsbPort == null)
                             discoveredUsbPort = await _printerService.FindAnyUsbPrinterPortAsync(ct);
+                        if (discoveredUsbPort == null)
+                            discoveredUsbPort = await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct);
                     }
 
                     if (discoveredUsbPort == null)
@@ -437,8 +452,9 @@ public class DriverInstaller : IDriverInstaller
                             progress?.Report("Associando driver ao dispositivo USB...");
                             await InstallViaPnpUtilAsync(repoInfPath, ct);
                             await Task.Delay(4000, ct);
-                            discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct);
-                            discoveredUsbPort ??= await _printerService.FindAnyUsbPrinterPortAsync(ct);
+                            discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
+                                ?? await _printerService.FindAnyUsbPrinterPortAsync(ct)
+                                ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct);
                         }
 
                         if (discoveredUsbPort == null)
@@ -450,10 +466,11 @@ public class DriverInstaller : IDriverInstaller
                         }
                         await _printerService.RestartSpoolerAsync(ct);
 
-                        for (int p = 0; p < 6 && discoveredUsbPort == null; p++)
+                        for (int p = 0; p < 4 && discoveredUsbPort == null; p++)
                         {
                             await Task.Delay(3000, ct);
-                            discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct);
+                            discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
+                                ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct);
                             if (discoveredUsbPort == null)
                             {
                                 var (_, pnpPort2) = await _printerService.FindAutoInstalledPrinterInfoAsync(
@@ -465,10 +482,15 @@ public class DriverInstaller : IDriverInstaller
                                     discoveredUsbPort = pnpPort2;
                             }
                             discoveredUsbPort ??= await _printerService.FindAnyUsbPrinterPortAsync(ct);
+                            discoveredUsbPort ??= await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct);
                         }
                     }
 
-                    // Last resort: probe the available port list for well-known USB port names
+                    // Last resort: diff-based scan then probe well-known USB port names
+                    if (discoveredUsbPort == null)
+                    {
+                        discoveredUsbPort = await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct);
+                    }
                     if (discoveredUsbPort == null)
                     {
                         _log.Warning("USB port not auto-detected. Probing fallback port names...");
