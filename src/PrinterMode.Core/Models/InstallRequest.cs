@@ -18,4 +18,6 @@ public class InstallRequest
     public string? SharedHost { get; set; }
     // The share name as configured on the host (may differ from PrinterName)
     public string? SharedPrinterName { get; set; }
+    // Windows driver name as reported by the remote PC via discovery port
+    public string? SharedDriverName { get; set; }
 }

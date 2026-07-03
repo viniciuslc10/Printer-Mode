@@ -1495,15 +1495,16 @@ public class WindowsPrinterService : IWindowsPrinterService
             using var writer = new StreamWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true)
                 { AutoFlush = true };
 
-            // Return shared printers: "shareName|displayName" per line
+            // Return shared printers: "shareName|displayName|driverName" per line
             using var searcher = new ManagementObjectSearcher(
-                "SELECT Name, ShareName FROM Win32_Printer WHERE Shared = True");
+                "SELECT Name, ShareName, DriverName FROM Win32_Printer WHERE Shared = True");
             foreach (ManagementObject p in searcher.Get())
             {
-                var share = p["ShareName"]?.ToString();
-                var name  = p["Name"]?.ToString();
+                var share      = p["ShareName"]?.ToString();
+                var name       = p["Name"]?.ToString();
+                var driverName = p["DriverName"]?.ToString();
                 if (!string.IsNullOrWhiteSpace(share))
-                    await writer.WriteLineAsync($"{share}|{name ?? share}");
+                    await writer.WriteLineAsync($"{share}|{name ?? share}|{driverName ?? ""}");
             }
         }
         catch (Exception ex)

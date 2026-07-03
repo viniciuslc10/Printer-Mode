@@ -76,6 +76,7 @@ public partial class SimpleViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
     private string _sharedPrinterName = string.Empty;
     [ObservableProperty] private ObservableCollection<string> _sharedPrinterList = [];
+    private string? _discoveredDriverName;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSharedPrinters))]
     private bool _isSearchingShared;
@@ -227,6 +228,7 @@ public partial class SimpleViewModel : ObservableObject
                 NetworkPort = ConnectionNetwork ? NetworkPort : 9100,
                 SharedHost = ConnectionShared ? SharedHost : null,
                 SharedPrinterName = ConnectionShared ? SharedPrinterName : null,
+                SharedDriverName = ConnectionShared ? _discoveredDriverName : null,
                 PortName = ConnectionSerial ? SelectedComPort?.PortName
                          : ConnectionUsb && SelectedUsbPort != null ? SelectedUsbPort.PortName
                          : null,
@@ -298,16 +300,18 @@ public partial class SimpleViewModel : ObservableObject
 
             if (discovered.Count > 0)
             {
-                // Parse "shareName|displayName" format
+                // Parse "shareName|displayName|driverName" format
                 var first = discovered[0].Split('|');
                 var shareName   = first[0];
                 var displayName = first.Length > 1 ? first[1] : first[0];
+                _discoveredDriverName = first.Length > 2 && !string.IsNullOrEmpty(first[2]) ? first[2] : null;
 
                 SharedPrinterName = shareName;
+                SharedPrinterList.Clear();
                 foreach (var entry in discovered)
                 {
-                    var parts = entry.Split('|');
-                    SharedPrinterList.Add(parts.Length > 1 ? parts[1] : parts[0]);
+                    // Store shareName so selecting from the list correctly sets the queue name
+                    SharedPrinterList.Add(entry.Split('|')[0]);
                 }
 
                 StatusText = $"✓ Impressora encontrada: '{displayName}'.\n" +

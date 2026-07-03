@@ -600,6 +600,11 @@ public class DriverInstaller : IDriverInstaller
                 "Informe o nome do compartilhamento da impressora.",
                 "Clique em Buscar e depois preencha o campo 'Nome do compartilhamento'.", steps);
 
+        // Install the correct driver locally before connecting — uses the driver name
+        // reported by PC-A via the discovery port (port 9876).
+        if (!string.IsNullOrWhiteSpace(request.SharedDriverName))
+            await TryInstallSharedDriverAsync(request.SharedDriverName, progress, ct);
+
         // ── Path 1: LPD/LPR (primary) ─────────────────────────────────────────────
         // LPD (port 515) requires no authentication — works regardless of Windows
         // account differences between PCs. Our app enables LPD automatically on install.
@@ -684,15 +689,27 @@ public class DriverInstaller : IDriverInstaller
 
     private async Task<string> ResolveDriverForSharedAsync(InstallRequest request, CancellationToken ct)
     {
+        var allInstalled = await _printerService.GetInstalledDriversAsync(ct);
+
+        // 1. Prefer the exact driver name reported by the remote PC (most accurate)
+        if (!string.IsNullOrWhiteSpace(request.SharedDriverName))
+        {
+            var remoteMatch = allInstalled.FirstOrDefault(d =>
+                d.Equals(request.SharedDriverName, StringComparison.OrdinalIgnoreCase));
+            if (remoteMatch != null) return remoteMatch;
+        }
+
+        // 2. Driver explicitly selected in the UI
         if (!string.IsNullOrWhiteSpace(request.Driver?.DriverName))
             return request.Driver.DriverName;
 
+        // 3. Auto-detect from any auto-installed PnP printer
         var (foundDriver, _) = await _printerService.FindAutoInstalledPrinterInfoAsync(
             request.Driver?.Manufacturer ?? "", request.Driver?.Model ?? "", ct);
         if (foundDriver != null) return foundDriver;
 
-        var allDrivers = await _printerService.GetInstalledDriversAsync(ct);
-        var nonSystem = allDrivers.FirstOrDefault(d =>
+        // 4. First non-system driver as last resort
+        var nonSystem = allInstalled.FirstOrDefault(d =>
             !d.Contains("Microsoft", StringComparison.OrdinalIgnoreCase) &&
             !d.Contains("OneNote", StringComparison.OrdinalIgnoreCase) &&
             !d.Contains("Fax", StringComparison.OrdinalIgnoreCase) &&
@@ -700,6 +717,58 @@ public class DriverInstaller : IDriverInstaller
             !d.Contains("PDF", StringComparison.OrdinalIgnoreCase));
 
         return nonSystem ?? "Generic / Text Only";
+    }
+
+    private async Task TryInstallSharedDriverAsync(
+        string remoteDriverName, IProgress<string>? progress, CancellationToken ct)
+    {
+        var allInstalled = await _printerService.GetInstalledDriversAsync(ct);
+        if (allInstalled.Any(d => d.Equals(remoteDriverName, StringComparison.OrdinalIgnoreCase)))
+        {
+            _log.Info($"Driver '{remoteDriverName}' already installed — skipping.");
+            return;
+        }
+
+        var allDrivers = await _repository.GetAllDriversAsync();
+        var match = allDrivers.FirstOrDefault(d =>
+            d.AllDriverNames().Any(n => n.Equals(remoteDriverName, StringComparison.OrdinalIgnoreCase)));
+
+        if (match == null || !match.HasInstaller || !_repository.DriverFilesExist(match))
+        {
+            _log.Info($"Driver '{remoteDriverName}' not in local repository — will use best available driver.");
+            return;
+        }
+
+        var exePath = _repository.ResolveInstallerPath(match);
+        if (exePath == null) return;
+
+        progress?.Report($"Instalando driver '{match.DisplayName}'...");
+        _log.Info($"Installing driver for shared printer: '{match.DisplayName}' ({remoteDriverName})");
+
+        var silentArgs = match.InstallerArgs;
+        if (string.IsNullOrEmpty(silentArgs))
+            silentArgs = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART";
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = exePath,
+                Arguments = silentArgs,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var proc = Process.Start(psi)!;
+            await proc.WaitForExitAsync(ct);
+            _log.Info($"Shared driver installer exit: {proc.ExitCode}");
+
+            if (proc.ExitCode == 0 || proc.ExitCode == 3010 || proc.ExitCode == 1641)
+                await Task.Delay(3000, ct); // let the installer settle
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"Shared driver install failed (non-fatal): {ex.Message}");
+        }
     }
 
     private async Task<(bool success, string output)> InstallWinRarSfxAsync(
