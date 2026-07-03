@@ -127,9 +127,10 @@ public class WindowsPrinterService : IWindowsPrinterService
         {
             try
             {
-                // USB ports registered with the print spooler (USB001, USB002, …)
+                // USB and DOT4 ports registered with the print spooler.
+                // DOT4 is used by some HP and Epson models (IEEE 1284.4 protocol).
                 using var searcher = new ManagementObjectSearcher(
-                    "SELECT Name FROM Win32_PrinterPort WHERE Name LIKE 'USB%'");
+                    "SELECT Name FROM Win32_PrinterPort WHERE Name LIKE 'USB%' OR Name LIKE 'DOT4%'");
 
                 string? best = null;
                 foreach (ManagementObject obj in searcher.Get())
@@ -137,7 +138,7 @@ public class WindowsPrinterService : IWindowsPrinterService
                     var name = obj["Name"]?.ToString();
                     if (!string.IsNullOrEmpty(name))
                     {
-                        best = name; // take last in enumeration; USB001 usually comes first
+                        best = name;
                         break;
                     }
                 }
@@ -149,6 +150,67 @@ public class WindowsPrinterService : IWindowsPrinterService
             {
                 _log.Warning($"Could not query USB printer ports: {ex.Message}");
                 return null;
+            }
+        }, ct);
+    }
+
+    public async Task<string?> FindAnyUsbPrinterPortAsync(CancellationToken ct = default)
+    {
+        // Last-resort: find a USB/DOT4/WSD port already assigned to ANY printer in the
+        // spooler — not filtered by manufacturer/model. Used when pnputil /scan-devices
+        // caused Windows to auto-create a printer whose name doesn't contain our keywords.
+        return await Task.Run(() =>
+        {
+            try
+            {
+                using var searcher = new ManagementObjectSearcher(
+                    "SELECT PortName FROM Win32_Printer WHERE PortName LIKE 'USB%' " +
+                    "OR PortName LIKE 'DOT4%' OR PortName LIKE 'WSD%'");
+                foreach (ManagementObject obj in searcher.Get())
+                {
+                    var port = obj["PortName"]?.ToString();
+                    if (!string.IsNullOrEmpty(port))
+                    {
+                        _log.Info($"FindAnyUsbPrinterPortAsync: found '{port}' on an existing printer");
+                        return port;
+                    }
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"FindAnyUsbPrinterPortAsync failed: {ex.Message}");
+                return null;
+            }
+        }, ct);
+    }
+
+    public async Task TriggerPnpScanAsync(CancellationToken ct = default)
+    {
+        // Force Windows to re-enumerate connected USB devices and register printer ports.
+        // Equivalent to "Scan for hardware changes" in Device Manager. After a silent
+        // driver install, the USB print monitor port (USB001 etc.) may not yet exist in
+        // the spooler — this call causes Windows to detect the device and create it.
+        await Task.Run(() =>
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "pnputil.exe",
+                    Arguments = "/scan-devices",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                using var proc = Process.Start(psi)!;
+                proc.WaitForExit(15_000);
+                _log.Info($"pnputil /scan-devices exit={proc.ExitCode}");
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"TriggerPnpScanAsync failed (non-fatal): {ex.Message}");
             }
         }, ct);
     }

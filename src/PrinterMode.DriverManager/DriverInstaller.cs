@@ -166,6 +166,16 @@ public class DriverInstaller : IDriverInstaller
                     await Task.Delay(1000, ct);
 
                     bool needsUsbPort = request.ConnectionType == ConnectionType.USB;
+
+                    // For USB: force Windows to re-enumerate connected devices immediately after
+                    // the installer exits. Without this, the USB print-monitor port (USB001 etc.)
+                    // may not appear in the Print Spooler for 30+ seconds after a silent install.
+                    if (needsUsbPort)
+                    {
+                        progress?.Report("Aguardando Windows reconhecer a impressora USB...");
+                        await _printerService.TriggerPnpScanAsync(ct);
+                        await Task.Delay(2000, ct);
+                    }
                     string? resolvedSilent = null;
 
                     // ── Quick driver-list check (one PowerShell call) ─────────────────────
@@ -359,37 +369,65 @@ public class DriverInstaller : IDriverInstaller
 
                 case ConnectionType.USB:
                 default:
-                    // Quick poll (3×1s) — check both USB ports registered with the Spooler
+                    // Quick poll (3×1.5s) — check USB/DOT4/WSD ports registered with the Spooler
                     // and any port already assigned by PnP auto-printer creation.
                     for (int p = 0; p < 3 && discoveredUsbPort == null; p++)
                     {
+                        if (p > 0) await Task.Delay(1500, ct);
                         discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct);
                         if (discoveredUsbPort == null)
                         {
                             var (_, pnpPort) = await _printerService.FindAutoInstalledPrinterInfoAsync(
                                 request.Driver.Manufacturer, request.Driver.Model, ct);
-                            if (!string.IsNullOrEmpty(pnpPort) && pnpPort.StartsWith("USB", StringComparison.OrdinalIgnoreCase))
+                            if (!string.IsNullOrEmpty(pnpPort) &&
+                                (pnpPort.StartsWith("USB",  StringComparison.OrdinalIgnoreCase) ||
+                                 pnpPort.StartsWith("DOT4", StringComparison.OrdinalIgnoreCase) ||
+                                 pnpPort.StartsWith("WSD",  StringComparison.OrdinalIgnoreCase)))
                                 discoveredUsbPort = pnpPort;
                         }
-                        if (discoveredUsbPort == null) await Task.Delay(1000, ct);
+                        if (discoveredUsbPort == null)
+                            discoveredUsbPort = await _printerService.FindAnyUsbPrinterPortAsync(ct);
                     }
 
                     if (discoveredUsbPort == null)
                     {
-                        // Port not yet registered — restart Spooler so USB devices are
-                        // re-enumerated and the port (USB001/USB002/…) gets registered.
+                        // Port still not registered — trigger another PnP scan then restart
+                        // the Spooler so USB devices are fully re-enumerated.
                         progress?.Report("Detectando porta USB...");
+                        await _printerService.TriggerPnpScanAsync(ct);
+                        await Task.Delay(2000, ct);
                         await _printerService.RestartSpoolerAsync(ct);
-                        for (int p = 0; p < 5 && discoveredUsbPort == null; p++)
+
+                        for (int p = 0; p < 6 && discoveredUsbPort == null; p++)
                         {
-                            await Task.Delay(2000, ct);
+                            await Task.Delay(3000, ct);
                             discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct);
                             if (discoveredUsbPort == null)
                             {
                                 var (_, pnpPort2) = await _printerService.FindAutoInstalledPrinterInfoAsync(
                                     request.Driver.Manufacturer, request.Driver.Model, ct);
-                                if (!string.IsNullOrEmpty(pnpPort2) && pnpPort2.StartsWith("USB", StringComparison.OrdinalIgnoreCase))
+                                if (!string.IsNullOrEmpty(pnpPort2) &&
+                                    (pnpPort2.StartsWith("USB",  StringComparison.OrdinalIgnoreCase) ||
+                                     pnpPort2.StartsWith("DOT4", StringComparison.OrdinalIgnoreCase) ||
+                                     pnpPort2.StartsWith("WSD",  StringComparison.OrdinalIgnoreCase)))
                                     discoveredUsbPort = pnpPort2;
+                            }
+                            discoveredUsbPort ??= await _printerService.FindAnyUsbPrinterPortAsync(ct);
+                        }
+                    }
+
+                    // Last resort: probe the available port list for well-known USB port names
+                    if (discoveredUsbPort == null)
+                    {
+                        _log.Warning("USB port not auto-detected. Probing fallback port names...");
+                        var availablePorts = await _printerService.GetAvailablePortsAsync(ct);
+                        foreach (var fallback in new[] { "USB001", "USB002", "USB003", "DOT4USB001", "DOT4USB002" })
+                        {
+                            if (availablePorts.Contains(fallback, StringComparer.OrdinalIgnoreCase))
+                            {
+                                discoveredUsbPort = fallback;
+                                _log.Info($"USB port fallback selected from available ports: '{fallback}'");
+                                break;
                             }
                         }
                     }
