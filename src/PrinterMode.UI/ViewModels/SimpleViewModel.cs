@@ -5,7 +5,6 @@ using CommunityToolkit.Mvvm.Input;
 using PrinterMode.Core.Enums;
 using PrinterMode.Core.Interfaces;
 using PrinterMode.Core.Models;
-using PrinterMode.WindowsPrinter;
 
 namespace PrinterMode.UI.ViewModels;
 
@@ -281,72 +280,33 @@ public partial class SimpleViewModel : ObservableObject
 
         IsSearchingShared = true;
         SharedPrinterList.Clear();
-        StatusText = $"Buscando impressoras em '{host}'...";
+        StatusText = $"Verificando conexão com '{host}'...";
         try
         {
-            var raw = await _printerService.GetSharedPrintersAsync(host);
-
-            bool portClosed   = raw.Contains(WindowsPrinterService.DiagPortClosed);
-            bool accessDenied = raw.Contains(WindowsPrinterService.DiagAccessDenied);
-            bool lpdAvailable = raw.Contains(WindowsPrinterService.DiagLpdAvailable);
-
-            // Real printer/share names — exclude diagnostic sentinel values
-            var printers = raw.Where(p => !p.StartsWith("__DIAG:")).ToList();
-            foreach (var p in printers)
-                SharedPrinterList.Add(p);
-
-            if (SharedPrinterList.Count > 0)
+            var hostReachable = await PingHostAsync(host);
+            if (!hostReachable)
             {
-                if (string.IsNullOrWhiteSpace(SharedPrinterName))
-                    SharedPrinterName = SharedPrinterList[0];
-                StatusText = $"{SharedPrinterList.Count} impressora(s) encontrada(s). Selecione e clique em Instalar.";
+                StatusText = $"Computador '{host}' não encontrado na rede.\n" +
+                             "Verifique o IP, se o computador está ligado e na mesma rede.";
+                return;
+            }
+
+            StatusText = $"Verificando serviço LPD em '{host}'...";
+            bool lpdAvailable = await _printerService.IsLpdAvailableAsync(host);
+
+            if (lpdAvailable)
+            {
+                StatusText = $"✓ Serviço LPD ativo em '{host}'.\n\n" +
+                             $"Digite o nome do compartilhamento no campo abaixo e clique em Instalar.\n\n" +
+                             $"Para encontrar o nome: no computador '{host}' → clique direito na impressora → " +
+                             $"Propriedades → aba Compartilhamento → campo 'Nome do compartilhamento'.";
             }
             else
             {
-                var hostReachable = await PingHostAsync(host);
-
-                if (!hostReachable)
-                {
-                    StatusText = $"Computador '{host}' não encontrado na rede.\n" +
-                                 "Verifique o IP, se o computador está ligado e na mesma rede.";
-                    return;
-                }
-
-                // LPD available: the remote PC has our app installed and enabled LPD automatically.
-                // The user just needs to type the share name — no firewall/credential changes needed.
-                if (lpdAvailable)
-                {
-                    StatusText = $"✓ Serviço LPD detectado em '{host}' (porta 515).\n\n" +
-                                 $"Digite o nome do compartilhamento da impressora no campo abaixo e clique em Instalar.\n" +
-                                 $"A conexão será feita via LPD — sem necessidade de senha.\n\n" +
-                                 $"Para encontrar o nome: no computador '{host}' → clique direito na impressora → " +
-                                 $"Propriedades → aba Compartilhamento → campo 'Nome do compartilhamento'.";
-                    return;
-                }
-
-                if (portClosed)
-                {
-                    StatusText = $"Computador '{host}' encontrado mas porta 445 (SMB) bloqueada e LPD (515) não ativo.\n\n" +
-                                 $"Se você usa nosso aplicativo no computador '{host}', reinstale a impressora lá — " +
-                                 $"o LPD é habilitado automaticamente na instalação.\n\n" +
-                                 $"Ou informe manualmente o nome do compartilhamento abaixo e clique em Instalar.";
-                    return;
-                }
-
-                if (accessDenied)
-                {
-                    StatusText = $"Porta 445 aberta mas acesso negado — as senhas dos dois computadores são diferentes.\n\n" +
-                                 $"Se você usa nosso aplicativo no computador '{host}', reinstale a impressora lá — " +
-                                 $"o serviço LPD (sem senha) é habilitado automaticamente na instalação.\n\n" +
-                                 $"Por enquanto: no computador '{host}', clique direito na impressora → Propriedades → " +
-                                 $"aba Compartilhamento → anote o nome e digite abaixo → clique Instalar.";
-                    return;
-                }
-
-                StatusText = $"Computador '{host}' acessível mas nenhuma impressora compartilhada encontrada.\n\n" +
-                             $"No computador '{host}': clique direito na impressora → Propriedades → " +
-                             $"aba Compartilhamento → marque 'Compartilhar' e anote o nome.\n" +
-                             $"Digite o nome abaixo e clique em Instalar.";
+                StatusText = $"Computador '{host}' encontrado, mas o serviço LPD (porta 515) não está ativo.\n\n" +
+                             $"Instale o PrinterMode no computador '{host}' e instale a impressora lá — " +
+                             $"o serviço LPD é ativado automaticamente durante a instalação.\n\n" +
+                             $"Após instalar no outro computador, clique em Buscar novamente.";
             }
         }
         finally
