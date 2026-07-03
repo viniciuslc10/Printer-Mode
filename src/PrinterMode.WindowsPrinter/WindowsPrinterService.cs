@@ -215,6 +215,57 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    public async Task ReEnumerateUsbPrinterDevicesAsync(CancellationToken ct = default)
+    {
+        // Software equivalent of unplugging and replugging the USB cable.
+        // Disabling then re-enabling the PnP printer devices forces Windows to
+        // re-run driver binding, which causes the USB Print Monitor (usbprint.sys)
+        // to create the spooler port (USB001 etc.) for the connected printer.
+        // This is needed when a silent driver install completes AFTER the device
+        // was already connected — pnputil /scan-devices alone is sometimes not enough.
+        await Task.Run(() =>
+        {
+            try
+            {
+                var script =
+                    "$devs = @(Get-PnpDevice -Class Printer -ErrorAction SilentlyContinue);" +
+                    "if ($devs.Count -gt 0) {" +
+                    "  $devs | ForEach-Object {" +
+                    "    Disable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false -ErrorAction SilentlyContinue" +
+                    "  };" +
+                    "  Start-Sleep -Seconds 2;" +
+                    "  $devs | ForEach-Object {" +
+                    "    Enable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false -ErrorAction SilentlyContinue" +
+                    "  }" +
+                    "} else {" +
+                    "  pnputil /scan-devices | Out-Null" +
+                    "}";
+
+                var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                using var proc = Process.Start(psi)!;
+                var stderrTask = proc.StandardError.ReadToEndAsync();
+                var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+                proc.WaitForExit(35_000);
+                stderrTask.GetAwaiter().GetResult();
+                stdoutTask.GetAwaiter().GetResult();
+                _log.Info($"ReEnumerateUsbPrinterDevices exit={proc.ExitCode}");
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"ReEnumerateUsbPrinterDevicesAsync failed (non-fatal): {ex.Message}");
+            }
+        }, ct);
+    }
+
     public async Task<bool> SetPaperFormAsync(string printerName, PaperConfig paper, CancellationToken ct = default)
     {
         return await Task.Run(() =>

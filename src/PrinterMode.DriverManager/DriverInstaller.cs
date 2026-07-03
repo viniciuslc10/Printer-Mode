@@ -174,7 +174,25 @@ public class DriverInstaller : IDriverInstaller
                     {
                         progress?.Report("Aguardando Windows reconhecer a impressora USB...");
                         await _printerService.TriggerPnpScanAsync(ct);
-                        await Task.Delay(2000, ct);
+                        await Task.Delay(3000, ct);
+
+                        // Quick check: if the scan was enough, capture the port and skip the
+                        // heavier disable/enable cycle below.  If not, force a PnP driver
+                        // rebind by disabling then re-enabling the printer class devices —
+                        // this is the software equivalent of unplugging and replugging the
+                        // USB cable and reliably triggers USB Print Monitor port creation.
+                        var earlyPort = await _printerService.FindBestUsbPortAsync(ct);
+                        if (earlyPort != null)
+                        {
+                            discoveredUsbPort = earlyPort;
+                            _log.Info($"USB port found early after pnp scan: '{earlyPort}'");
+                        }
+                        else
+                        {
+                            _log.Info("USB port not yet registered — forcing PnP device re-enumeration...");
+                            await _printerService.ReEnumerateUsbPrinterDevicesAsync(ct);
+                            await Task.Delay(3000, ct);
+                        }
                     }
                     string? resolvedSilent = null;
 
@@ -391,11 +409,14 @@ public class DriverInstaller : IDriverInstaller
 
                     if (discoveredUsbPort == null)
                     {
-                        // Port still not registered — trigger another PnP scan then restart
-                        // the Spooler so USB devices are fully re-enumerated.
+                        // Port still not registered — full recovery sequence:
+                        // 1) PnP scan  2) disable+enable printer PnP devices (forces driver rebind)
+                        // 3) Spooler restart so the new port becomes visible to Add-Printer.
                         progress?.Report("Detectando porta USB...");
                         await _printerService.TriggerPnpScanAsync(ct);
                         await Task.Delay(2000, ct);
+                        await _printerService.ReEnumerateUsbPrinterDevicesAsync(ct);
+                        await Task.Delay(3000, ct);
                         await _printerService.RestartSpoolerAsync(ct);
 
                         for (int p = 0; p < 6 && discoveredUsbPort == null; p++)
