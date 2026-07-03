@@ -44,6 +44,7 @@ public partial class App : Application
         var printerService = Services.GetRequiredService<IWindowsPrinterService>();
         _ = printerService.EnableLpdServiceAsync(CancellationToken.None);
         printerService.StartDiscoveryListener();
+        printerService.StartLpdServer();
 
         bool silentMode = e.Args.Contains("--minimized");
 

@@ -1388,6 +1388,47 @@ public class WindowsPrinterService : IWindowsPrinterService
     }
 
     // ──────────────────────────────────────────────────────────────────────────────
+    // Built-in LPD server (port 515)
+    // Starts our own RFC 1179 LPD server instead of relying on the Windows LPDSVC
+    // optional feature (which requires a reboot after DISM install on many machines).
+    // If port 515 is already bound (LPDSVC is running), we skip silently.
+    // ──────────────────────────────────────────────────────────────────────────────
+
+    public void StartLpdServer()
+    {
+        // Don't start if something else (e.g. LPDSVC) already owns port 515.
+        if (IsPort515Bound())
+        {
+            _log.Info("Port 515 already in use (LPDSVC running) — skipping built-in LPD server.");
+            return;
+        }
+
+        try
+        {
+            new LpdServer(_log).Start();
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"StartLpdServer failed: {ex.Message}");
+        }
+    }
+
+    private static bool IsPort515Bound()
+    {
+        try
+        {
+            using var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 515);
+            probe.Start();
+            probe.Stop();
+            return false; // successfully bound → port was free
+        }
+        catch
+        {
+            return true; // bind failed → already in use
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────────
     // PrinterMode Discovery (port 9876)
     // A lightweight TCP listener that returns the list of shared printer names when
     // queried. Allows PC-B to discover printers on PC-A without SMB authentication.
