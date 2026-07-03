@@ -1386,4 +1386,125 @@ public class WindowsPrinterService : IWindowsPrinterService
             }
         }, ct);
     }
+
+    // ──────────────────────────────────────────────────────────────────────────────
+    // PrinterMode Discovery (port 9876)
+    // A lightweight TCP listener that returns the list of shared printer names when
+    // queried. Allows PC-B to discover printers on PC-A without SMB authentication.
+    // Response format: one line per printer → "shareName|displayName"
+    // ──────────────────────────────────────────────────────────────────────────────
+
+    public const int DiscoveryPort = 9876;
+
+    public void StartDiscoveryListener()
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                // Allow port 9876 inbound so other PCs can query printer names.
+                OpenDiscoveryFirewallRule();
+
+                var listener = new System.Net.Sockets.TcpListener(
+                    System.Net.IPAddress.Any, DiscoveryPort);
+                listener.Start();
+                _log.Info($"PrinterMode discovery listener started on port {DiscoveryPort}");
+
+                while (true)
+                {
+                    try
+                    {
+                        var client = await listener.AcceptTcpClientAsync();
+                        _ = HandleDiscoveryClientAsync(client);
+                    }
+                    catch { /* accept errors are non-fatal */ }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Discovery listener failed: {ex.Message}");
+            }
+        });
+    }
+
+    private static void OpenDiscoveryFirewallRule()
+    {
+        try
+        {
+            // Delete any stale rule first (idempotent).
+            var del = new ProcessStartInfo("netsh",
+                "advfirewall firewall delete rule name=\"PrinterMode Discovery\"")
+            { UseShellExecute = false, CreateNoWindow = true };
+            using (var p = Process.Start(del)!) p.WaitForExit(5_000);
+
+            var add = new ProcessStartInfo("netsh",
+                $"advfirewall firewall add rule name=\"PrinterMode Discovery\" " +
+                $"dir=in action=allow protocol=tcp localport={DiscoveryPort} profile=any")
+            { UseShellExecute = false, CreateNoWindow = true };
+            using (var p = Process.Start(add)!) p.WaitForExit(5_000);
+        }
+        catch { }
+    }
+
+    private async Task HandleDiscoveryClientAsync(System.Net.Sockets.TcpClient client)
+    {
+        try
+        {
+            using var stream = client.GetStream();
+            using var writer = new StreamWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true)
+                { AutoFlush = true };
+
+            // Return shared printers: "shareName|displayName" per line
+            using var searcher = new ManagementObjectSearcher(
+                "SELECT Name, ShareName FROM Win32_Printer WHERE Shared = True");
+            foreach (ManagementObject p in searcher.Get())
+            {
+                var share = p["ShareName"]?.ToString();
+                var name  = p["Name"]?.ToString();
+                if (!string.IsNullOrWhiteSpace(share))
+                    await writer.WriteLineAsync($"{share}|{name ?? share}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Info($"Discovery client handler error (non-fatal): {ex.Message}");
+        }
+        finally
+        {
+            client.Close();
+        }
+    }
+
+    public async Task<IReadOnlyList<string>> GetRemoteSharedPrintersAsync(
+        string host, CancellationToken ct = default)
+    {
+        // Format returned: "shareName|displayName" per entry.
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(3000);
+
+            using var client = new System.Net.Sockets.TcpClient();
+            await client.ConnectAsync(host, DiscoveryPort, cts.Token);
+            client.ReceiveTimeout = 3000;
+
+            using var stream = client.GetStream();
+            using var reader = new StreamReader(stream, System.Text.Encoding.UTF8);
+
+            var results = new List<string>();
+            string? line;
+            while ((line = await reader.ReadLineAsync()) != null)
+            {
+                if (!string.IsNullOrWhiteSpace(line))
+                    results.Add(line.Trim());
+            }
+
+            _log.Info($"Discovery from {host}: {results.Count} printer(s) found");
+            return results;
+        }
+        catch
+        {
+            return [];
+        }
+    }
 }

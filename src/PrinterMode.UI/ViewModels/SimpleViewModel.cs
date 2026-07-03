@@ -280,7 +280,7 @@ public partial class SimpleViewModel : ObservableObject
 
         IsSearchingShared = true;
         SharedPrinterList.Clear();
-        StatusText = $"Verificando conexão com '{host}'...";
+        StatusText = $"Conectando com '{host}'...";
         try
         {
             var hostReachable = await PingHostAsync(host);
@@ -291,12 +291,38 @@ public partial class SimpleViewModel : ObservableObject
                 return;
             }
 
+            // Fast path: query the PrinterMode discovery port (9876) on the remote PC.
+            // Returns "shareName|displayName" per line — no authentication required.
+            StatusText = $"Buscando impressoras em '{host}'...";
+            var discovered = await _printerService.GetRemoteSharedPrintersAsync(host);
+
+            if (discovered.Count > 0)
+            {
+                // Parse "shareName|displayName" format
+                var first = discovered[0].Split('|');
+                var shareName   = first[0];
+                var displayName = first.Length > 1 ? first[1] : first[0];
+
+                SharedPrinterName = shareName;
+                foreach (var entry in discovered)
+                {
+                    var parts = entry.Split('|');
+                    SharedPrinterList.Add(parts.Length > 1 ? parts[1] : parts[0]);
+                }
+
+                StatusText = $"✓ Impressora encontrada: '{displayName}'.\n" +
+                             $"Clique em Instalar para conectar.";
+                return;
+            }
+
+            // Fallback: check LPD port (works even when PrinterMode app is closed on PC-A,
+            // since LPDSVC auto-starts with Windows after the first activation).
             StatusText = $"Verificando serviço LPD em '{host}'...";
             bool lpdAvailable = await _printerService.IsLpdAvailableAsync(host);
 
             if (!lpdAvailable)
             {
-                // Try to start LPDSVC on the remote PC automatically (works when credentials match).
+                // Try remote sc.exe activation (works when credentials match).
                 StatusText = $"Ativando serviço LPD em '{host}'...";
                 await _printerService.TryEnableLpdRemotelyAsync(host);
                 await Task.Delay(2000);
@@ -313,9 +339,8 @@ public partial class SimpleViewModel : ObservableObject
             else
             {
                 StatusText = $"Serviço LPD não está ativo no computador '{host}'.\n\n" +
-                             $"No computador '{host}': abra o PrinterMode como Administrador e reinstale a impressora. " +
-                             $"O serviço LPD será ativado automaticamente.\n\n" +
-                             $"Após reinstalar, clique em Buscar novamente.";
+                             $"Abra o PrinterMode como Administrador no computador '{host}'. " +
+                             $"O LPD é ativado automaticamente ao abrir o aplicativo.";
             }
         }
         finally

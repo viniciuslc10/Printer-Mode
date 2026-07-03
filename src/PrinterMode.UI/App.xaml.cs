@@ -38,10 +38,11 @@ public partial class App : Application
             args.Handled = true;
         };
 
-        // Enable LPD service as soon as the app opens so other PCs on the network
-        // can always connect to shared printers without needing credentials.
+        // On startup: enable LPD and start the discovery listener so other PCs can
+        // find and connect to shared printers on this machine automatically.
         var printerService = Services.GetRequiredService<IWindowsPrinterService>();
         _ = printerService.EnableLpdServiceAsync(CancellationToken.None);
+        printerService.StartDiscoveryListener();
     }
 
     private static void ConfigureServices(IServiceCollection services)
