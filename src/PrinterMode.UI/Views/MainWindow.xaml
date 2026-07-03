@@ -390,17 +390,24 @@
                   </Button>
                 </Grid>
 
-                <!-- ComboBox editável: mostra o resultado da busca OU permite digitar manualmente -->
-                <TextBlock FontSize="11" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4">
-                  <Run Text="Nome do compartilhamento"/>
-                  <Run Text=" — selecione ou digite manualmente" Foreground="{StaticResource TextMutedBrush}" FontStyle="Italic"/>
-                </TextBlock>
-                <Grid>
-                  <ComboBox ItemsSource="{Binding SharedPrinterList}"
-                            Text="{Binding SharedPrinterName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                            IsEditable="True"
-                            FontSize="13"/>
-                  <!-- Placeholder watermark quando vazio e sem foco -->
+                <!-- Seleção do compartilhamento descoberto ou entrada manual -->
+                <TextBlock FontSize="11" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4"
+                           Text="Impressora encontrada — selecione e clique em Instalar"
+                           Visibility="{Binding HasSharedPrinters, Converter={StaticResource BoolVis}}"/>
+                <TextBlock FontSize="11" Foreground="{StaticResource TextMutedBrush}" Margin="0,10,0,4"
+                           Text="Nome do compartilhamento — digite manualmente se souber"
+                           Visibility="{Binding HasSharedPrinters, Converter={StaticResource InvertVis}}"/>
+
+                <!-- ComboBox não-editável quando há impressoras descobertas -->
+                <ComboBox ItemsSource="{Binding SharedPrinterList}"
+                          SelectedItem="{Binding SelectedSharedPrinter, Mode=TwoWay}"
+                          FontSize="13"
+                          Visibility="{Binding HasSharedPrinters, Converter={StaticResource BoolVis}}"/>
+
+                <!-- TextBox para entrada manual quando nenhuma foi descoberta -->
+                <Grid Visibility="{Binding HasSharedPrinters, Converter={StaticResource InvertVis}}">
+                  <TextBox Text="{Binding SharedPrinterName, UpdateSourceTrigger=PropertyChanged}"
+                           FontSize="13"/>
                   <TextBlock Text="Ex: IMPRESSORA ou HP_LaserJet"
                              Foreground="{StaticResource TextMutedBrush}"
                              FontSize="13" Margin="12,0,0,0"
@@ -419,7 +426,8 @@
                 </Grid>
                 <TextBlock FontSize="11" Foreground="{StaticResource TextMutedBrush}"
                            Margin="0,4,0,0" TextWrapping="Wrap"
-                           Text="Clique em 'Buscar' para descobrir automaticamente, ou digite o nome do compartilhamento diretamente se souber."/>
+                           Visibility="{Binding HasSharedPrinters, Converter={StaticResource InvertVis}}"
+                           Text="Clique em 'Buscar' para encontrar automaticamente, ou insira o nome do compartilhamento."/>
               </StackPanel>
 
             </StackPanel>

@@ -76,7 +76,11 @@ public partial class SimpleViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
     private string _sharedPrinterName = string.Empty;
     [ObservableProperty] private ObservableCollection<string> _sharedPrinterList = [];
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSharedPrinters))]
+    private string? _selectedSharedPrinter;
     private string? _discoveredDriverName;
+    private string? _discoveredDisplayName;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSharedPrinters))]
     private bool _isSearchingShared;
@@ -147,6 +151,12 @@ public partial class SimpleViewModel : ObservableObject
             UsbPorts.Add(p);
         HasUsbPorts = UsbPorts.Count > 0;
         SelectedUsbPort = UsbPorts.FirstOrDefault();
+    }
+
+    partial void OnSelectedSharedPrinterChanged(string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+            SharedPrinterName = value;
     }
 
     partial void OnSelectedManufacturerChanged(string? value)
@@ -229,6 +239,7 @@ public partial class SimpleViewModel : ObservableObject
                 SharedHost = ConnectionShared ? SharedHost : null,
                 SharedPrinterName = ConnectionShared ? SharedPrinterName : null,
                 SharedDriverName = ConnectionShared ? _discoveredDriverName : null,
+                SharedDisplayName = ConnectionShared ? _discoveredDisplayName : null,
                 PortName = ConnectionSerial ? SelectedComPort?.PortName
                          : ConnectionUsb && SelectedUsbPort != null ? SelectedUsbPort.PortName
                          : null,
@@ -304,15 +315,17 @@ public partial class SimpleViewModel : ObservableObject
                 var first = discovered[0].Split('|');
                 var shareName   = first[0];
                 var displayName = first.Length > 1 ? first[1] : first[0];
-                _discoveredDriverName = first.Length > 2 && !string.IsNullOrEmpty(first[2]) ? first[2] : null;
+                _discoveredDriverName  = first.Length > 2 && !string.IsNullOrEmpty(first[2]) ? first[2] : null;
+                _discoveredDisplayName = displayName;
 
-                SharedPrinterName = shareName;
                 SharedPrinterList.Clear();
                 foreach (var entry in discovered)
-                {
-                    // Store shareName so selecting from the list correctly sets the queue name
-                    SharedPrinterList.Add(entry.Split('|')[0]);
-                }
+                    SharedPrinterList.Add(entry.Split('|')[0]); // store shareName
+
+                // Setting SelectedSharedPrinter triggers OnSelectedSharedPrinterChanged
+                // which sets SharedPrinterName — keeping the two in sync.
+                SelectedSharedPrinter = shareName;
+                SharedPrinterName = shareName;
 
                 StatusText = $"✓ Impressora encontrada: '{displayName}'.\n" +
                              $"Clique em Instalar para conectar.";

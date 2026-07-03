@@ -600,10 +600,12 @@ public class DriverInstaller : IDriverInstaller
                 "Informe o nome do compartilhamento da impressora.",
                 "Clique em Buscar e depois preencha o campo 'Nome do compartilhamento'.", steps);
 
-        // Install the correct driver locally before connecting — uses the driver name
-        // reported by PC-A via the discovery port (port 9876).
-        if (!string.IsNullOrWhiteSpace(request.SharedDriverName))
-            await TryInstallSharedDriverAsync(request.SharedDriverName, progress, ct);
+        // Install the correct driver locally before connecting.
+        // TryInstallSharedDriverAsync finds the driver using multiple strategies and
+        // returns the matched DriverInfo so ResolveDriverForSharedAsync can use it.
+        var sharedDriverInfo = await TryInstallSharedDriverAsync(request, progress, ct);
+        if (sharedDriverInfo != null && string.IsNullOrWhiteSpace(request.Driver?.DriverName))
+            request.Driver = sharedDriverInfo;
 
         // ── Path 1: LPD/LPR (primary) ─────────────────────────────────────────────
         // LPD (port 515) requires no authentication — works regardless of Windows
@@ -691,7 +693,15 @@ public class DriverInstaller : IDriverInstaller
     {
         var allInstalled = await _printerService.GetInstalledDriversAsync(ct);
 
-        // 1. Prefer the exact driver name reported by the remote PC (most accurate)
+        // 1. If we have the matched DriverInfo (set by TryInstallSharedDriverAsync), use it
+        //    with fuzzy matching — handles cases where the installed name differs slightly.
+        if (request.Driver != null && !string.IsNullOrWhiteSpace(request.Driver.DriverName))
+        {
+            var fuzzy = ResolveActualDriverName(request.Driver, allInstalled);
+            if (fuzzy != null) return fuzzy;
+        }
+
+        // 2. Exact match against the driver name reported by PC-A
         if (!string.IsNullOrWhiteSpace(request.SharedDriverName))
         {
             var remoteMatch = allInstalled.FirstOrDefault(d =>
@@ -699,16 +709,7 @@ public class DriverInstaller : IDriverInstaller
             if (remoteMatch != null) return remoteMatch;
         }
 
-        // 2. Driver explicitly selected in the UI
-        if (!string.IsNullOrWhiteSpace(request.Driver?.DriverName))
-            return request.Driver.DriverName;
-
-        // 3. Auto-detect from any auto-installed PnP printer
-        var (foundDriver, _) = await _printerService.FindAutoInstalledPrinterInfoAsync(
-            request.Driver?.Manufacturer ?? "", request.Driver?.Model ?? "", ct);
-        if (foundDriver != null) return foundDriver;
-
-        // 4. First non-system driver as last resort
+        // 3. First non-system driver as last resort
         var nonSystem = allInstalled.FirstOrDefault(d =>
             !d.Contains("Microsoft", StringComparison.OrdinalIgnoreCase) &&
             !d.Contains("OneNote", StringComparison.OrdinalIgnoreCase) &&
@@ -719,31 +720,67 @@ public class DriverInstaller : IDriverInstaller
         return nonSystem ?? "Generic / Text Only";
     }
 
-    private async Task TryInstallSharedDriverAsync(
-        string remoteDriverName, IProgress<string>? progress, CancellationToken ct)
+    // Finds the matching DriverInfo in the local repository using multiple strategies,
+    // runs its silent installer if the driver is not yet installed, and returns the
+    // DriverInfo so the caller can pass it to ResolveDriverForSharedAsync.
+    private async Task<DriverInfo?> TryInstallSharedDriverAsync(
+        InstallRequest request, IProgress<string>? progress, CancellationToken ct)
     {
-        var allInstalled = await _printerService.GetInstalledDriversAsync(ct);
-        if (allInstalled.Any(d => d.Equals(remoteDriverName, StringComparison.OrdinalIgnoreCase)))
-        {
-            _log.Info($"Driver '{remoteDriverName}' already installed — skipping.");
-            return;
-        }
+        var driverName  = request.SharedDriverName;
+        var displayName = request.SharedDisplayName;
+        var shareName   = request.SharedPrinterName ?? "";
 
         var allDrivers = await _repository.GetAllDriversAsync();
-        var match = allDrivers.FirstOrDefault(d =>
-            d.AllDriverNames().Any(n => n.Equals(remoteDriverName, StringComparison.OrdinalIgnoreCase)));
 
-        if (match == null || !match.HasInstaller || !_repository.DriverFilesExist(match))
+        // Strategy 1: match by Windows driver name reported from PC-A
+        DriverInfo? match = null;
+        if (!string.IsNullOrEmpty(driverName))
+            match = allDrivers.FirstOrDefault(d =>
+                d.AllDriverNames().Any(n => n.Equals(driverName, StringComparison.OrdinalIgnoreCase)));
+
+        // Strategy 2: match by display name from discovery (e.g. "Gertec G250")
+        if (match == null && !string.IsNullOrEmpty(displayName))
+            match = allDrivers.FirstOrDefault(d =>
+                d.DisplayName.Equals(displayName, StringComparison.OrdinalIgnoreCase));
+
+        // Strategy 3: match shareName against DisplayName with spaces removed
+        // ToShareName("Gertec G250") == "GertecG250" == "Gertec G250".Replace(" ","")
+        if (match == null && !string.IsNullOrEmpty(shareName))
         {
-            _log.Info($"Driver '{remoteDriverName}' not in local repository — will use best available driver.");
-            return;
+            var shareNorm = shareName.ToLowerInvariant();
+            match = allDrivers.FirstOrDefault(d =>
+                d.DisplayName.Replace(" ", "").Equals(shareNorm, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (match == null)
+        {
+            _log.Info($"No matching driver found in repository for shared printer " +
+                      $"(driverName='{driverName}', displayName='{displayName}', shareName='{shareName}').");
+            return null;
+        }
+
+        // Check if already installed
+        var allInstalled = await _printerService.GetInstalledDriversAsync(ct);
+        bool alreadyInstalled = allInstalled.Any(d =>
+            match.AllDriverNames().Any(n => n.Equals(d, StringComparison.OrdinalIgnoreCase)));
+
+        if (alreadyInstalled)
+        {
+            _log.Info($"Driver '{match.DisplayName}' already installed locally.");
+            return match;
+        }
+
+        if (!match.HasInstaller || !_repository.DriverFilesExist(match))
+        {
+            _log.Info($"Driver '{match.DisplayName}' found in repo but no installer available.");
+            return match; // still return so ResolveDriverForSharedAsync can use its DriverName
         }
 
         var exePath = _repository.ResolveInstallerPath(match);
-        if (exePath == null) return;
+        if (exePath == null) return match;
 
         progress?.Report($"Instalando driver '{match.DisplayName}'...");
-        _log.Info($"Installing driver for shared printer: '{match.DisplayName}' ({remoteDriverName})");
+        _log.Info($"Installing driver for shared printer: '{match.DisplayName}'");
 
         var silentArgs = match.InstallerArgs;
         if (string.IsNullOrEmpty(silentArgs))
@@ -763,12 +800,14 @@ public class DriverInstaller : IDriverInstaller
             _log.Info($"Shared driver installer exit: {proc.ExitCode}");
 
             if (proc.ExitCode == 0 || proc.ExitCode == 3010 || proc.ExitCode == 1641)
-                await Task.Delay(3000, ct); // let the installer settle
+                await Task.Delay(3000, ct);
         }
         catch (Exception ex)
         {
             _log.Warning($"Shared driver install failed (non-fatal): {ex.Message}");
         }
+
+        return match;
     }
 
     private async Task<(bool success, string output)> InstallWinRarSfxAsync(

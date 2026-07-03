@@ -20,4 +20,6 @@ public class InstallRequest
     public string? SharedPrinterName { get; set; }
     // Windows driver name as reported by the remote PC via discovery port
     public string? SharedDriverName { get; set; }
+    // Display name of the printer on the remote PC (e.g. "Gertec G250")
+    public string? SharedDisplayName { get; set; }
 }
