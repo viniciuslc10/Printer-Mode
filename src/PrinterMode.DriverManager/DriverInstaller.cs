@@ -176,11 +176,7 @@ public class DriverInstaller : IDriverInstaller
                         await _printerService.TriggerPnpScanAsync(ct);
                         await Task.Delay(3000, ct);
 
-                        // Quick check: if the scan was enough, capture the port and skip the
-                        // heavier disable/enable cycle below.  If not, force a PnP driver
-                        // rebind by disabling then re-enabling the printer class devices —
-                        // this is the software equivalent of unplugging and replugging the
-                        // USB cable and reliably triggers USB Print Monitor port creation.
+                        // Quick check: if the scan was enough, capture the port now.
                         var earlyPort = await _printerService.FindBestUsbPortAsync(ct);
                         if (earlyPort != null)
                         {
@@ -189,9 +185,24 @@ public class DriverInstaller : IDriverInstaller
                         }
                         else
                         {
-                            _log.Info("USB port not yet registered — forcing PnP device re-enumeration...");
-                            await _printerService.ReEnumerateUsbPrinterDevicesAsync(ct);
-                            await Task.Delay(3000, ct);
+                            // Port not yet registered — use pnputil /add-driver /install with the
+                            // driver's own INF to force Windows to match the driver to the connected
+                            // USB printer. This triggers usbprint.sys to create the port.
+                            var earlyInfPath = _repository.ResolveInfPath(request.Driver);
+                            if (!string.IsNullOrEmpty(earlyInfPath) && File.Exists(earlyInfPath))
+                            {
+                                _log.Info($"USB port missing after pnp scan — pnputil install: '{earlyInfPath}'");
+                                await InstallViaPnpUtilAsync(earlyInfPath, ct);
+                                await Task.Delay(3000, ct);
+                                discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct);
+                            }
+
+                            if (discoveredUsbPort == null)
+                            {
+                                _log.Info("USB port still not registered — forcing device re-enumeration...");
+                                await _printerService.ReEnumerateUsbPrinterDevicesAsync(ct);
+                                await Task.Delay(3000, ct);
+                            }
                         }
                     }
                     string? resolvedSilent = null;
@@ -412,13 +423,31 @@ public class DriverInstaller : IDriverInstaller
                     if (discoveredUsbPort == null)
                     {
                         // Port still not registered — full recovery sequence:
-                        // 1) PnP scan  2) disable+enable printer PnP devices (forces driver rebind)
-                        // 3) Spooler restart so the new port becomes visible to Add-Printer.
+                        // 1) pnputil /add-driver /install with the driver's own INF: forces Windows
+                        //    to match the INF against ALL connected USB devices — this is the key step
+                        //    that triggers usbprint.sys to create USB001 when the printer was connected
+                        //    before the silent installer ran (common fresh-machine scenario).
+                        // 2) Re-enumerate Unknown USB devices (disable+enable) as second sweep.
+                        // 3) Spooler restart so newly created ports become visible to Add-Printer.
                         progress?.Report("Detectando porta USB...");
-                        await _printerService.TriggerPnpScanAsync(ct);
-                        await Task.Delay(2000, ct);
-                        await _printerService.ReEnumerateUsbPrinterDevicesAsync(ct);
-                        await Task.Delay(3000, ct);
+                        var repoInfPath = _repository.ResolveInfPath(request.Driver);
+                        if (!string.IsNullOrEmpty(repoInfPath) && File.Exists(repoInfPath))
+                        {
+                            _log.Info($"Forcing pnputil /add-driver /install to match USB device: '{repoInfPath}'");
+                            progress?.Report("Associando driver ao dispositivo USB...");
+                            await InstallViaPnpUtilAsync(repoInfPath, ct);
+                            await Task.Delay(4000, ct);
+                            discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct);
+                            discoveredUsbPort ??= await _printerService.FindAnyUsbPrinterPortAsync(ct);
+                        }
+
+                        if (discoveredUsbPort == null)
+                        {
+                            await _printerService.TriggerPnpScanAsync(ct);
+                            await Task.Delay(2000, ct);
+                            await _printerService.ReEnumerateUsbPrinterDevicesAsync(ct);
+                            await Task.Delay(3000, ct);
+                        }
                         await _printerService.RestartSpoolerAsync(ct);
 
                         for (int p = 0; p < 6 && discoveredUsbPort == null; p++)

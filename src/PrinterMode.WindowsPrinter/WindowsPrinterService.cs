@@ -218,28 +218,36 @@ public class WindowsPrinterService : IWindowsPrinterService
     public async Task ReEnumerateUsbPrinterDevicesAsync(CancellationToken ct = default)
     {
         // Software equivalent of unplugging and replugging the USB cable.
-        // Disabling then re-enabling the PnP printer devices forces Windows to
-        // re-run driver binding, which causes the USB Print Monitor (usbprint.sys)
-        // to create the spooler port (USB001 etc.) for the connected printer.
-        // This is needed when a silent driver install completes AFTER the device
-        // was already connected — pnputil /scan-devices alone is sometimes not enough.
+        // Targets two categories:
+        //   1. Printer-class USB devices — already matched to a driver (driver update/reinstall).
+        //   2. Unknown/Error USB devices with a VID — unmatched printer awaiting driver binding
+        //      (the common fresh-install case where the driver was just installed but Windows
+        //      hasn't yet associated it with the connected device).
+        // Disabling then re-enabling forces the PnP Manager to re-run driver matching, which
+        // causes usbprint.sys to create the spooler port (USB001 etc.).
         await Task.Run(() =>
         {
             try
             {
                 var script =
-                    "$devs = @(Get-PnpDevice -Class Printer -ErrorAction SilentlyContinue);" +
-                    "if ($devs.Count -gt 0) {" +
-                    "  $devs | ForEach-Object {" +
+                    // 1. Printer-class USB devices (driver already matched)
+                    "$printerDevs = @(Get-PnpDevice -Class Printer -ErrorAction SilentlyContinue | " +
+                    "  Where-Object { $_.InstanceId -like 'USB\\*' });" +
+                    // 2. Unknown/Error USB devices with vendor ID — likely the unmatched printer
+                    "$unknownUsb = @(Get-PnpDevice -ErrorAction SilentlyContinue | " +
+                    "  Where-Object { $_.InstanceId -like 'USB\\VID_*' -and $_.Status -ne 'OK' -and " +
+                    "    $_.FriendlyName -notlike '*Hub*' -and $_.FriendlyName -notlike '*Controller*' });" +
+                    "$allDevs = @(@($printerDevs) + @($unknownUsb) | Select-Object -Unique);" +
+                    "if ($allDevs.Count -gt 0) {" +
+                    "  $allDevs | ForEach-Object {" +
                     "    Disable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false -ErrorAction SilentlyContinue" +
                     "  };" +
                     "  Start-Sleep -Seconds 2;" +
-                    "  $devs | ForEach-Object {" +
+                    "  $allDevs | ForEach-Object {" +
                     "    Enable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false -ErrorAction SilentlyContinue" +
                     "  }" +
-                    "} else {" +
-                    "  pnputil /scan-devices | Out-Null" +
-                    "}";
+                    "};" +
+                    "pnputil /scan-devices | Out-Null";
 
                 var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
                 var psi = new ProcessStartInfo
