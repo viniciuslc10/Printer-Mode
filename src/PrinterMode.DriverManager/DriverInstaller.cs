@@ -515,6 +515,27 @@ public class DriverInstaller : IDriverInstaller
 
                 case ConnectionType.USB:
                 default:
+                    // Highest-priority, device-keyed lookup: ask the physical device (VID/PID)
+                    // which port IT is bound to, straight from its PnP registry node. This is
+                    // the most reliable source and — critically — it catches CDC / virtual-serial
+                    // POS printers (common for Gertec/Elgin/Bematech) that enumerate as a COMx
+                    // device and NEVER get a USB001 spooler port. Without this, every USB-port
+                    // hunt below searches for a port that will never exist on such machines.
+                    if (!string.IsNullOrEmpty(request.Driver.VendorId) &&
+                        !string.IsNullOrEmpty(request.Driver.ProductId))
+                    {
+                        var devicePort = await _printerService.FindDevicePortByVidPidAsync(
+                            request.Driver.VendorId!, request.Driver.ProductId!, ct);
+                        if (!string.IsNullOrEmpty(devicePort))
+                        {
+                            // A COMx port must be registered with the spooler before Add-Printer
+                            // will accept it; monitor-managed ports (USBnnn) already are.
+                            await _printerService.EnsurePortRegisteredAsync(devicePort, ct);
+                            discoveredUsbPort = devicePort;
+                            _log.Info($"USB case: device-keyed port resolved immediately: '{devicePort}'");
+                        }
+                    }
+
                     // Quick poll (3×1.5s) — check USB/DOT4/WSD ports registered with the Spooler
                     // and any port already assigned by PnP auto-printer creation.
                     for (int p = 0; p < 3 && discoveredUsbPort == null; p++)
@@ -558,13 +579,18 @@ public class DriverInstaller : IDriverInstaller
                                 request.Driver.VendorId!, request.Driver.ProductId!, ct);
                             await _printerService.RestartSpoolerAsync(ct);
                             await Task.Delay(6000, ct);
-                            discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
+                            discoveredUsbPort = await _printerService.FindDevicePortByVidPidAsync(
+                                    request.Driver.VendorId!, request.Driver.ProductId!, ct)
+                                ?? await _printerService.FindBestUsbPortAsync(ct)
                                 ?? await _printerService.FindAnyUsbPrinterPortAsync(ct)
                                 ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
                                 ?? await _printerService.FindUsbPortFromRegistryAsync(ct)
                                 ?? await _printerService.FindPortFromNewPrinterAsync(printersBeforeInstall, ct);
                             if (discoveredUsbPort != null)
+                            {
+                                await _printerService.EnsurePortRegisteredAsync(discoveredUsbPort, ct);
                                 _log.Info($"Recovery VID/PID + Spooler restart: port found '{discoveredUsbPort}'");
+                            }
                         }
 
                         // 2) DriverStore INF pnputil + Spooler restart.
@@ -640,6 +666,11 @@ public class DriverInstaller : IDriverInstaller
                             discoveredUsbPort ??= await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct);
                             discoveredUsbPort ??= await _printerService.FindUsbPortFromRegistryAsync(ct);
                             discoveredUsbPort ??= await _printerService.FindPortFromNewPrinterAsync(printersBeforeInstall, ct);
+                            if (discoveredUsbPort == null &&
+                                !string.IsNullOrEmpty(request.Driver.VendorId) &&
+                                !string.IsNullOrEmpty(request.Driver.ProductId))
+                                discoveredUsbPort = await _printerService.FindDevicePortByVidPidAsync(
+                                    request.Driver.VendorId!, request.Driver.ProductId!, ct);
                         }
                     }
 
@@ -711,13 +742,18 @@ public class DriverInstaller : IDriverInstaller
                             request.Driver.VendorId!, request.Driver.ProductId ?? "", ct);
                         await _printerService.RestartSpoolerAsync(ct);
                         await Task.Delay(10000, ct);
-                        discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
+                        discoveredUsbPort = await _printerService.FindDevicePortByVidPidAsync(
+                                request.Driver.VendorId!, request.Driver.ProductId ?? "", ct)
+                            ?? await _printerService.FindBestUsbPortAsync(ct)
                             ?? await _printerService.FindUsbPortFromRegistryAsync(ct)
                             ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
                             ?? await _printerService.FindAnyUsbPrinterPortAsync(ct)
                             ?? await _printerService.FindPortFromNewPrinterAsync(printersBeforeInstall, ct);
                         if (discoveredUsbPort != null)
+                        {
+                            await _printerService.EnsurePortRegisteredAsync(discoveredUsbPort, ct);
                             _log.Info($"Final attempt found port: '{discoveredUsbPort}'");
+                        }
                     }
 
                     portName = request.PortName ?? discoveredUsbPort ?? "USB001";
@@ -739,7 +775,26 @@ public class DriverInstaller : IDriverInstaller
             if (request.ConnectionType == ConnectionType.USB && discoveredUsbPort != null)
             {
                 var spoolerPorts = await _printerService.GetAvailablePortsAsync(ct);
-                if (!spoolerPorts.Contains(portName, StringComparer.OrdinalIgnoreCase))
+
+                // COMx / generic local ports (CDC virtual-serial thermal printers) are not
+                // created by the USB Monitor — waiting for it is pointless. Register the port
+                // directly with the spooler so Add-Printer accepts it.
+                bool isMonitorManaged =
+                    portName.StartsWith("USB",  StringComparison.OrdinalIgnoreCase) ||
+                    portName.StartsWith("DOT4", StringComparison.OrdinalIgnoreCase) ||
+                    portName.StartsWith("WSD",  StringComparison.OrdinalIgnoreCase);
+                if (!isMonitorManaged && !spoolerPorts.Contains(portName, StringComparer.OrdinalIgnoreCase))
+                {
+                    _log.Info($"Port '{portName}' is a local/COM port — registering it with the spooler.");
+                    progress?.Report("Registrando porta da impressora no Windows...");
+                    if (await _printerService.EnsurePortRegisteredAsync(portName, ct))
+                    {
+                        steps.Add($"Porta registrada: {portName}");
+                        spoolerPorts = await _printerService.GetAvailablePortsAsync(ct);
+                    }
+                }
+
+                if (isMonitorManaged && !spoolerPorts.Contains(portName, StringComparer.OrdinalIgnoreCase))
                 {
                     _log.Warning($"Port '{portName}' not yet in Spooler — waiting for USB Monitor sync...");
                     progress?.Report("Aguardando porta USB ser registrada no Windows...");
@@ -897,6 +952,36 @@ public class DriverInstaller : IDriverInstaller
                     }
                 }
 
+                // Genuine last-ditch retry: the physical device may have bound its port only
+                // now (late CDC/usbprint enumeration). Ask the device directly one more time,
+                // register that port, and retry every driver name on it before giving up.
+                if (!printerAdded && request.ConnectionType == ConnectionType.USB &&
+                    !string.IsNullOrEmpty(request.Driver.VendorId) &&
+                    !string.IsNullOrEmpty(request.Driver.ProductId))
+                {
+                    var lateDevicePort = await _printerService.FindDevicePortByVidPidAsync(
+                        request.Driver.VendorId!, request.Driver.ProductId!, ct);
+                    if (!string.IsNullOrEmpty(lateDevicePort) &&
+                        !lateDevicePort.Equals(portName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _log.Info($"Last-ditch: device now reports port '{lateDevicePort}' — registering and retrying.");
+                        progress?.Report("Última tentativa na porta do dispositivo...");
+                        await _printerService.EnsurePortRegisteredAsync(lateDevicePort, ct);
+                        foreach (var candidateName in driverNamesToTry)
+                        {
+                            if (await _printerService.AddPrinterAsync(request.PrinterName, candidateName, lateDevicePort, ct))
+                            {
+                                printerAdded = true;
+                                usedDriverName = candidateName;
+                                portName = lateDevicePort;
+                                discoveredUsbPort = lateDevicePort;
+                                _log.Info($"Last-ditch succeeded: driver='{candidateName}' port='{lateDevicePort}'");
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 if (!printerAdded)
                 {
                     _log.Error($"AddPrinterAsync failed for all candidates. port='{portName}' tried=[{string.Join(", ", driverNamesToTry)}]");
@@ -910,9 +995,16 @@ public class DriverInstaller : IDriverInstaller
                         if (portMissing || discoveredUsbPort == null)
                         {
                             _log.Error($"Root cause: port '{portName}' absent from Spooler. Available: [{string.Join(", ", currentPorts.Take(10))}]");
+                            // Gather live device state so the message is actionable and the
+                            // failure is diagnosable without physical access to the machine.
+                            var diag = await _printerService.GetUsbDeviceDiagnosticsAsync(
+                                request.Driver.VendorId ?? "", request.Driver.ProductId ?? "", ct);
+                            _log.Error($"Device diagnostics: {diag}");
                             return InstallResult.Fail(
                                 "Porta USB não encontrada no Windows.",
-                                "Verifique se a impressora está conectada e ligada. Desconecte e reconecte o cabo USB e tente novamente.",
+                                $"{diag}\n" +
+                                "Verifique se a impressora está conectada e ligada. Desconecte e reconecte o cabo USB e tente novamente. " +
+                                "Se o problema persistir, o driver do fabricante pode não ter vinculado a impressora ao Windows.",
                                 steps);
                         }
                     }

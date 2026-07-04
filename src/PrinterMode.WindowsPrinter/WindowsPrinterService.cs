@@ -221,6 +221,194 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    public async Task<string?> FindDevicePortByVidPidAsync(string vid, string pid, CancellationToken ct = default)
+    {
+        // Reads the port the PHYSICAL device (VID/PID) is actually bound to, straight from
+        // its own PnP registry node. This is the single most reliable source because it is
+        // keyed to the exact hardware — not inferred from the spooler's global port list.
+        //
+        // Many POS / thermal printers (Gertec, Elgin, Bematech, Epson TM…) enumerate as a
+        // CDC / virtual-serial device, NOT a USB printing-class device. For those there is
+        // never a USB001 spooler port — Windows assigns them a COMx port and stores it under
+        //   Enum\USB\VID_xxxx&PID_xxxx\<instance>\Device Parameters\PortName   (e.g. "COM3").
+        // Composite devices expose the same value under a &MI_0x child. This method finds it.
+        if (string.IsNullOrEmpty(vid) || string.IsNullOrEmpty(pid))
+            return null;
+
+        return await Task.Run(() =>
+        {
+            try
+            {
+                using var usbEnum = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                    @"SYSTEM\CurrentControlSet\Enum\USB");
+                if (usbEnum == null) return null;
+
+                foreach (var devKey in usbEnum.GetSubKeyNames())
+                {
+                    ct.ThrowIfCancellationRequested();
+                    // Match VID_xxxx&PID_xxxx in any form, including composite (…&MI_00).
+                    if (devKey.IndexOf($"VID_{vid}", StringComparison.OrdinalIgnoreCase) < 0 ||
+                        devKey.IndexOf($"PID_{pid}", StringComparison.OrdinalIgnoreCase) < 0)
+                        continue;
+
+                    using var dev = usbEnum.OpenSubKey(devKey);
+                    if (dev == null) continue;
+                    foreach (var instId in dev.GetSubKeyNames())
+                    {
+                        using var inst = dev.OpenSubKey(instId);
+                        using var devParams = inst?.OpenSubKey("Device Parameters");
+                        var portName = devParams?.GetValue("PortName")?.ToString();
+                        if (!string.IsNullOrEmpty(portName))
+                        {
+                            // Spooler serial/parallel ports use the canonical colon form
+                            // ("COM3:", "LPT1:"); the device stores it without the colon.
+                            // Normalize so Add-Printer -PortName matches the registered port.
+                            if ((portName.StartsWith("COM", StringComparison.OrdinalIgnoreCase) ||
+                                 portName.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)) &&
+                                !portName.EndsWith(":"))
+                                portName += ":";
+                            _log.Info($"FindDevicePortByVidPid: device '{devKey}' bound to port '{portName}'");
+                            return portName;
+                        }
+                    }
+                }
+                _log.Info($"FindDevicePortByVidPid: no PortName under VID_{vid}&PID_{pid} (not a virtual-serial device or not bound yet).");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"FindDevicePortByVidPidAsync: {ex.Message}");
+                return null;
+            }
+        }, ct);
+    }
+
+    public async Task<bool> EnsurePortRegisteredAsync(string portName, CancellationToken ct = default)
+    {
+        // Guarantees the given port exists in the Print Spooler so Add-Printer accepts it.
+        // USB001/DOT4/WSD ports are created by the USB Monitor and cannot be added manually,
+        // but COMx and generic local ports CAN be registered via Add-PrinterPort. This makes
+        // a device-keyed COM port (from a CDC thermal printer) usable by the spooler.
+        if (string.IsNullOrWhiteSpace(portName))
+            return false;
+
+        return await Task.Run(() =>
+        {
+            try
+            {
+                // Already registered?
+                using (var existing = new ManagementObjectSearcher(
+                    $"SELECT Name FROM Win32_PrinterPort WHERE Name = '{portName.Replace("'", "''")}'"))
+                {
+                    foreach (ManagementObject _ in existing.Get())
+                    {
+                        _log.Info($"EnsurePortRegistered: '{portName}' already present in spooler.");
+                        return true;
+                    }
+                }
+
+                // USB Monitor ports can't be added by hand — they must come from usbprint.sys.
+                if (portName.StartsWith("USB", StringComparison.OrdinalIgnoreCase) ||
+                    portName.StartsWith("DOT4", StringComparison.OrdinalIgnoreCase) ||
+                    portName.StartsWith("WSD", StringComparison.OrdinalIgnoreCase))
+                {
+                    _log.Info($"EnsurePortRegistered: '{portName}' is a monitor-managed port — cannot add manually.");
+                    return false;
+                }
+
+                // COMx and other local ports: register via the Local Port monitor.
+                var comSuffix = portName.EndsWith(":") ? portName : portName + ":";
+                var script =
+                    $"try {{ Add-PrinterPort -Name '{comSuffix}' -ErrorAction Stop; 'OK' }} " +
+                    $"catch {{ try {{ Add-PrinterPort -Name '{portName}' -ErrorAction Stop; 'OK' }} catch {{ $_.Exception.Message }} }}";
+                var enc = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+                RunProcess("powershell.exe", $"-NoProfile -NonInteractive -EncodedCommand {enc}");
+
+                using var after = new ManagementObjectSearcher("SELECT Name FROM Win32_PrinterPort");
+                foreach (ManagementObject obj in after.Get())
+                {
+                    var n = obj["Name"]?.ToString();
+                    if (!string.IsNullOrEmpty(n) &&
+                        (n.Equals(portName, StringComparison.OrdinalIgnoreCase) ||
+                         n.Equals(comSuffix, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        _log.Info($"EnsurePortRegistered: registered '{n}' in spooler.");
+                        return true;
+                    }
+                }
+                _log.Warning($"EnsurePortRegistered: '{portName}' still not present after Add-PrinterPort.");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"EnsurePortRegisteredAsync: {ex.Message}");
+                return false;
+            }
+        }, ct);
+    }
+
+    public async Task<string> GetUsbDeviceDiagnosticsAsync(string vid, string pid, CancellationToken ct = default)
+    {
+        // Produces a human-readable snapshot of device + spooler state for the failure
+        // message and log — so a "still not working" report is diagnosable without the PC.
+        // Answers: is the device connected? which service/driver is bound? what is its
+        // status/problem code? does a COM port exist for it? which spooler ports exist?
+        return await Task.Run(() =>
+        {
+            var sb = new System.Text.StringBuilder();
+            try
+            {
+                var script =
+                    $"$d = Get-PnpDevice -ErrorAction SilentlyContinue | " +
+                    $"  Where-Object {{ $_.InstanceId -match 'VID_{vid}&PID_{pid}' }} | Select-Object -First 1; " +
+                    $"if ($d) {{ " +
+                    $"  $svc  = (Get-PnpDeviceProperty -InstanceId $d.InstanceId -KeyName 'DEVPKEY_Device_Service' -ErrorAction SilentlyContinue).Data; " +
+                    $"  $prob = (Get-PnpDeviceProperty -InstanceId $d.InstanceId -KeyName 'DEVPKEY_Device_ProblemCode' -ErrorAction SilentlyContinue).Data; " +
+                    $"  Write-Output \"PRESENT|status=$($d.Status)|class=$($d.Class)|service=$svc|problem=$prob|name=$($d.FriendlyName)\" " +
+                    $"}} else {{ Write-Output 'ABSENT' }}";
+                var enc = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {enc}",
+                    UseShellExecute = false, CreateNoWindow = true,
+                    RedirectStandardOutput = true, RedirectStandardError = true
+                };
+                using var proc = Process.Start(psi)!;
+                var outTask = proc.StandardOutput.ReadToEndAsync();
+                var errTask = proc.StandardError.ReadToEndAsync();
+                proc.WaitForExit(15_000);
+                var stdout = outTask.GetAwaiter().GetResult().Trim();
+                errTask.GetAwaiter().GetResult();
+
+                if (stdout.StartsWith("ABSENT", StringComparison.OrdinalIgnoreCase))
+                    sb.Append($"Dispositivo VID_{vid}&PID_{pid}: NÃO detectado pelo Windows (verifique cabo/porta USB). ");
+                else if (stdout.StartsWith("PRESENT", StringComparison.OrdinalIgnoreCase))
+                {
+                    var pipe = stdout.IndexOf('|');
+                    var details = pipe >= 0 && pipe + 1 < stdout.Length ? stdout[(pipe + 1)..] : stdout;
+                    sb.Append($"Dispositivo detectado [{details}]. ");
+                }
+                else if (!string.IsNullOrEmpty(stdout))
+                    sb.Append($"Estado do dispositivo: {stdout}. ");
+
+                // usbprint.sys bound?
+                using (var usbprint = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                    @"SYSTEM\CurrentControlSet\Enum\USBPRINT"))
+                {
+                    sb.Append((usbprint != null && usbprint.GetSubKeyNames().Length > 0)
+                        ? "usbprint.sys: ativo. "
+                        : "usbprint.sys: não vinculado. ");
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"GetUsbDeviceDiagnosticsAsync: {ex.Message}");
+            }
+            return sb.ToString();
+        }, ct);
+    }
+
     // Ports that are purely software (not a physical device connection) and should
     // never be returned as the result of a USB-printer-port diff.
     private static bool IsNonHardwarePort(string name) =>
