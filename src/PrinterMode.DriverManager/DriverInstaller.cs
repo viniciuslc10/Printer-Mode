@@ -515,13 +515,46 @@ public class DriverInstaller : IDriverInstaller
 
                 case ConnectionType.USB:
                 default:
+                    // ── Resolve the ACTUAL connected device ────────────────────────────────
+                    // The catalog VID/PID comes from a reference TEMPLATE and may not match the
+                    // real hardware (the earlier failures showed "VID_20D1&PID_7008 NÃO detectado"
+                    // — no connected device had those ids). So instead of trusting the catalog,
+                    // scan every connected USB device and pick the one that IS the printer (by
+                    // name/class/port), then adopt its REAL VID/PID + COM port for every step below.
+                    progress?.Report("Localizando a impressora conectada...");
+                    var deviceHints = new List<string> { request.Driver.Manufacturer, request.Driver.Model };
+                    deviceHints.AddRange(request.Driver.AllDriverNames());
+                    var resolvedDevice = await _printerService.ResolvePrinterUsbDeviceAsync(
+                        deviceHints, request.Driver.VendorId, request.Driver.ProductId, ct);
+                    if (resolvedDevice != null)
+                    {
+                        steps.Add($"Dispositivo detectado: {resolvedDevice.FriendlyName}");
+                        _log.Info($"Resolved connected device: '{resolvedDevice.FriendlyName}' " +
+                                  $"vid={resolvedDevice.Vid} pid={resolvedDevice.Pid} port={resolvedDevice.Port} " +
+                                  $"(catalog was {request.Driver.VendorId}/{request.Driver.ProductId})");
+                        // Adopt the real ids so all VID/PID-based steps target the right hardware.
+                        if (!string.IsNullOrEmpty(resolvedDevice.Vid))
+                        {
+                            request.Driver.VendorId = resolvedDevice.Vid;
+                            request.Driver.ProductId = resolvedDevice.Pid;
+                        }
+                        // If the device already exposes a COM port (CDC virtual-serial), use it now.
+                        if (!string.IsNullOrEmpty(resolvedDevice.Port))
+                        {
+                            await _printerService.EnsurePortRegisteredAsync(resolvedDevice.Port, ct);
+                            discoveredUsbPort = resolvedDevice.Port;
+                            _log.Info($"USB case: using resolved device COM port '{resolvedDevice.Port}'");
+                        }
+                    }
+
                     // Highest-priority, device-keyed lookup: ask the physical device (VID/PID)
                     // which port IT is bound to, straight from its PnP registry node. This is
                     // the most reliable source and — critically — it catches CDC / virtual-serial
                     // POS printers (common for Gertec/Elgin/Bematech) that enumerate as a COMx
                     // device and NEVER get a USB001 spooler port. Without this, every USB-port
                     // hunt below searches for a port that will never exist on such machines.
-                    if (!string.IsNullOrEmpty(request.Driver.VendorId) &&
+                    if (discoveredUsbPort == null &&
+                        !string.IsNullOrEmpty(request.Driver.VendorId) &&
                         !string.IsNullOrEmpty(request.Driver.ProductId))
                     {
                         var devicePort = await _printerService.FindDevicePortByVidPidAsync(
@@ -995,14 +1028,17 @@ public class DriverInstaller : IDriverInstaller
                         if (portMissing || discoveredUsbPort == null)
                         {
                             _log.Error($"Root cause: port '{portName}' absent from Spooler. Available: [{string.Join(", ", currentPorts.Take(10))}]");
-                            // Gather live device state so the message is actionable and the
-                            // failure is diagnosable without physical access to the machine.
+                            // Gather live device state + a full dump of connected USB devices so
+                            // the failure is fully diagnosable without physical access to the PC.
                             var diag = await _printerService.GetUsbDeviceDiagnosticsAsync(
                                 request.Driver.VendorId ?? "", request.Driver.ProductId ?? "", ct);
+                            var deviceList = await _printerService.ListConnectedUsbDevicesAsync(ct);
                             _log.Error($"Device diagnostics: {diag}");
+                            _log.Error($"Connected USB devices:\n{deviceList}");
                             return InstallResult.Fail(
                                 "Porta USB não encontrada no Windows.",
-                                $"{diag}\n" +
+                                $"{diag}\n\n" +
+                                $"Dispositivos USB conectados:\n{deviceList}\n\n" +
                                 "Verifique se a impressora está conectada e ligada. Desconecte e reconecte o cabo USB e tente novamente. " +
                                 "Se o problema persistir, o driver do fabricante pode não ter vinculado a impressora ao Windows.",
                                 steps);

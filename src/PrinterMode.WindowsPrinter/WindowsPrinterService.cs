@@ -409,6 +409,166 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    private List<DetectedUsbDevice> EnumerateUsbDevices(CancellationToken ct)
+    {
+        // One PowerShell round-trip: list every present PnP device with its InstanceId,
+        // class, status and friendly name. Parsed into records (VID/PID from the InstanceId,
+        // COM port from a "(COMx)" suffix in the name). Used by both the resolver and the
+        // diagnostics dump. Delimiter '~|~' avoids collision with names containing '|'.
+        var result = new List<DetectedUsbDevice>();
+        try
+        {
+            var script =
+                "Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | ForEach-Object { " +
+                "$n = \"$($_.FriendlyName)\" -replace '[\\r\\n]',' '; " +
+                "Write-Output \"$($_.InstanceId)~|~$($_.Class)~|~$($_.Status)~|~$n\" }";
+            var enc = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+            var psi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -NonInteractive -EncodedCommand {enc}",
+                UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardOutput = true, RedirectStandardError = true
+            };
+            using var proc = Process.Start(psi)!;
+            var outTask = proc.StandardOutput.ReadToEndAsync();
+            var errTask = proc.StandardError.ReadToEndAsync();
+            proc.WaitForExit(20_000);
+            var stdout = outTask.GetAwaiter().GetResult();
+            errTask.GetAwaiter().GetResult();
+
+            foreach (var rawLine in stdout.Split('\n'))
+            {
+                ct.ThrowIfCancellationRequested();
+                var line = rawLine.Trim();
+                if (line.Length == 0) continue;
+                var parts = line.Split(new[] { "~|~" }, StringSplitOptions.None);
+                if (parts.Length < 4) continue;
+
+                var instanceId = parts[0].Trim();
+                var cls = parts[1].Trim();
+                var status = parts[2].Trim();
+                var name = parts[3].Trim();
+
+                string? vid = null, pid = null, port = null;
+                var mVid = Regex.Match(instanceId, @"VID_([0-9A-Fa-f]{4})", RegexOptions.IgnoreCase);
+                if (mVid.Success) vid = mVid.Groups[1].Value.ToUpperInvariant();
+                var mPid = Regex.Match(instanceId, @"PID_([0-9A-Fa-f]{4})", RegexOptions.IgnoreCase);
+                if (mPid.Success) pid = mPid.Groups[1].Value.ToUpperInvariant();
+                var mCom = Regex.Match(name, @"\((COM\d+)\)", RegexOptions.IgnoreCase);
+                if (mCom.Success) port = mCom.Groups[1].Value.ToUpperInvariant() + ":";
+
+                result.Add(new DetectedUsbDevice(instanceId, vid, pid, port, name, status, cls));
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Warning($"EnumerateUsbDevices: {ex.Message}");
+        }
+        return result;
+    }
+
+    public async Task<DetectedUsbDevice?> ResolvePrinterUsbDeviceAsync(
+        IReadOnlyList<string> nameHints, string? catalogVid, string? catalogPid, CancellationToken ct = default)
+    {
+        // Finds the REAL connected printer among all USB devices, independent of the
+        // catalog VID/PID (which may be a template placeholder no device matches). Scores
+        // each device by name hints, class, an existing COM port, and the catalog VID as a
+        // soft signal — then returns the best. If the winner is a composite parent with no
+        // port, its child's COM port (same VID/PID) is attached.
+        return await Task.Run(() =>
+        {
+            var devices = EnumerateUsbDevices(ct);
+            if (devices.Count == 0) return null;
+
+            string[] exclude =
+            {
+                "hub", "host controller", "root ", "composite device", "mass storage",
+                "keyboard", "mouse", "webcam", "camera", "audio", "speaker", "microphone",
+                "bluetooth", "wireless", "wi-fi", "wifi", "network adapter", "ethernet",
+                "card reader", "biometric", "fingerprint", "monitor", "graphics", "display adapter"
+            };
+            string[] generic =
+            {
+                "print", "impress", "pos", "thermal", "termic", "térmic", "receipt",
+                "escpos", "esc/pos", "ticket", "cupom", "serial", "ga-printer", "ga printer"
+            };
+
+            var hints = nameHints
+                .Where(h => !string.IsNullOrWhiteSpace(h) && h.Trim().Length >= 2)
+                .Select(h => h.ToLowerInvariant().Trim())
+                .Distinct()
+                .ToList();
+
+            DetectedUsbDevice? best = null;
+            int bestScore = 0;
+            foreach (var d in devices)
+            {
+                var nameLc = d.FriendlyName.ToLowerInvariant();
+                if (exclude.Any(x => nameLc.Contains(x))) continue;
+
+                int score = 0;
+                if (hints.Any(h => nameLc.Contains(h))) score += 100;
+                if (!string.IsNullOrEmpty(catalogVid) && d.Vid != null &&
+                    d.Vid.Equals(catalogVid, StringComparison.OrdinalIgnoreCase)) score += 60;
+                if (d.DeviceClass.Equals("Printer", StringComparison.OrdinalIgnoreCase) ||
+                    d.DeviceClass.Equals("PrintQueue", StringComparison.OrdinalIgnoreCase)) score += 60;
+                if (d.DeviceClass.Equals("Ports", StringComparison.OrdinalIgnoreCase)) score += 45;
+                if (d.Port != null) score += 40;
+                if (generic.Any(g => nameLc.Contains(g))) score += 50;
+                if (d.Status.Equals("Error", StringComparison.OrdinalIgnoreCase) ||
+                    d.Status.Equals("Unknown", StringComparison.OrdinalIgnoreCase)) score += 15;
+
+                if (score > bestScore) { bestScore = score; best = d; }
+            }
+
+            if (best == null || bestScore <= 0)
+            {
+                _log.Warning("ResolvePrinterUsbDevice: no printer-like USB device found among connected devices.");
+                return null;
+            }
+
+            var chosen = best;
+            // If the winner has no port but a sibling with the same VID/PID does, adopt it.
+            if (chosen.Port == null && chosen.Vid != null)
+            {
+                var sibling = devices.FirstOrDefault(d =>
+                    d.Port != null && d.Vid == chosen.Vid &&
+                    (chosen.Pid == null || d.Pid == chosen.Pid));
+                if (sibling != null)
+                    chosen = chosen with { Port = sibling.Port };
+            }
+
+            _log.Info($"ResolvePrinterUsbDevice: best='{chosen.FriendlyName}' score={bestScore} " +
+                      $"vid={chosen.Vid} pid={chosen.Pid} port={chosen.Port} class={chosen.DeviceClass} " +
+                      $"status={chosen.Status} id={chosen.InstanceId}");
+            return chosen;
+        }, ct);
+    }
+
+    public async Task<string> ListConnectedUsbDevicesAsync(CancellationToken ct = default)
+    {
+        return await Task.Run(() =>
+        {
+            var devices = EnumerateUsbDevices(ct);
+            if (devices.Count == 0) return "nenhum dispositivo USB listado";
+            var relevant = devices
+                .Where(d =>
+                {
+                    var n = d.FriendlyName.ToLowerInvariant();
+                    return !n.Contains("hub") && !n.Contains("host controller") && !n.Contains("root ");
+                })
+                .Take(20)
+                .Select(d =>
+                {
+                    var vp = d.Vid != null ? $"VID_{d.Vid}&PID_{d.Pid}" : "sem-VID";
+                    var p = d.Port != null ? $" {d.Port}" : "";
+                    return $"• {d.FriendlyName} [{vp} class={d.DeviceClass} status={d.Status}{p}]";
+                });
+            return string.Join("\n", relevant);
+        }, ct);
+    }
+
     // Ports that are purely software (not a physical device connection) and should
     // never be returned as the result of a USB-printer-port diff.
     private static bool IsNonHardwarePort(string name) =>
