@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace PrinterMode.Core.Models;
 
 public class DriverInfo
@@ -5,7 +7,11 @@ public class DriverInfo
     public string Id { get; set; } = string.Empty;
     public string Manufacturer { get; set; } = string.Empty;
     public string Model { get; set; } = string.Empty;
+
+    [JsonPropertyName("vid")]
     public string? VendorId { get; set; }
+
+    [JsonPropertyName("pid")]
     public string? ProductId { get; set; }
     public string DriverFolder { get; set; } = string.Empty;
     public string InfFile { get; set; } = string.Empty;
