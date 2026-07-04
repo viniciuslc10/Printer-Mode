@@ -170,19 +170,14 @@ public class DriverInstaller : IDriverInstaller
                         return InstallResult.Fail($"Falha ao executar instalador: {ex.Message}", null, steps);
                     }
 
-                    // Brief pause for installer to finish writing files/registry.
-                    await Task.Delay(1000, ct);
-
-                    // For USB: restart the Print Spooler so the USB Print Monitor re-initialises
-                    // and creates ports for every connected USB printer. On a fresh machine the
-                    // printer may already be plugged in but the port was never created because the
-                    // driver didn't exist when the device connected. A Spooler restart forces the
-                    // USB Monitor to re-enumerate — more reliable than pnputil /scan-devices.
                     if (needsUsbPort)
                     {
-                        progress?.Report("Preparando serviço de impressão USB...");
-                        await _printerService.RestartSpoolerAsync(ct);
-                        await Task.Delay(4000, ct);
+                        // Many printer installers launch their own Spooler restart as a post-install
+                        // step and exit the main EXE before that restart completes. Wait 8 seconds
+                        // to let that internal restart settle, then check whether the installer
+                        // already created the port — BEFORE touching the Spooler ourselves.
+                        progress?.Report("Aguardando conclusão da instalação do driver...");
+                        await Task.Delay(8000, ct);
 
                         var earlyPort = await _printerService.FindBestUsbPortAsync(ct)
                             ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
@@ -190,75 +185,114 @@ public class DriverInstaller : IDriverInstaller
                         if (earlyPort != null)
                         {
                             discoveredUsbPort = earlyPort;
-                            _log.Info($"USB port found after spooler restart: '{earlyPort}'");
+                            _log.Info($"USB port found from installer's own setup: '{earlyPort}'");
                         }
                         else
                         {
-                            // Port still not created — cycle the exact USB device (by VID/PID) to force
-                            // Windows to re-run driver matching now that the real INF is staged.
-                            // IMPORTANT: must restart Spooler AFTER cycling the device — USB Monitor
-                            // only creates port entries during Spooler startup, not mid-run.
-                            if (!string.IsNullOrEmpty(request.Driver.VendorId) &&
-                                !string.IsNullOrEmpty(request.Driver.ProductId))
-                            {
-                                _log.Info($"USB port missing — targeted VID/PID re-enumeration ({request.Driver.VendorId}/{request.Driver.ProductId})");
-                                progress?.Report("Forçando reconhecimento do dispositivo USB...");
-                                await _printerService.ReEnumerateDeviceByVidPidAsync(
-                                    request.Driver.VendorId!, request.Driver.ProductId!, ct);
-                                // Restart Spooler so USB Monitor re-initialises and registers the port.
-                                await _printerService.RestartSpoolerAsync(ct);
-                                await Task.Delay(6000, ct);
-                                discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
-                                    ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
-                                    ?? await _printerService.FindUsbPortFromRegistryAsync(ct);
-                                if (discoveredUsbPort != null)
-                                    _log.Info($"USB port found after VID/PID re-enumeration + Spooler restart: '{discoveredUsbPort}'");
-                            }
+                            // Port not yet created — restart Spooler ourselves so USB Monitor can
+                            // re-enumerate and register any connected USB printer device.
+                            progress?.Report("Preparando serviço de impressão USB...");
+                            await _printerService.RestartSpoolerAsync(ct);
+                            await Task.Delay(5000, ct);
 
-                            // If still missing, try pnputil with the real DriverStore INF then restart
-                            // Spooler. pnputil /install forces usbprint.sys to bind to the device;
-                            // the subsequent Spooler restart causes USB Monitor to create the port.
-                            if (discoveredUsbPort == null)
+                            earlyPort = await _printerService.FindBestUsbPortAsync(ct)
+                                ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
+                                ?? await _printerService.FindUsbPortFromRegistryAsync(ct);
+                            if (earlyPort != null)
                             {
-                                var storeInfsEarly = FindNewDriverStoreInfs(storeSnapBefore, request.Driver);
-                                var bestStoreInf = storeInfsEarly.FirstOrDefault();
-                                if (bestStoreInf != null)
+                                discoveredUsbPort = earlyPort;
+                                _log.Info($"USB port found after spooler restart: '{earlyPort}'");
+                            }
+                            else
+                            {
+                                // Port still not created — cycle the exact USB device (by VID/PID) to force
+                                // Windows to re-run driver matching now that the real INF is staged.
+                                // IMPORTANT: must restart Spooler AFTER cycling the device — USB Monitor
+                                // only creates port entries during Spooler startup, not mid-run.
+                                if (!string.IsNullOrEmpty(request.Driver.VendorId) &&
+                                    !string.IsNullOrEmpty(request.Driver.ProductId))
                                 {
-                                    _log.Info($"USB port missing — pnputil /install with DriverStore INF: '{bestStoreInf}'");
-                                    await InstallViaPnpUtilAsync(bestStoreInf, ct);
+                                    _log.Info($"USB port missing — targeted VID/PID re-enumeration ({request.Driver.VendorId}/{request.Driver.ProductId})");
+                                    progress?.Report("Forçando reconhecimento do dispositivo USB...");
+                                    await _printerService.ReEnumerateDeviceByVidPidAsync(
+                                        request.Driver.VendorId!, request.Driver.ProductId!, ct);
+                                    // Restart Spooler so USB Monitor re-initialises and registers the port.
                                     await _printerService.RestartSpoolerAsync(ct);
                                     await Task.Delay(6000, ct);
                                     discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
                                         ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
                                         ?? await _printerService.FindUsbPortFromRegistryAsync(ct);
                                     if (discoveredUsbPort != null)
-                                        _log.Info($"USB port found after DriverStore pnputil + Spooler restart: '{discoveredUsbPort}'");
+                                        _log.Info($"USB port found after VID/PID re-enumeration + Spooler restart: '{discoveredUsbPort}'");
                                 }
-                            }
 
-                            // Broad re-enumeration fallback
-                            if (discoveredUsbPort == null)
-                            {
-                                _log.Info("USB port still not registered — broad device re-enumeration...");
-                                await _printerService.ReEnumerateUsbPrinterDevicesAsync(ct);
-                                await _printerService.RestartSpoolerAsync(ct);
-                                await Task.Delay(5000, ct);
-                                discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
-                                    ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
-                                    ?? await _printerService.FindUsbPortFromRegistryAsync(ct);
-                                if (discoveredUsbPort != null)
-                                    _log.Info($"USB port found after broad re-enum + Spooler restart: '{discoveredUsbPort}'");
-                            }
-
-                            // Check if usbprint.sys is now bound even though no port is visible yet
-                            if (discoveredUsbPort == null && !string.IsNullOrEmpty(request.Driver.VendorId))
-                            {
-                                var forced = await _printerService.ForceUsbPortFromUsbPrintAsync(
-                                    request.Driver.VendorId!, request.Driver.ProductId ?? "", ct);
-                                if (forced != null)
+                                // If still missing, try pnputil with the real DriverStore INF then restart
+                                // Spooler. pnputil /install forces usbprint.sys to bind to the device;
+                                // the subsequent Spooler restart causes USB Monitor to create the port.
+                                if (discoveredUsbPort == null)
                                 {
-                                    discoveredUsbPort = forced;
-                                    _log.Info($"Early block nuclear: ForceUsbPortFromUsbPrint returned '{forced}'");
+                                    var storeInfsEarly = FindNewDriverStoreInfs(storeSnapBefore, request.Driver);
+                                    var bestStoreInf = storeInfsEarly.FirstOrDefault();
+                                    if (bestStoreInf != null)
+                                    {
+                                        _log.Info($"USB port missing — pnputil /install with DriverStore INF: '{bestStoreInf}'");
+                                        await InstallViaPnpUtilAsync(bestStoreInf, ct);
+                                        await _printerService.RestartSpoolerAsync(ct);
+                                        await Task.Delay(6000, ct);
+                                        discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
+                                            ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
+                                            ?? await _printerService.FindUsbPortFromRegistryAsync(ct);
+                                        if (discoveredUsbPort != null)
+                                            _log.Info($"USB port found after DriverStore pnputil + Spooler restart: '{discoveredUsbPort}'");
+                                    }
+                                }
+
+                                // Try Windows built-in usbprint.inf to force usbprint.sys to bind to
+                                // any USB Class 07 (printer class) device. Safe — it is a signed
+                                // Microsoft driver and will only install on devices that match.
+                                if (discoveredUsbPort == null)
+                                {
+                                    var winInf = Path.Combine(
+                                        Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                                        "inf", "usbprint.inf");
+                                    if (File.Exists(winInf))
+                                    {
+                                        _log.Info("USB port missing — trying built-in usbprint.inf to bind usbprint.sys");
+                                        await InstallViaPnpUtilAsync(winInf, ct);
+                                        await _printerService.RestartSpoolerAsync(ct);
+                                        await Task.Delay(6000, ct);
+                                        discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
+                                            ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
+                                            ?? await _printerService.FindUsbPortFromRegistryAsync(ct);
+                                        if (discoveredUsbPort != null)
+                                            _log.Info($"USB port found after usbprint.inf + Spooler restart: '{discoveredUsbPort}'");
+                                    }
+                                }
+
+                                // Broad re-enumeration fallback
+                                if (discoveredUsbPort == null)
+                                {
+                                    _log.Info("USB port still not registered — broad device re-enumeration...");
+                                    await _printerService.ReEnumerateUsbPrinterDevicesAsync(ct);
+                                    await _printerService.RestartSpoolerAsync(ct);
+                                    await Task.Delay(5000, ct);
+                                    discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
+                                        ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
+                                        ?? await _printerService.FindUsbPortFromRegistryAsync(ct);
+                                    if (discoveredUsbPort != null)
+                                        _log.Info($"USB port found after broad re-enum + Spooler restart: '{discoveredUsbPort}'");
+                                }
+
+                                // Check if usbprint.sys is now bound even though no port is visible yet
+                                if (discoveredUsbPort == null && !string.IsNullOrEmpty(request.Driver.VendorId))
+                                {
+                                    var forced = await _printerService.ForceUsbPortFromUsbPrintAsync(
+                                        request.Driver.VendorId!, request.Driver.ProductId ?? "", ct);
+                                    if (forced != null)
+                                    {
+                                        discoveredUsbPort = forced;
+                                        _log.Info($"Early block nuclear: ForceUsbPortFromUsbPrint returned '{forced}'");
+                                    }
                                 }
                             }
                         }
@@ -477,10 +511,13 @@ public class DriverInstaller : IDriverInstaller
                         {
                             var (_, pnpPort) = await _printerService.FindAutoInstalledPrinterInfoAsync(
                                 request.Driver.Manufacturer, request.Driver.Model, ct);
+                            // Accept any port the auto-installed printer uses — including vendor-specific
+                            // names (GA001, GERTECUSB001, etc.) that don't start with USB/DOT4/WSD.
                             if (!string.IsNullOrEmpty(pnpPort) &&
-                                (pnpPort.StartsWith("USB",  StringComparison.OrdinalIgnoreCase) ||
-                                 pnpPort.StartsWith("DOT4", StringComparison.OrdinalIgnoreCase) ||
-                                 pnpPort.StartsWith("WSD",  StringComparison.OrdinalIgnoreCase)))
+                                !pnpPort.StartsWith("IP_",  StringComparison.OrdinalIgnoreCase) &&
+                                !pnpPort.StartsWith("LPR_", StringComparison.OrdinalIgnoreCase) &&
+                                !pnpPort.Equals("FILE:", StringComparison.OrdinalIgnoreCase) &&
+                                !pnpPort.Equals("PORTPROMPT:", StringComparison.OrdinalIgnoreCase))
                                 discoveredUsbPort = pnpPort;
                         }
                         if (discoveredUsbPort == null)
@@ -537,6 +574,26 @@ public class DriverInstaller : IDriverInstaller
                             }
                         }
 
+                        // 2b) Try built-in usbprint.inf to force usbprint.sys binding.
+                        if (discoveredUsbPort == null)
+                        {
+                            var winInf = Path.Combine(
+                                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                                "inf", "usbprint.inf");
+                            if (File.Exists(winInf))
+                            {
+                                _log.Info("Recovery: pnputil with built-in usbprint.inf");
+                                await InstallViaPnpUtilAsync(winInf, ct);
+                                await _printerService.RestartSpoolerAsync(ct);
+                                await Task.Delay(6000, ct);
+                                discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
+                                    ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
+                                    ?? await _printerService.FindUsbPortFromRegistryAsync(ct);
+                                if (discoveredUsbPort != null)
+                                    _log.Info($"Recovery usbprint.inf: port found '{discoveredUsbPort}'");
+                            }
+                        }
+
                         // 3) Broad USB re-enumeration (disable+enable all USB printer/unknown devices).
                         if (discoveredUsbPort == null)
                         {
@@ -556,9 +613,10 @@ public class DriverInstaller : IDriverInstaller
                                 var (_, pnpPort2) = await _printerService.FindAutoInstalledPrinterInfoAsync(
                                     request.Driver.Manufacturer, request.Driver.Model, ct);
                                 if (!string.IsNullOrEmpty(pnpPort2) &&
-                                    (pnpPort2.StartsWith("USB",  StringComparison.OrdinalIgnoreCase) ||
-                                     pnpPort2.StartsWith("DOT4", StringComparison.OrdinalIgnoreCase) ||
-                                     pnpPort2.StartsWith("WSD",  StringComparison.OrdinalIgnoreCase)))
+                                    !pnpPort2.StartsWith("IP_",  StringComparison.OrdinalIgnoreCase) &&
+                                    !pnpPort2.StartsWith("LPR_", StringComparison.OrdinalIgnoreCase) &&
+                                    !pnpPort2.Equals("FILE:", StringComparison.OrdinalIgnoreCase) &&
+                                    !pnpPort2.Equals("PORTPROMPT:", StringComparison.OrdinalIgnoreCase))
                                     discoveredUsbPort = pnpPort2;
                             }
                             discoveredUsbPort ??= await _printerService.FindAnyUsbPrinterPortAsync(ct);
@@ -575,15 +633,37 @@ public class DriverInstaller : IDriverInstaller
                     }
                     if (discoveredUsbPort == null)
                     {
-                        _log.Warning("USB port not auto-detected. Probing fallback port names...");
+                        _log.Warning("USB port not auto-detected. Probing all available Spooler ports...");
                         var availablePorts = await _printerService.GetAvailablePortsAsync(ct);
-                        foreach (var fallback in new[] { "USB001", "USB002", "USB003", "DOT4USB001", "DOT4USB002" })
+                        _log.Info($"All Spooler ports: [{string.Join(", ", availablePorts)}]");
+
+                        // Priority 1: well-known USB/DOT4 names that should always work
+                        foreach (var wellKnown in new[] { "USB001", "USB002", "USB003", "DOT4USB001", "DOT4USB002" })
                         {
-                            if (availablePorts.Contains(fallback, StringComparer.OrdinalIgnoreCase))
+                            if (availablePorts.Contains(wellKnown, StringComparer.OrdinalIgnoreCase))
                             {
-                                discoveredUsbPort = fallback;
-                                _log.Info($"USB port fallback selected from available ports: '{fallback}'");
+                                discoveredUsbPort = wellKnown;
+                                _log.Info($"USB port fallback (well-known): '{wellKnown}'");
                                 break;
+                            }
+                        }
+
+                        // Priority 2: any port that appeared since the pre-install snapshot
+                        // (catches vendor-specific port names like GA001, GERTECUSB001, etc.)
+                        if (discoveredUsbPort == null && portsBeforeInstall.Count > 0)
+                        {
+                            var newPort = availablePorts.FirstOrDefault(p =>
+                                !portsBeforeInstall.Contains(p, StringComparer.OrdinalIgnoreCase) &&
+                                !p.StartsWith("IP_",      StringComparison.OrdinalIgnoreCase) &&
+                                !p.StartsWith("LPR_",     StringComparison.OrdinalIgnoreCase) &&
+                                !p.StartsWith("COM",      StringComparison.OrdinalIgnoreCase) &&
+                                !p.StartsWith("LPT",      StringComparison.OrdinalIgnoreCase) &&
+                                !p.Equals("FILE:",        StringComparison.OrdinalIgnoreCase) &&
+                                !p.Equals("PORTPROMPT:", StringComparison.OrdinalIgnoreCase));
+                            if (newPort != null)
+                            {
+                                discoveredUsbPort = newPort;
+                                _log.Info($"USB port fallback (new since snapshot): '{newPort}'");
                             }
                         }
                     }
