@@ -515,6 +515,28 @@ public class DriverInstaller : IDriverInstaller
 
                 case ConnectionType.USB:
                 default:
+                    // ── Adopt the printer the installer already created ────────────────────
+                    // The manufacturer's installer usually creates a working printer queue by
+                    // itself — with the correct driver AND port already wired to the device.
+                    // That pairing is authoritative: instead of hunting for a port and probing
+                    // driver names, we simply reuse what the installer put in the spooler. This
+                    // is the most reliable path and sidesteps the whole "port not found" problem.
+                    if (printersBeforeInstall.Count > 0)
+                    {
+                        var (newPrinterName, newPrinterDriver, newPrinterPort) =
+                            await _printerService.FindNewlyCreatedPrinterAsync(printersBeforeInstall, ct);
+                        if (!string.IsNullOrEmpty(newPrinterPort))
+                        {
+                            await _printerService.EnsurePortRegisteredAsync(newPrinterPort, ct);
+                            discoveredUsbPort = newPrinterPort;
+                            if (!string.IsNullOrEmpty(newPrinterDriver))
+                                detectedDriverName = newPrinterDriver;
+                            steps.Add($"Impressora criada pelo instalador adotada: {newPrinterName} (porta {newPrinterPort})");
+                            _log.Info($"Adopting installer-created printer '{newPrinterName}': " +
+                                      $"driver='{newPrinterDriver}' port='{newPrinterPort}'");
+                        }
+                    }
+
                     // ── Resolve the ACTUAL connected device ────────────────────────────────
                     // The catalog VID/PID comes from a reference TEMPLATE and may not match the
                     // real hardware (the earlier failures showed "VID_20D1&PID_7008 NÃO detectado"
@@ -538,8 +560,9 @@ public class DriverInstaller : IDriverInstaller
                             request.Driver.VendorId = resolvedDevice.Vid;
                             request.Driver.ProductId = resolvedDevice.Pid;
                         }
-                        // If the device already exposes a COM port (CDC virtual-serial), use it now.
-                        if (!string.IsNullOrEmpty(resolvedDevice.Port))
+                        // If the device already exposes a COM port (CDC virtual-serial), use it —
+                        // unless we already adopted the installer-created printer's port above.
+                        if (discoveredUsbPort == null && !string.IsNullOrEmpty(resolvedDevice.Port))
                         {
                             await _printerService.EnsurePortRegisteredAsync(resolvedDevice.Port, ct);
                             discoveredUsbPort = resolvedDevice.Port;

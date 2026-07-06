@@ -1654,6 +1654,55 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    public async Task<(string? Name, string? DriverName, string? PortName)> FindNewlyCreatedPrinterAsync(
+        IReadOnlyList<string> printersBefore, CancellationToken ct = default)
+    {
+        // Returns the FULL identity (name + driver + port) of the printer the manufacturer's
+        // installer created automatically — the authoritative, known-good driver/port pairing.
+        // We adopt these instead of guessing a port and probing driver names: whatever the
+        // installer put in the spooler already works with the physical device.
+        if (printersBefore.Count == 0)
+            return (null, null, null);
+
+        return await Task.Run<(string?, string?, string?)>(() =>
+        {
+            try
+            {
+                using var searcher = new ManagementObjectSearcher(
+                    "SELECT Name, DriverName, PortName FROM Win32_Printer");
+                foreach (ManagementObject obj in searcher.Get())
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var name = obj["Name"]?.ToString() ?? "";
+                    var driver = obj["DriverName"]?.ToString();
+                    var portName = obj["PortName"]?.ToString();
+                    if (string.IsNullOrEmpty(portName)) continue;
+                    if (printersBefore.Contains(name, StringComparer.OrdinalIgnoreCase)) continue;
+
+                    if (name.Contains("Microsoft", StringComparison.OrdinalIgnoreCase) ||
+                        name.Contains("OneNote",   StringComparison.OrdinalIgnoreCase) ||
+                        name.Contains("Fax",       StringComparison.OrdinalIgnoreCase) ||
+                        name.Contains("XPS",       StringComparison.OrdinalIgnoreCase) ||
+                        name.Contains("PDF",       StringComparison.OrdinalIgnoreCase)) continue;
+
+                    if (portName.StartsWith("IP_",     StringComparison.OrdinalIgnoreCase) ||
+                        portName.StartsWith("LPR_",    StringComparison.OrdinalIgnoreCase) ||
+                        portName.Equals("FILE:",       StringComparison.OrdinalIgnoreCase) ||
+                        portName.Equals("PORTPROMPT:", StringComparison.OrdinalIgnoreCase)) continue;
+
+                    _log.Info($"FindNewlyCreatedPrinter: '{name}' driver='{driver}' port='{portName}'");
+                    return (name, driver, portName);
+                }
+                return (null, null, null);
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"FindNewlyCreatedPrinterAsync: {ex.Message}");
+                return (null, null, null);
+            }
+        }, ct);
+    }
+
     public async Task RestartSpoolerAsync(CancellationToken ct = default)
     {
         _log.Info("Restarting Print Spooler...");
