@@ -62,7 +62,6 @@ public class DriverInstaller : IDriverInstaller
             string? discoveredUsbPort = null; // populated during Step 1 polling so Step 2 doesn't race
             IReadOnlyList<string> portsBeforeInstall = [];    // snapshot for diff-based USB port detection
             IReadOnlyList<string> printersBeforeInstall = []; // snapshot for new-printer port detection
-            IReadOnlyList<string> monitorsBeforeInstall = []; // snapshot to detect a vendor-specific print monitor
 
             // ── Resolve the REAL connected device BEFORE the driver install step ───────────
             // The catalog VID/PID can be a wrong placeholder (confirmed: GertecG250.inf's
@@ -73,14 +72,6 @@ public class DriverInstaller : IDriverInstaller
             // Resolving here, first, means the ENTIRE install (driver + port) uses the real ids.
             if (request.ConnectionType == ConnectionType.USB)
             {
-                // Snapshot registered Print Monitors before anything installs. If a NEW one
-                // appears after the vendor's driver runs, it means this printer uses its OWN
-                // port-creation mechanism instead of the generic USB Print Monitor — the real
-                // reason no USB001/standard port ever appears for some models (confirmed: the
-                // Gertec device stays "class=USB" with usbprint bound but no port, no matter
-                // how many times it's cycled or reinstalled).
-                monitorsBeforeInstall = await _printerService.GetPrintMonitorsAsync(ct);
-
                 var earlyHints = new List<string> { request.Driver.Manufacturer, request.Driver.Model };
                 earlyHints.AddRange(request.Driver.AllDriverNames());
                 var earlyResolved = await _printerService.ResolvePrinterUsbDeviceAsync(
@@ -502,20 +493,28 @@ public class DriverInstaller : IDriverInstaller
                     // 3b) Vendor-specific Print Monitor check (instant, single registry read).
                     // Some manufacturers (POS/thermal printers especially) install their OWN
                     // monitor instead of relying on the generic USB Print Monitor — it creates
-                    // its own port (not USB001) through its own mechanism. If a new monitor
-                    // appeared since before the driver installed, check its own port list.
+                    // its own port through its own mechanism. Check EVERY non-Windows-standard
+                    // monitor currently registered — not just ones that appeared in THIS run —
+                    // because a previous install attempt (the user has tried several times) may
+                    // already have registered it before this run's "before" snapshot was taken.
                     if (discoveredUsbPort == null)
                     {
-                        var monitorsNow = await _printerService.GetPrintMonitorsAsync(ct);
-                        var newMonitors = monitorsNow
-                            .Where(m => !monitorsBeforeInstall.Contains(m, StringComparer.OrdinalIgnoreCase) &&
-                                        !m.Equals("USB Monitor", StringComparison.OrdinalIgnoreCase))
-                            .ToList();
-                        if (newMonitors.Count > 0)
+                        string[] knownWindowsMonitors =
                         {
-                            _log.Info($"Vendor print monitor detected: [{string.Join(", ", newMonitors)}]");
-                            steps.Add($"Monitor de porta do fabricante detectado: {string.Join(", ", newMonitors)}");
-                            foreach (var monitor in newMonitors)
+                            "Local Port", "Standard TCP/IP Port", "USB Monitor", "WSD Port",
+                            "PDF Port Monitor", "Microsoft Shared Fax Monitor", "XPS Port",
+                            "Windows Fax Monitor", "Hewlett-Packard Peer-to-Peer Port Monitor",
+                            "Print to OneNote"
+                        };
+                        var monitorsNow = await _printerService.GetPrintMonitorsAsync(ct);
+                        var vendorMonitors = monitorsNow
+                            .Where(m => !knownWindowsMonitors.Contains(m, StringComparer.OrdinalIgnoreCase))
+                            .ToList();
+                        if (vendorMonitors.Count > 0)
+                        {
+                            _log.Info($"Non-standard print monitors present: [{string.Join(", ", vendorMonitors)}]");
+                            steps.Add($"Monitor(es) de porta não-padrão: {string.Join(", ", vendorMonitors)}");
+                            foreach (var monitor in vendorMonitors)
                             {
                                 var monitorPorts = await _printerService.GetPortsForMonitorAsync(monitor, ct);
                                 var newPort = monitorPorts.FirstOrDefault();
@@ -577,6 +576,54 @@ public class DriverInstaller : IDriverInstaller
                                 ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
                                 ?? await _printerService.FindUsbPortFromRegistryAsync(ct)
                                 ?? await _printerService.FindPortFromNewPrinterAsync(printersBeforeInstall, ct);
+                        }
+                    }
+
+                    // 7) Last resort: some vendor installers (confirmed pattern for POS/thermal
+                    //    printers) only actually bind the device to a port through a step in
+                    //    their OWN installer wizard — silent install stages the driver but skips
+                    //    that step. If we still have no port and haven't already run the wizard,
+                    //    re-launch the SAME installer visibly once and let the user complete it;
+                    //    then re-check for a port/printer it may have created.
+                    if (discoveredUsbPort == null && !request.SkipDriverInstall &&
+                        request.Driver.HasInstaller &&
+                        !string.Equals(request.Driver.InstallerType, "ui-only", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(request.Driver.InstallerType, "manual", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var wizardExePath = _repository.ResolveInstallerPath(request.Driver);
+                        if (wizardExePath != null && File.Exists(wizardExePath))
+                        {
+                            progress?.Report($"⚠ A instalação silenciosa não associou a impressora — abrindo o instalador {request.Driver.DisplayName} para conclusão manual...");
+                            _log.Info($"Silent install didn't produce a port — re-running installer visibly: '{wizardExePath}'");
+                            var printersBeforeWizard = await _printerService.GetInstalledPrintersAsync(ct);
+                            try
+                            {
+                                using var wizardProc = Process.Start(new ProcessStartInfo { FileName = wizardExePath, UseShellExecute = true })!;
+                                await wizardProc.WaitForExitAsync(ct);
+                                _log.Info($"Visible installer exit: {wizardProc.ExitCode}");
+                            }
+                            catch (Exception ex)
+                            {
+                                _log.Warning($"Visible installer failed to launch: {ex.Message}");
+                            }
+
+                            await Task.Delay(2000, ct);
+                            var (wizardPrinterName, wizardDriver, wizardPort) =
+                                await _printerService.FindNewlyCreatedPrinterAsync(printersBeforeWizard, ct);
+                            if (!string.IsNullOrEmpty(wizardPort))
+                            {
+                                discoveredUsbPort = wizardPort;
+                                if (!string.IsNullOrEmpty(wizardDriver))
+                                    detectedDriverName = wizardDriver;
+                                steps.Add($"Impressora criada pelo assistente visual: {wizardPrinterName} (porta {wizardPort})");
+                                _log.Info($"Wizard created printer '{wizardPrinterName}' driver='{wizardDriver}' port='{wizardPort}'");
+                            }
+                            else
+                            {
+                                discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
+                                    ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
+                                    ?? await _printerService.FindUsbPortFromRegistryAsync(ct);
+                            }
                         }
                     }
 
@@ -848,12 +895,7 @@ public class DriverInstaller : IDriverInstaller
                                 request.Driver.VendorId ?? "", request.Driver.ProductId ?? "", ct);
                             var deviceList = await _printerService.ListConnectedUsbDevicesAsync(ct);
                             var monitorsNowFinal = await _printerService.GetPrintMonitorsAsync(ct);
-                            var newMonitorsFinal = monitorsNowFinal
-                                .Where(m => !monitorsBeforeInstall.Contains(m, StringComparer.OrdinalIgnoreCase))
-                                .ToList();
-                            var monitorInfo = newMonitorsFinal.Count > 0
-                                ? $"Monitor de porta novo detectado: {string.Join(", ", newMonitorsFinal)} (sem portas próprias encontradas)."
-                                : "Nenhum monitor de porta novo foi registrado pelo driver do fabricante.";
+                            var monitorInfo = $"Monitores de porta registrados no Windows: {string.Join(", ", monitorsNowFinal)}.";
                             _log.Error($"Device diagnostics: {diag}");
                             _log.Error($"Connected USB devices:\n{deviceList}");
                             _log.Error($"Print monitors: {monitorInfo}");
