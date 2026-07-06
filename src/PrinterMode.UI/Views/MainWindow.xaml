@@ -310,10 +310,10 @@
                 </Border>
               </Grid>
 
-              <!-- Porta USB (quando USB e portas detectadas) -->
+              <!-- Porta da impressora (modo USB): Automático, ou escolha manual USB/COM -->
               <StackPanel Margin="0,12,0,0"
                           Visibility="{Binding ShowUsbPortSelector, Converter={StaticResource BoolVis}}">
-                <TextBlock Text="Porta USB" FontSize="11"
+                <TextBlock Text="Porta (deixe Automático; escolha só se souber a porta)" FontSize="11"
                            Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
                 <ComboBox ItemsSource="{Binding UsbPorts}" SelectedItem="{Binding SelectedUsbPort}">
                   <ComboBox.ItemTemplate>

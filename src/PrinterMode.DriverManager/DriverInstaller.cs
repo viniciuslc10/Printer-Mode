@@ -515,13 +515,26 @@ public class DriverInstaller : IDriverInstaller
 
                 case ConnectionType.USB:
                 default:
+                    // ── User-selected port wins ────────────────────────────────────────────
+                    // If the user explicitly chose (or typed) a port on the screen, honor it
+                    // directly and skip all VID/PID hunting — this is the "create the printer on
+                    // the selected port" path they asked for: the user is telling us exactly
+                    // where the printer is. We register it and fall through to printer creation.
+                    if (!string.IsNullOrWhiteSpace(request.PortName))
+                    {
+                        await _printerService.EnsurePortRegisteredAsync(request.PortName!, ct);
+                        discoveredUsbPort = request.PortName;
+                        steps.Add($"Porta selecionada manualmente: {request.PortName}");
+                        _log.Info($"USB case: honoring user-selected port '{request.PortName}' (skipping auto-detection).");
+                    }
+
                     // ── Adopt the printer the installer already created ────────────────────
                     // The manufacturer's installer usually creates a working printer queue by
                     // itself — with the correct driver AND port already wired to the device.
                     // That pairing is authoritative: instead of hunting for a port and probing
                     // driver names, we simply reuse what the installer put in the spooler. This
                     // is the most reliable path and sidesteps the whole "port not found" problem.
-                    if (printersBeforeInstall.Count > 0)
+                    if (discoveredUsbPort == null && printersBeforeInstall.Count > 0)
                     {
                         var (newPrinterName, newPrinterDriver, newPrinterPort) =
                             await _printerService.FindNewlyCreatedPrinterAsync(printersBeforeInstall, ct);

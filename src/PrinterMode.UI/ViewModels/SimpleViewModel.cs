@@ -116,7 +116,9 @@ public partial class SimpleViewModel : ObservableObject
     public bool ShowNetworkFields => ConnectionNetwork;
     public bool ShowSerialFields => ConnectionSerial;
     public bool ShowSharedFields => ConnectionShared;
-    public bool ShowUsbPortSelector => ConnectionUsb && HasUsbPorts;
+    // Always show the USB port selector so the user can force a specific port (COM/USB)
+    // when auto-detection can't identify the device — the list always has "Automático".
+    public bool ShowUsbPortSelector => ConnectionUsb;
 
     public SimpleViewModel(IDriverRepository repository, IDriverInstaller installer, IWindowsPrinterService printerService, ILogService log)
     {
@@ -146,9 +148,16 @@ public partial class SimpleViewModel : ObservableObject
             ComPorts.Add(p);
         SelectedComPort = ComPorts.FirstOrDefault();
 
+        // USB port list: first an "automatic" option (empty PortName → the app auto-detects,
+        // the default behavior), then the detected USB printer ports, then the COM ports.
+        // This lets the user manually pick the port where the printer is — including a COM
+        // port for CDC/virtual-serial printers — when auto-detection can't identify it.
+        UsbPorts.Add(new PortEntry("", "Automático (detectar)"));
         var usbPorts = await _printerService.GetUsbPrinterPortsWithNamesAsync();
         foreach (var p in usbPorts)
             UsbPorts.Add(p);
+        foreach (var p in comPorts)
+            UsbPorts.Add(new PortEntry(p.PortName, $"{p.DisplayName} (serial)"));
         HasUsbPorts = UsbPorts.Count > 0;
         SelectedUsbPort = UsbPorts.FirstOrDefault();
     }
@@ -240,8 +249,10 @@ public partial class SimpleViewModel : ObservableObject
                 SharedPrinterName = ConnectionShared ? SharedPrinterName : null,
                 SharedDriverName = ConnectionShared ? _discoveredDriverName : null,
                 SharedDisplayName = ConnectionShared ? _discoveredDisplayName : null,
+                // For USB, a non-empty selected port means "use exactly this port"; the
+                // "Automático" entry has an empty PortName → null → app auto-detects.
                 PortName = ConnectionSerial ? SelectedComPort?.PortName
-                         : ConnectionUsb && SelectedUsbPort != null ? SelectedUsbPort.PortName
+                         : ConnectionUsb && !string.IsNullOrEmpty(SelectedUsbPort?.PortName) ? SelectedUsbPort!.PortName
                          : null,
                 Paper = paper,
                 SetAsDefault = SetAsDefault,
