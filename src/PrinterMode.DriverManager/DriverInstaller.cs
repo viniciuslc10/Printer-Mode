@@ -63,6 +63,29 @@ public class DriverInstaller : IDriverInstaller
             IReadOnlyList<string> portsBeforeInstall = [];    // snapshot for diff-based USB port detection
             IReadOnlyList<string> printersBeforeInstall = []; // snapshot for new-printer port detection
 
+            // ── Resolve the REAL connected device BEFORE the driver install step ───────────
+            // The catalog VID/PID can be a wrong placeholder (confirmed: GertecG250.inf's
+            // "20D1/7008" doesn't match any connected device — the real G250 enumerates as
+            // VID_1753&PID_0800). If this resolution only happened later (at port-creation
+            // time), every VID/PID-dependent step during driver install — DriverStore INF
+            // search by content, device re-enumeration — would still target the wrong id.
+            // Resolving here, first, means the ENTIRE install (driver + port) uses the real ids.
+            if (request.ConnectionType == ConnectionType.USB)
+            {
+                var earlyHints = new List<string> { request.Driver.Manufacturer, request.Driver.Model };
+                earlyHints.AddRange(request.Driver.AllDriverNames());
+                var earlyResolved = await _printerService.ResolvePrinterUsbDeviceAsync(
+                    earlyHints, request.Driver.VendorId, request.Driver.ProductId, ct);
+                if (earlyResolved != null && !string.IsNullOrEmpty(earlyResolved.Vid))
+                {
+                    if (!earlyResolved.Vid.Equals(request.Driver.VendorId, StringComparison.OrdinalIgnoreCase))
+                        _log.Info($"Catalog VID/PID corrected: {request.Driver.VendorId}/{request.Driver.ProductId} " +
+                                  $"-> {earlyResolved.Vid}/{earlyResolved.Pid} (device: '{earlyResolved.FriendlyName}')");
+                    request.Driver.VendorId = earlyResolved.Vid;
+                    request.Driver.ProductId = earlyResolved.Pid;
+                }
+            }
+
             if (request.SkipDriverInstall)
             {
                 driverInstalled = true;
@@ -1119,6 +1142,23 @@ public class DriverInstaller : IDriverInstaller
                         bool portMissing = !currentPorts.Contains(portName, StringComparer.OrdinalIgnoreCase);
                         if (portMissing || discoveredUsbPort == null)
                         {
+                            // Re-resolve the device fresh right before giving up: earlier resolution
+                            // (at port-creation time) may have missed the device if it was mid
+                            // re-enumeration, or adoption may not have applied for any other reason.
+                            // This guarantees the error always reflects the REAL connected device,
+                            // never the catalog's (possibly wrong) placeholder VID/PID.
+                            var lastHints = new List<string> { request.Driver.Manufacturer, request.Driver.Model };
+                            lastHints.AddRange(request.Driver.AllDriverNames());
+                            var lastResolve = await _printerService.ResolvePrinterUsbDeviceAsync(
+                                lastHints, request.Driver.VendorId, request.Driver.ProductId, ct);
+                            if (lastResolve != null && !string.IsNullOrEmpty(lastResolve.Vid))
+                            {
+                                request.Driver.VendorId = lastResolve.Vid;
+                                request.Driver.ProductId = lastResolve.Pid;
+                                _log.Info($"Final re-resolve before failing: real device is " +
+                                          $"'{lastResolve.FriendlyName}' vid={lastResolve.Vid} pid={lastResolve.Pid}");
+                            }
+
                             _log.Error($"Root cause: port '{portName}' absent from Spooler. Available: [{string.Join(", ", currentPorts.Take(10))}]");
                             // Gather live device state + a full dump of connected USB devices so
                             // the failure is fully diagnosable without physical access to the PC.
