@@ -507,10 +507,21 @@ public class DriverInstaller : IDriverInstaller
                         return InstallResult.Fail(
                             "Porta serial não selecionada.",
                             "Selecione a porta COM da impressora antes de instalar.", steps);
-                    portName = request.PortName!;
-                    await ConfigureSerialPortAsync(portName, request.SerialConfig, ct);
+
+                    // Normalize: "COM3" (config/mode form) vs "COM3:" (spooler port form).
+                    var rawCom = request.PortName!.Trim().TrimEnd(':');
+                    var spoolerCom = rawCom + ":";
+
+                    // 1) Apply baud/parity/data settings to the COM port (uses the no-colon form).
+                    await ConfigureSerialPortAsync(rawCom, request.SerialConfig, ct);
+                    // 2) Register the COM port with the Print Spooler so Add-Printer accepts it.
+                    //    (COM1:–COM4: usually exist already; higher COM numbers need registering.)
+                    await _printerService.EnsurePortRegisteredAsync(spoolerCom, ct);
+
+                    portName = spoolerCom;
                     portCreated = true;
-                    steps.Add($"Porta serial configurada: {portName}");
+                    steps.Add($"Porta serial configurada e registrada: {portName}");
+                    _log.Info($"Serial: using registered spooler port '{portName}'");
                     break;
 
                 case ConnectionType.USB:
