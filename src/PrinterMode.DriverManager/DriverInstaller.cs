@@ -490,53 +490,37 @@ public class DriverInstaller : IDriverInstaller
                         }
                     }
 
-                    // 3b) Vendor-specific Print Monitor check (instant, single registry read).
-                    // Some manufacturers (POS/thermal printers especially) install their OWN
-                    // monitor instead of relying on the generic USB Print Monitor — it creates
-                    // its own port through its own mechanism. Check EVERY non-Windows-standard
-                    // monitor currently registered — not just ones that appeared in THIS run —
-                    // because a previous install attempt (the user has tried several times) may
-                    // already have registered it before this run's "before" snapshot was taken.
+                    // 3b) Vendor-specific Print Monitor check (instant). Some manufacturers
+                    // install their OWN monitor instead of the generic USB Print Monitor.
+                    // A name-based blacklist of "known Windows monitors" is fragile (confirmed:
+                    // it missed "Appmon", the App-V print-redirection monitor, causing a
+                    // completely unrelated leftover port to be adopted as if it were the
+                    // printer's — every Windows install has a different mix of pre-installed
+                    // monitors, so any fixed list will always miss one). Replaced with an
+                    // OBJECTIVE check instead of a name list: a candidate port is only accepted
+                    // if the Spooler RIGHT NOW actually reports it as a registered port. A
+                    // leftover/unrelated registry entry under some other component's Ports key
+                    // will never pass this — it isn't a real port, so GetAvailablePortsAsync
+                    // won't contain it, regardless of what the monitor happens to be named.
                     if (discoveredUsbPort == null)
                     {
-                        // Confirmed real bug: "Appmon" (Microsoft Application Virtualization /
-                        // App-V print redirection monitor) is a STANDARD Windows monitor that
-                        // was missing from this list. It was being treated as a "vendor" monitor,
-                        // and any leftover/unrelated entry under its Ports registry key was
-                        // adopted as this printer's port — a phantom value with nothing to do
-                        // with the Gertec device, which skipped the more useful checks below
-                        // (they only run if discoveredUsbPort is still null) and only got
-                        // discarded much later, during spooler validation, wasting the attempt.
-                        string[] knownWindowsMonitors =
-                        {
-                            "Local Port", "Standard TCP/IP Port", "USB Monitor", "WSD Port",
-                            "PDF Port Monitor", "Microsoft Shared Fax Monitor", "XPS Port",
-                            "Windows Fax Monitor", "Hewlett-Packard Peer-to-Peer Port Monitor",
-                            "Print to OneNote", "Appmon"
-                        };
                         var monitorsNow = await _printerService.GetPrintMonitorsAsync(ct);
-                        var vendorMonitors = monitorsNow
-                            .Where(m => !knownWindowsMonitors.Contains(m, StringComparer.OrdinalIgnoreCase))
-                            .ToList();
-                        if (vendorMonitors.Count > 0)
+                        var realPortsNow = await _printerService.GetAvailablePortsAsync(ct);
+                        foreach (var monitor in monitorsNow)
                         {
-                            _log.Info($"Non-standard print monitors present: [{string.Join(", ", vendorMonitors)}]");
-                            steps.Add($"Monitor(es) de porta não-padrão: {string.Join(", ", vendorMonitors)}");
-                            foreach (var monitor in vendorMonitors)
+                            if (monitor.Equals("USB Monitor", StringComparison.OrdinalIgnoreCase))
+                                continue; // handled by the dedicated USB-port checks elsewhere
+
+                            var monitorPorts = await _printerService.GetPortsForMonitorAsync(monitor, ct);
+                            var realPort = monitorPorts.FirstOrDefault(p =>
+                                !portsBeforeInstall.Contains(p, StringComparer.OrdinalIgnoreCase) &&
+                                realPortsNow.Contains(p, StringComparer.OrdinalIgnoreCase));
+                            if (realPort != null)
                             {
-                                var monitorPorts = await _printerService.GetPortsForMonitorAsync(monitor, ct);
-                                // Safety net beyond the name exclusion list above: a port that
-                                // already existed BEFORE this install started cannot be one the
-                                // Gertec driver just created — adopting it would hijack an
-                                // unrelated, pre-existing port. Only accept a genuinely new one.
-                                var newPort = monitorPorts.FirstOrDefault(p =>
-                                    !portsBeforeInstall.Contains(p, StringComparer.OrdinalIgnoreCase));
-                                if (newPort != null)
-                                {
-                                    discoveredUsbPort = newPort;
-                                    _log.Info($"Port from vendor monitor '{monitor}': '{newPort}'");
-                                    break;
-                                }
+                                discoveredUsbPort = realPort;
+                                steps.Add($"Porta de monitor '{monitor}': {realPort}");
+                                _log.Info($"Port from monitor '{monitor}' (verified in Spooler): '{realPort}'");
+                                break;
                             }
                         }
                     }
