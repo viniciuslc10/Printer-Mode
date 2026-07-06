@@ -237,17 +237,20 @@ public class DriverInstaller : IDriverInstaller
                             {
                                 // Port still not created — cycle the exact USB device (by VID/PID) to force
                                 // Windows to re-run driver matching now that the real INF is staged.
-                                // IMPORTANT: must restart Spooler AFTER cycling the device — USB Monitor
-                                // only creates port entries during Spooler startup, not mid-run.
+                                // IMPORTANT: restart Spooler BEFORE cycling the device. USB Monitor
+                                // watches for device ARRIVAL while the spooler is running; if we
+                                // cycle the device first and restart the spooler after, the arrival
+                                // event fires against the OLD spooler process (which is about to die)
+                                // and the freshly-started monitor never sees it. Fresh spooler first,
+                                // then the disable/enable becomes the arrival event it reacts to.
                                 if (!string.IsNullOrEmpty(request.Driver.VendorId) &&
                                     !string.IsNullOrEmpty(request.Driver.ProductId))
                                 {
                                     _log.Info($"USB port missing — targeted VID/PID re-enumeration ({request.Driver.VendorId}/{request.Driver.ProductId})");
                                     progress?.Report("Forçando reconhecimento do dispositivo USB...");
+                                    await _printerService.RestartSpoolerAsync(ct);
                                     await _printerService.ReEnumerateDeviceByVidPidAsync(
                                         request.Driver.VendorId!, request.Driver.ProductId!, ct);
-                                    // Restart Spooler so USB Monitor re-initialises and registers the port.
-                                    await _printerService.RestartSpoolerAsync(ct);
                                     await Task.Delay(6000, ct);
                                     discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
                                         ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
@@ -617,18 +620,18 @@ public class DriverInstaller : IDriverInstaller
                         }
 
                         // Deterministic "ensure USB001": most USB printers install on the standard
-                        // USB001 port, created by the USB Print Monitor when usbprint.sys is bound
-                        // to the device. On a fresh PC the binding often hasn't happened yet, so we
-                        // re-enumerate the RESOLVED device (real VID/PID) and restart the Spooler —
-                        // that is what makes USB001 appear — then poll for it.
+                        // USB001 port, created by the USB Print Monitor when the device ARRIVES
+                        // while the Spooler is running. Restart the Spooler FIRST (fresh monitor
+                        // instance), THEN cycle the resolved device (real VID/PID) — the disable/
+                        // enable becomes the arrival event the fresh monitor reacts to — then poll.
                         if (discoveredUsbPort == null &&
                             !string.IsNullOrEmpty(request.Driver.VendorId) &&
                             !string.IsNullOrEmpty(request.Driver.ProductId))
                         {
                             progress?.Report("Preparando porta USB (USB001)...");
+                            await _printerService.RestartSpoolerAsync(ct);
                             await _printerService.ReEnumerateDeviceByVidPidAsync(
                                 request.Driver.VendorId!, request.Driver.ProductId!, ct);
-                            await _printerService.RestartSpoolerAsync(ct);
                             for (int p = 0; p < 4 && discoveredUsbPort == null; p++)
                             {
                                 await Task.Delay(2000, ct);
@@ -637,6 +640,31 @@ public class DriverInstaller : IDriverInstaller
                             }
                             if (discoveredUsbPort != null)
                                 _log.Info($"Ensure-USB001: port created/found '{discoveredUsbPort}'");
+
+                            // Escalate: a simple disable/enable only power-cycles the device — it
+                            // does not repeat Windows' full PnP install (where the USB Print
+                            // Monitor's port-creation hook actually runs). If the driver is already
+                            // bound (no error) but still no port exists, that first-time install
+                            // pipeline likely never completed correctly. Removing the device node
+                            // and forcing Windows to re-detect it as brand-new hardware gives it a
+                            // real second chance, unlike a power cycle.
+                            if (discoveredUsbPort == null)
+                            {
+                                progress?.Report("Reinstalando dispositivo USB (detecção completa)...");
+                                _log.Info("Ensure-USB001: disable/enable didn't create a port — forcing full device reinstall.");
+                                await _printerService.RestartSpoolerAsync(ct);
+                                await _printerService.ForceFullReinstallByVidPidAsync(
+                                    request.Driver.VendorId!, request.Driver.ProductId!, ct);
+                                for (int p = 0; p < 5 && discoveredUsbPort == null; p++)
+                                {
+                                    await Task.Delay(2500, ct);
+                                    discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
+                                        ?? await _printerService.FindUsbPortFromRegistryAsync(ct)
+                                        ?? await _printerService.FindPortFromNewPrinterAsync(printersBeforeInstall, ct);
+                                }
+                                if (discoveredUsbPort != null)
+                                    _log.Info($"Ensure-USB001: port created/found after full reinstall '{discoveredUsbPort}'");
+                            }
                         }
                     }
 
@@ -693,17 +721,18 @@ public class DriverInstaller : IDriverInstaller
                         // Port still not registered — full recovery sequence.
                         progress?.Report("Detectando porta USB...");
 
-                        // 1) Targeted VID/PID device cycle + Spooler restart.
-                        //    Cycling the device forces Windows to re-run driver matching; the
-                        //    subsequent Spooler restart causes USB Monitor to create the port entry.
+                        // 1) Spooler restart FIRST (fresh USB Monitor instance), THEN cycle the
+                        //    device — the disable/enable is the arrival event the fresh monitor
+                        //    reacts to by creating the port entry. Cycling before the restart would
+                        //    have the arrival happen against the dying spooler process instead.
                         if (!string.IsNullOrEmpty(request.Driver.VendorId) &&
                             !string.IsNullOrEmpty(request.Driver.ProductId))
                         {
                             _log.Info($"Recovery: VID/PID re-enumeration ({request.Driver.VendorId}/{request.Driver.ProductId})");
                             progress?.Report("Associando driver ao dispositivo USB...");
+                            await _printerService.RestartSpoolerAsync(ct);
                             await _printerService.ReEnumerateDeviceByVidPidAsync(
                                 request.Driver.VendorId!, request.Driver.ProductId!, ct);
-                            await _printerService.RestartSpoolerAsync(ct);
                             await Task.Delay(6000, ct);
                             discoveredUsbPort = await _printerService.FindDevicePortByVidPidAsync(
                                     request.Driver.VendorId!, request.Driver.ProductId!, ct)
@@ -858,15 +887,15 @@ public class DriverInstaller : IDriverInstaller
                         }
                     }
 
-                    // If still null after everything: do one final VID/PID cycle + long Spooler restart.
-                    // This covers edge cases where the previous Spooler restart didn't give enough time.
+                    // If still null after everything: long Spooler restart FIRST, THEN one final
+                    // VID/PID cycle — so the arrival event happens against the fresh monitor.
                     if (discoveredUsbPort == null && !string.IsNullOrEmpty(request.Driver.VendorId))
                     {
-                        _log.Info("Final attempt: VID/PID cycle + 10s Spooler restart...");
+                        _log.Info("Final attempt: 10s Spooler restart + VID/PID cycle...");
                         progress?.Report("Última tentativa de reconhecimento USB...");
+                        await _printerService.RestartSpoolerAsync(ct);
                         await _printerService.ReEnumerateDeviceByVidPidAsync(
                             request.Driver.VendorId!, request.Driver.ProductId ?? "", ct);
-                        await _printerService.RestartSpoolerAsync(ct);
                         await Task.Delay(10000, ct);
                         discoveredUsbPort = await _printerService.FindDevicePortByVidPidAsync(
                                 request.Driver.VendorId!, request.Driver.ProductId ?? "", ct)
