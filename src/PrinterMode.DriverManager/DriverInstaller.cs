@@ -559,6 +559,37 @@ public class DriverInstaller : IDriverInstaller
                             await _printerService.EnsurePortRegisteredAsync(discoveredUsbPort, ct);
                     }
 
+                    // 5b) Physical replug prompt (~20s). Every software-side attempt to simulate
+                    //     device "arrival" (Disable/Enable, full pnputil remove+rescan) has been
+                    //     confirmed ineffective for this exact failure pattern (driver bound, no
+                    //     error, no port, ever). A REAL physical unplug/replug of the USB cable is
+                    //     a genuine hardware-level connect event that software re-enumeration does
+                    //     not always fully replicate for every USB controller/driver combination —
+                    //     it is the one distinct mechanism left untried. The Spooler is restarted
+                    //     fresh first so its USB Print Monitor is ready to catch the real event.
+                    if (discoveredUsbPort == null &&
+                        !string.IsNullOrEmpty(request.Driver.VendorId) &&
+                        !string.IsNullOrEmpty(request.Driver.ProductId))
+                    {
+                        await _printerService.RestartSpoolerAsync(ct);
+                        progress?.Report("⚠ Desconecte e reconecte o cabo USB da impressora agora (aguardando reconhecimento)...");
+                        _log.Info("Prompting physical USB replug — polling up to 20s.");
+                        for (int p = 0; p < 10 && discoveredUsbPort == null; p++)
+                        {
+                            await Task.Delay(2000, ct);
+                            discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
+                                ?? await _printerService.FindUsbPortFromRegistryAsync(ct)
+                                ?? await _printerService.FindDevicePortByVidPidAsync(
+                                    request.Driver.VendorId!, request.Driver.ProductId!, ct)
+                                ?? await _printerService.FindPortFromNewPrinterAsync(printersBeforeInstall, ct);
+                        }
+                        if (discoveredUsbPort != null)
+                        {
+                            await _printerService.EnsurePortRegisteredAsync(discoveredUsbPort, ct);
+                            _log.Info($"Port appeared after physical replug: '{discoveredUsbPort}'");
+                        }
+                    }
+
                     // 6) One DriverStore INF attempt (~8s) — forces the REAL manufacturer INF
                     //    (staged by its installer) to match this device, distinct from a plain
                     //    device cycle. Skipped if a port was already found above.
