@@ -844,57 +844,6 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
-    public async Task<bool> ForceFullReinstallByVidPidAsync(string vid, string pid, CancellationToken ct = default)
-    {
-        // Disable/Enable (ReEnumerateDeviceByVidPidAsync) only power-cycles the device — it does
-        // NOT repeat Windows' full Plug-and-Play install pipeline. The USB Print Monitor's port-
-        // creation hook fires from the co-installer during that FULL install (device "arrival"),
-        // which normally only runs once, the first time the device is ever seen. A device that
-        // already has a driver bound (as confirmed by diagnostics: service=usbprint, no problem
-        // code) but never got a port likely never went through that pipeline correctly.
-        //
-        // "pnputil /remove-device" fully removes the device's driver node; the following
-        // "pnputil /scan-devices" makes Windows treat it as brand-new hardware and re-run the
-        // ENTIRE installation from scratch — including the port-creation hook — giving it a real
-        // second chance that a simple disable/enable cannot provide.
-        return await Task.Run(() =>
-        {
-            try
-            {
-                var script =
-                    $"$dev = Get-PnpDevice -ErrorAction SilentlyContinue | " +
-                    $"  Where-Object {{ $_.InstanceId -match 'VID_{vid}&PID_{pid}' }} | Select-Object -First 1; " +
-                    $"if ($dev) {{ " +
-                    $"  Write-Output \"Found: $($dev.InstanceId)\"; " +
-                    $"  pnputil /remove-device \"$($dev.InstanceId)\" | Out-String | Write-Output; " +
-                    $"  Start-Sleep -Seconds 3; " +
-                    $"  pnputil /scan-devices | Out-String | Write-Output " +
-                    $"}} else {{ Write-Output 'Device not found' }}";
-                var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
-                    UseShellExecute = false, CreateNoWindow = true,
-                    RedirectStandardOutput = true, RedirectStandardError = true
-                };
-                using var proc = Process.Start(psi)!;
-                var outTask = proc.StandardOutput.ReadToEndAsync();
-                var errTask = proc.StandardError.ReadToEndAsync();
-                proc.WaitForExit(30_000);
-                var stdout = outTask.GetAwaiter().GetResult();
-                errTask.GetAwaiter().GetResult();
-                _log.Info($"ForceFullReinstallByVidPid({vid},{pid}) exit={proc.ExitCode} out='{stdout.Trim()}'");
-                return !stdout.Contains("Device not found", StringComparison.OrdinalIgnoreCase);
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"ForceFullReinstallByVidPidAsync: {ex.Message}");
-                return false;
-            }
-        }, ct);
-    }
-
     public async Task<bool> SetPaperFormAsync(string printerName, PaperConfig paper, CancellationToken ct = default)
     {
         return await Task.Run(() =>
