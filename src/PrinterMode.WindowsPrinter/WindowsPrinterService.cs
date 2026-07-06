@@ -340,16 +340,16 @@ public class WindowsPrinterService : IWindowsPrinterService
 
     public async Task<string?> FindUsbPrintDeviceInterfacePathAsync(string vid, string pid, CancellationToken ct = default)
     {
-        // usbprint.sys exposes a device interface (GUID_DEVINTERFACE_USBPRINT =
-        // {28d78fad-5a12-11d1-ae5b-0000f803a8c2}) for every USB printer-class device it is
-        // bound to — this interface, and its symbolic-link path, exist as soon as the driver
-        // binds, INDEPENDENTLY of whether the Spooler's USB Print Monitor ever creates a named
-        // port for it. That port-creation step is exactly what has been failing for some
-        // devices even though the driver is correctly bound with no error. This bypasses that
-        // failure point entirely: it finds the raw communication path directly via the
-        // standard SetupDi device-interface enumeration (the same low-level mechanism any
-        // native application would use to talk to the device), so it can be registered as a
-        // Local Port and used immediately — no Spooler-side port-creation notification needed.
+        // usbprint.sys registers a device interface (GUID_DEVINTERFACE_USBPRINT =
+        // {28d78fad-5a12-11d1-ae5b-0000f803a8c2}) for every USB printer-class device it binds
+        // to — this exists as soon as the driver binds, independently of whether the Spooler's
+        // USB Print Monitor ever creates a named port (the step that keeps failing). Windows
+        // stores every such interface's symbolic-link path directly in the registry under
+        //   Control\DeviceClasses\{GUID}\<encoded-path>
+        // where the subkey name IS the device path with '\' encoded as '#' and the leading
+        // "\\?\" written as "##?#". Reading it from the registry is far more reliable than a
+        // SetupDi P/Invoke and needs no external process. The reconstructed "\\?\USB#VID..."
+        // path can be registered as a Local Port and written to directly.
         if (string.IsNullOrEmpty(vid) || string.IsNullOrEmpty(pid))
             return null;
 
@@ -357,89 +357,48 @@ public class WindowsPrinterService : IWindowsPrinterService
         {
             try
             {
-                var script = @"
-Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-using System.Collections.Generic;
-public class UsbPrintInterop {
-    [DllImport(""setupapi.dll"", SetLastError = true)]
-    public static extern IntPtr SetupDiGetClassDevs(ref Guid ClassGuid, IntPtr Enumerator, IntPtr hwndParent, uint Flags);
-    [DllImport(""setupapi.dll"", SetLastError = true)]
-    public static extern bool SetupDiEnumDeviceInterfaces(IntPtr DeviceInfoSet, IntPtr DeviceInfoData, ref Guid InterfaceClassGuid, uint MemberIndex, ref SP_DEVICE_INTERFACE_DATA DeviceInterfaceData);
-    [DllImport(""setupapi.dll"", SetLastError = true, CharSet = CharSet.Auto)]
-    public static extern bool SetupDiGetDeviceInterfaceDetail(IntPtr DeviceInfoSet, ref SP_DEVICE_INTERFACE_DATA DeviceInterfaceData, IntPtr DeviceInterfaceDetailData, uint DeviceInterfaceDetailDataSize, ref uint RequiredSize, IntPtr DeviceInfoData);
-    [DllImport(""setupapi.dll"", SetLastError = true)]
-    public static extern bool SetupDiDestroyDeviceInfoList(IntPtr DeviceInfoSet);
-    [StructLayout(LayoutKind.Sequential)]
-    public struct SP_DEVICE_INTERFACE_DATA {
-        public int cbSize;
-        public Guid InterfaceClassGuid;
-        public int Flags;
-        public IntPtr Reserved;
-    }
-    const uint DIGCF_PRESENT = 0x02;
-    const uint DIGCF_DEVICEINTERFACE = 0x10;
-    public static string[] GetPaths() {
-        Guid guid = new Guid(""28d78fad-5a12-11d1-ae5b-0000f803a8c2"");
-        IntPtr h = SetupDiGetClassDevs(ref guid, IntPtr.Zero, IntPtr.Zero, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
-        List<string> results = new List<string>();
-        if (h == IntPtr.Zero || h.ToInt64() == -1) return results.ToArray();
-        uint index = 0;
-        while (true) {
-            SP_DEVICE_INTERFACE_DATA did = new SP_DEVICE_INTERFACE_DATA();
-            did.cbSize = Marshal.SizeOf(did);
-            bool ok = SetupDiEnumDeviceInterfaces(h, IntPtr.Zero, ref guid, index, ref did);
-            if (!ok) break;
-            uint required = 0;
-            SetupDiGetDeviceInterfaceDetail(h, ref did, IntPtr.Zero, 0, ref required, IntPtr.Zero);
-            if (required > 0) {
-                IntPtr buffer = Marshal.AllocHGlobal((int)required);
-                Marshal.WriteInt32(buffer, IntPtr.Size == 8 ? 8 : 6);
-                bool ok2 = SetupDiGetDeviceInterfaceDetail(h, ref did, buffer, required, ref required, IntPtr.Zero);
-                if (ok2) {
-                    string path = Marshal.PtrToStringAuto(IntPtr.Add(buffer, 4));
-                    if (!string.IsNullOrEmpty(path)) results.Add(path);
-                }
-                Marshal.FreeHGlobal(buffer);
-            }
-            index++;
-        }
-        SetupDiDestroyDeviceInfoList(h);
-        return results.ToArray();
-    }
-}
-'@ -ErrorAction Stop
-[UsbPrintInterop]::GetPaths() | Write-Output
-";
-                var enc = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
-                var psi = new ProcessStartInfo
+                const string guid = "{28d78fad-5a12-11d1-ae5b-0000f803a8c2}";
+                using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                    $@"SYSTEM\CurrentControlSet\Control\DeviceClasses\{guid}");
+                if (key == null)
                 {
-                    FileName = "powershell.exe",
-                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {enc}",
-                    UseShellExecute = false, CreateNoWindow = true,
-                    RedirectStandardOutput = true, RedirectStandardError = true
-                };
-                using var proc = Process.Start(psi)!;
-                var outTask = proc.StandardOutput.ReadToEndAsync();
-                var errTask = proc.StandardError.ReadToEndAsync();
-                proc.WaitForExit(15_000);
-                var stdout = outTask.GetAwaiter().GetResult();
-                var stderr = errTask.GetAwaiter().GetResult();
+                    _log.Info("FindUsbPrintDeviceInterfacePath: USBPRINT DeviceClasses key absent (usbprint.sys not exposing any printer interface).");
+                    return null;
+                }
 
-                var paths = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                _log.Info($"FindUsbPrintDeviceInterfacePath: found {paths.Length} USBPRINT interface(s).");
-                if (paths.Length == 0 && !string.IsNullOrWhiteSpace(stderr))
-                    _log.Warning($"FindUsbPrintDeviceInterfacePath stderr: {stderr.Trim()}");
+                string? Reconstruct(string sub) =>
+                    sub.StartsWith("##?#") ? @"\\?\" + sub.Substring(4) : null;
 
-                var match = paths.FirstOrDefault(p =>
-                    p.IndexOf($"vid_{vid}", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                    p.IndexOf($"pid_{pid}", StringComparison.OrdinalIgnoreCase) >= 0);
-                match ??= paths.FirstOrDefault(); // only one USBPRINT device present — safe to use it
+                // Prefer the exact VID/PID match; fall back to the only USBPRINT interface present.
+                string? fallback = null;
+                foreach (var sub in key.GetSubKeyNames())
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var path = Reconstruct(sub);
+                    if (path == null) continue;
 
-                if (match != null)
-                    _log.Info($"FindUsbPrintDeviceInterfacePath: matched '{match}'");
-                return match;
+                    // Is this interface currently linked/active?
+                    bool linked = true;
+                    using (var ctrl = key.OpenSubKey($@"{sub}\#\Control"))
+                    {
+                        if (ctrl?.GetValue("Linked") is int iv) linked = iv != 0;
+                    }
+                    if (!linked) continue;
+
+                    fallback ??= path;
+                    if (sub.IndexOf($"VID_{vid}", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                        sub.IndexOf($"PID_{pid}", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        _log.Info($"FindUsbPrintDeviceInterfacePath: matched VID/PID -> '{path}'");
+                        return path;
+                    }
+                }
+
+                if (fallback != null)
+                    _log.Info($"FindUsbPrintDeviceInterfacePath: no VID/PID match; using only linked USBPRINT interface -> '{fallback}'");
+                else
+                    _log.Info($"FindUsbPrintDeviceInterfacePath: no linked USBPRINT interface for VID_{vid}&PID_{pid}.");
+                return fallback;
             }
             catch (Exception ex)
             {
@@ -458,19 +417,45 @@ public class UsbPrintInterop {
         if (string.IsNullOrWhiteSpace(portName))
             return false;
 
+        // COMx/LPTx use the canonical colon form the spooler expects; any other name
+        // (including a raw device interface path like "\\?\USB#VID_...") is registered exactly
+        // as given — appending ":" to a device path would create the wrong name.
+        bool isComOrLpt =
+            Regex.IsMatch(portName, @"^COM\d+:?$", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(portName, @"^LPT\d+:?$", RegexOptions.IgnoreCase);
+        var registerName = isComOrLpt
+            ? (portName.EndsWith(":") ? portName : portName + ":")
+            : portName;
+
+        // Enumerate all ports and compare in C# (never a WQL WHERE on the raw name — a device
+        // interface path contains backslashes, which are WQL escape characters and would make
+        // the query throw, wrongly reporting the port as unregisterable).
+        bool PortExists()
+        {
+            try
+            {
+                using var s = new ManagementObjectSearcher("SELECT Name FROM Win32_PrinterPort");
+                foreach (ManagementObject obj in s.Get())
+                {
+                    var n = obj["Name"]?.ToString();
+                    if (!string.IsNullOrEmpty(n) &&
+                        (n.Equals(portName, StringComparison.OrdinalIgnoreCase) ||
+                         n.Equals(registerName, StringComparison.OrdinalIgnoreCase)))
+                        return true;
+                }
+            }
+            catch (Exception ex) { _log.Warning($"EnsurePortRegistered/PortExists: {ex.Message}"); }
+            return false;
+        }
+
         return await Task.Run(() =>
         {
             try
             {
-                // Already registered?
-                using (var existing = new ManagementObjectSearcher(
-                    $"SELECT Name FROM Win32_PrinterPort WHERE Name = '{portName.Replace("'", "''")}'"))
+                if (PortExists())
                 {
-                    foreach (ManagementObject _ in existing.Get())
-                    {
-                        _log.Info($"EnsurePortRegistered: '{portName}' already present in spooler.");
-                        return true;
-                    }
+                    _log.Info($"EnsurePortRegistered: '{registerName}' already present in spooler.");
+                    return true;
                 }
 
                 // USB Monitor ports can't be added by hand — they must come from usbprint.sys.
@@ -482,33 +467,20 @@ public class UsbPrintInterop {
                     return false;
                 }
 
-                // COMx/LPTx use the canonical colon form the spooler expects; any other name
-                // (including a raw device interface path like "\\?\usbprint#...") is registered
-                // exactly as given — appending ":" to a device path would create the wrong name.
-                bool isComOrLpt =
-                    Regex.IsMatch(portName, @"^COM\d+:?$", RegexOptions.IgnoreCase) ||
-                    Regex.IsMatch(portName, @"^LPT\d+:?$", RegexOptions.IgnoreCase);
-                var registerName = isComOrLpt
-                    ? (portName.EndsWith(":") ? portName : portName + ":")
-                    : portName;
+                // Register via the Local Port monitor. Use AddPortEx directly through the spooler
+                // (Add-PrinterPort validates COM/LPT names and can reject an arbitrary device
+                // path); prnport.vbs / Add-PrinterPort is tried, and the presence is re-verified.
                 var escaped = registerName.Replace("'", "''");
                 var script = $"try {{ Add-PrinterPort -Name '{escaped}' -ErrorAction Stop; 'OK' }} catch {{ $_.Exception.Message }}";
                 var enc = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
                 RunProcess("powershell.exe", $"-NoProfile -NonInteractive -EncodedCommand {enc}");
 
-                using var after = new ManagementObjectSearcher("SELECT Name FROM Win32_PrinterPort");
-                foreach (ManagementObject obj in after.Get())
+                if (PortExists())
                 {
-                    var n = obj["Name"]?.ToString();
-                    if (!string.IsNullOrEmpty(n) &&
-                        (n.Equals(portName, StringComparison.OrdinalIgnoreCase) ||
-                         n.Equals(registerName, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        _log.Info($"EnsurePortRegistered: registered '{n}' in spooler.");
-                        return true;
-                    }
+                    _log.Info($"EnsurePortRegistered: registered '{registerName}' in spooler.");
+                    return true;
                 }
-                _log.Warning($"EnsurePortRegistered: '{portName}' still not present after Add-PrinterPort.");
+                _log.Warning($"EnsurePortRegistered: '{registerName}' still not present after Add-PrinterPort.");
                 return false;
             }
             catch (Exception ex)
