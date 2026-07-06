@@ -499,12 +499,20 @@ public class DriverInstaller : IDriverInstaller
                     // already have registered it before this run's "before" snapshot was taken.
                     if (discoveredUsbPort == null)
                     {
+                        // Confirmed real bug: "Appmon" (Microsoft Application Virtualization /
+                        // App-V print redirection monitor) is a STANDARD Windows monitor that
+                        // was missing from this list. It was being treated as a "vendor" monitor,
+                        // and any leftover/unrelated entry under its Ports registry key was
+                        // adopted as this printer's port — a phantom value with nothing to do
+                        // with the Gertec device, which skipped the more useful checks below
+                        // (they only run if discoveredUsbPort is still null) and only got
+                        // discarded much later, during spooler validation, wasting the attempt.
                         string[] knownWindowsMonitors =
                         {
                             "Local Port", "Standard TCP/IP Port", "USB Monitor", "WSD Port",
                             "PDF Port Monitor", "Microsoft Shared Fax Monitor", "XPS Port",
                             "Windows Fax Monitor", "Hewlett-Packard Peer-to-Peer Port Monitor",
-                            "Print to OneNote"
+                            "Print to OneNote", "Appmon"
                         };
                         var monitorsNow = await _printerService.GetPrintMonitorsAsync(ct);
                         var vendorMonitors = monitorsNow
@@ -517,7 +525,12 @@ public class DriverInstaller : IDriverInstaller
                             foreach (var monitor in vendorMonitors)
                             {
                                 var monitorPorts = await _printerService.GetPortsForMonitorAsync(monitor, ct);
-                                var newPort = monitorPorts.FirstOrDefault();
+                                // Safety net beyond the name exclusion list above: a port that
+                                // already existed BEFORE this install started cannot be one the
+                                // Gertec driver just created — adopting it would hijack an
+                                // unrelated, pre-existing port. Only accept a genuinely new one.
+                                var newPort = monitorPorts.FirstOrDefault(p =>
+                                    !portsBeforeInstall.Contains(p, StringComparer.OrdinalIgnoreCase));
                                 if (newPort != null)
                                 {
                                     discoveredUsbPort = newPort;
