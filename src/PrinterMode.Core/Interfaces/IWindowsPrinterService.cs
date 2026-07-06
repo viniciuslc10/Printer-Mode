@@ -24,6 +24,7 @@ public interface IWindowsPrinterService
     Task<string?> FindNewPortSinceSnapshotAsync(IReadOnlyList<string> portsBefore, CancellationToken ct = default);
     Task<string?> FindUsbPortFromRegistryAsync(CancellationToken ct = default);
     Task<string?> FindDevicePortByVidPidAsync(string vid, string pid, CancellationToken ct = default);
+    Task<string?> FindUsbPrintDeviceInterfacePathAsync(string vid, string pid, CancellationToken ct = default);
     Task<bool> EnsurePortRegisteredAsync(string portName, CancellationToken ct = default);
     Task<string> GetUsbDeviceDiagnosticsAsync(string vid, string pid, CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetPrintMonitorsAsync(CancellationToken ct = default);

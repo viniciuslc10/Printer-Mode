@@ -559,34 +559,25 @@ public class DriverInstaller : IDriverInstaller
                             await _printerService.EnsurePortRegisteredAsync(discoveredUsbPort, ct);
                     }
 
-                    // 5b) Physical replug prompt (~20s). Every software-side attempt to simulate
-                    //     device "arrival" (Disable/Enable, full pnputil remove+rescan) has been
-                    //     confirmed ineffective for this exact failure pattern (driver bound, no
-                    //     error, no port, ever). A REAL physical unplug/replug of the USB cable is
-                    //     a genuine hardware-level connect event that software re-enumeration does
-                    //     not always fully replicate for every USB controller/driver combination —
-                    //     it is the one distinct mechanism left untried. The Spooler is restarted
-                    //     fresh first so its USB Print Monitor is ready to catch the real event.
+                    // 5b) Direct device-interface path (fully automatic, no physical action).
+                    // usbprint.sys exposes a device interface (GUID_DEVINTERFACE_USBPRINT) for
+                    // every bound USB printer-class device — this exists independently of whether
+                    // the Spooler's USB Print Monitor ever creates a named port for it (which is
+                    // exactly the step that keeps failing here). Enumerating this interface finds
+                    // the RAW communication path to the hardware directly, and registering that
+                    // path as a Local Port lets Windows write to the device without depending on
+                    // the USB Monitor's port-creation notification at all.
                     if (discoveredUsbPort == null &&
                         !string.IsNullOrEmpty(request.Driver.VendorId) &&
                         !string.IsNullOrEmpty(request.Driver.ProductId))
                     {
-                        await _printerService.RestartSpoolerAsync(ct);
-                        progress?.Report("⚠ Desconecte e reconecte o cabo USB da impressora agora (aguardando reconhecimento)...");
-                        _log.Info("Prompting physical USB replug — polling up to 20s.");
-                        for (int p = 0; p < 10 && discoveredUsbPort == null; p++)
+                        var devicePath = await _printerService.FindUsbPrintDeviceInterfacePathAsync(
+                            request.Driver.VendorId!, request.Driver.ProductId!, ct);
+                        if (!string.IsNullOrEmpty(devicePath))
                         {
-                            await Task.Delay(2000, ct);
-                            discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
-                                ?? await _printerService.FindUsbPortFromRegistryAsync(ct)
-                                ?? await _printerService.FindDevicePortByVidPidAsync(
-                                    request.Driver.VendorId!, request.Driver.ProductId!, ct)
-                                ?? await _printerService.FindPortFromNewPrinterAsync(printersBeforeInstall, ct);
-                        }
-                        if (discoveredUsbPort != null)
-                        {
-                            await _printerService.EnsurePortRegisteredAsync(discoveredUsbPort, ct);
-                            _log.Info($"Port appeared after physical replug: '{discoveredUsbPort}'");
+                            await _printerService.EnsurePortRegisteredAsync(devicePath, ct);
+                            discoveredUsbPort = devicePath;
+                            _log.Info($"Using raw USBPRINT device interface path as port: '{devicePath}'");
                         }
                     }
 
