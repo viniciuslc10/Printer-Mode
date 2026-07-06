@@ -1318,9 +1318,22 @@ public class DriverInstaller : IDriverInstaller
 
         var allDrivers = await _repository.GetAllDriversAsync();
 
-        // Strategy 1: match by Windows driver name reported from PC-A
         DriverInfo? match = null;
-        if (!string.IsNullOrEmpty(driverName))
+
+        // Strategy 0: the model the user explicitly selected in the UI for this shared
+        // printer. This is the most reliable signal — it is the driver they intend to use —
+        // so honor it first and install exactly that driver on this (client) computer.
+        if (request.Driver != null &&
+            (!string.IsNullOrWhiteSpace(request.Driver.Id) ||
+             !string.IsNullOrWhiteSpace(request.Driver.InstallerExe)))
+        {
+            match = allDrivers.FirstOrDefault(d =>
+                        d.Id.Equals(request.Driver.Id, StringComparison.OrdinalIgnoreCase))
+                    ?? (request.Driver.HasInstaller ? request.Driver : null);
+        }
+
+        // Strategy 1: match by Windows driver name reported from PC-A
+        if (match == null && !string.IsNullOrEmpty(driverName))
             match = allDrivers.FirstOrDefault(d =>
                 d.AllDriverNames().Any(n => n.Equals(driverName, StringComparison.OrdinalIgnoreCase)));
 
