@@ -116,9 +116,9 @@ public partial class SimpleViewModel : ObservableObject
     public bool ShowNetworkFields => ConnectionNetwork;
     public bool ShowSerialFields => ConnectionSerial;
     public bool ShowSharedFields => ConnectionShared;
-    // Always show the USB port selector so the user can force a specific port (COM/USB)
-    // when auto-detection can't identify the device — the list always has "Automático".
-    public bool ShowUsbPortSelector => ConnectionUsb;
+    // USB installs on the standard USB001 port automatically — no manual choice needed.
+    // The selector only appears if the system already has real USB printer ports listed.
+    public bool ShowUsbPortSelector => ConnectionUsb && HasUsbPorts;
 
     public SimpleViewModel(IDriverRepository repository, IDriverInstaller installer, IWindowsPrinterService printerService, ILogService log)
     {
@@ -148,16 +148,12 @@ public partial class SimpleViewModel : ObservableObject
             ComPorts.Add(p);
         SelectedComPort = ComPorts.FirstOrDefault();
 
-        // USB port list: first an "automatic" option (empty PortName → the app auto-detects,
-        // the default behavior), then the detected USB printer ports, then the COM ports.
-        // This lets the user manually pick the port where the printer is — including a COM
-        // port for CDC/virtual-serial printers — when auto-detection can't identify it.
-        UsbPorts.Add(new PortEntry("", "Automático (detectar)"));
+        // USB uses the standard spooler port (USB001) that the USB Print Monitor creates —
+        // that's how these printers install, so no manual port choice is needed for USB.
+        // (COM ports live on the Serial tab; IP on the Network tab.)
         var usbPorts = await _printerService.GetUsbPrinterPortsWithNamesAsync();
         foreach (var p in usbPorts)
             UsbPorts.Add(p);
-        foreach (var p in comPorts)
-            UsbPorts.Add(new PortEntry(p.PortName, $"{p.DisplayName} (serial)"));
         HasUsbPorts = UsbPorts.Count > 0;
         SelectedUsbPort = UsbPorts.FirstOrDefault();
     }

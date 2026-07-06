@@ -592,6 +592,29 @@ public class DriverInstaller : IDriverInstaller
                             discoveredUsbPort = resolvedDevice.Port;
                             _log.Info($"USB case: using resolved device COM port '{resolvedDevice.Port}'");
                         }
+
+                        // Deterministic "ensure USB001": most USB printers install on the standard
+                        // USB001 port, created by the USB Print Monitor when usbprint.sys is bound
+                        // to the device. On a fresh PC the binding often hasn't happened yet, so we
+                        // re-enumerate the RESOLVED device (real VID/PID) and restart the Spooler —
+                        // that is what makes USB001 appear — then poll for it.
+                        if (discoveredUsbPort == null &&
+                            !string.IsNullOrEmpty(request.Driver.VendorId) &&
+                            !string.IsNullOrEmpty(request.Driver.ProductId))
+                        {
+                            progress?.Report("Preparando porta USB (USB001)...");
+                            await _printerService.ReEnumerateDeviceByVidPidAsync(
+                                request.Driver.VendorId!, request.Driver.ProductId!, ct);
+                            await _printerService.RestartSpoolerAsync(ct);
+                            for (int p = 0; p < 4 && discoveredUsbPort == null; p++)
+                            {
+                                await Task.Delay(2000, ct);
+                                discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
+                                    ?? await _printerService.FindUsbPortFromRegistryAsync(ct);
+                            }
+                            if (discoveredUsbPort != null)
+                                _log.Info($"Ensure-USB001: port created/found '{discoveredUsbPort}'");
+                        }
                     }
 
                     // Highest-priority, device-keyed lookup: ask the physical device (VID/PID)
