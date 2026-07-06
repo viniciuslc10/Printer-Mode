@@ -579,54 +579,6 @@ public class DriverInstaller : IDriverInstaller
                         }
                     }
 
-                    // 7) Last resort: some vendor installers (confirmed pattern for POS/thermal
-                    //    printers) only actually bind the device to a port through a step in
-                    //    their OWN installer wizard — silent install stages the driver but skips
-                    //    that step. If we still have no port and haven't already run the wizard,
-                    //    re-launch the SAME installer visibly once and let the user complete it;
-                    //    then re-check for a port/printer it may have created.
-                    if (discoveredUsbPort == null && !request.SkipDriverInstall &&
-                        request.Driver.HasInstaller &&
-                        !string.Equals(request.Driver.InstallerType, "ui-only", StringComparison.OrdinalIgnoreCase) &&
-                        !string.Equals(request.Driver.InstallerType, "manual", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var wizardExePath = _repository.ResolveInstallerPath(request.Driver);
-                        if (wizardExePath != null && File.Exists(wizardExePath))
-                        {
-                            progress?.Report($"⚠ A instalação silenciosa não associou a impressora — abrindo o instalador {request.Driver.DisplayName} para conclusão manual...");
-                            _log.Info($"Silent install didn't produce a port — re-running installer visibly: '{wizardExePath}'");
-                            var printersBeforeWizard = await _printerService.GetInstalledPrintersAsync(ct);
-                            try
-                            {
-                                using var wizardProc = Process.Start(new ProcessStartInfo { FileName = wizardExePath, UseShellExecute = true })!;
-                                await wizardProc.WaitForExitAsync(ct);
-                                _log.Info($"Visible installer exit: {wizardProc.ExitCode}");
-                            }
-                            catch (Exception ex)
-                            {
-                                _log.Warning($"Visible installer failed to launch: {ex.Message}");
-                            }
-
-                            await Task.Delay(2000, ct);
-                            var (wizardPrinterName, wizardDriver, wizardPort) =
-                                await _printerService.FindNewlyCreatedPrinterAsync(printersBeforeWizard, ct);
-                            if (!string.IsNullOrEmpty(wizardPort))
-                            {
-                                discoveredUsbPort = wizardPort;
-                                if (!string.IsNullOrEmpty(wizardDriver))
-                                    detectedDriverName = wizardDriver;
-                                steps.Add($"Impressora criada pelo assistente visual: {wizardPrinterName} (porta {wizardPort})");
-                                _log.Info($"Wizard created printer '{wizardPrinterName}' driver='{wizardDriver}' port='{wizardPort}'");
-                            }
-                            else
-                            {
-                                discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
-                                    ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
-                                    ?? await _printerService.FindUsbPortFromRegistryAsync(ct);
-                            }
-                        }
-                    }
-
                     portName = request.PortName ?? discoveredUsbPort ?? "USB001";
                     portCreated = true;
                     steps.Add($"Porta USB: {portName}");

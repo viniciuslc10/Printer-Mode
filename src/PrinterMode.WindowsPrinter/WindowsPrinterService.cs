@@ -413,13 +413,21 @@ public class WindowsPrinterService : IWindowsPrinterService
             var sb = new System.Text.StringBuilder();
             try
             {
+                // IMPORTANT: enumerate ALL matching nodes, not just the first. A composite USB
+                // device's TOP-LEVEL node (VID_xxxx&PID_yyyy) commonly reports a generic
+                // "class=USB" even when the actual printer FUNCTION — with its own bound driver
+                // and port — lives on a CHILD interface node (VID_xxxx&PID_yyyy&MI_00/01/...).
+                // Only checking the first match (the parent) would completely miss that child
+                // and wrongly conclude "no printer-class binding" when one exists one level down.
                 var script =
-                    $"$d = Get-PnpDevice -ErrorAction SilentlyContinue | " +
-                    $"  Where-Object {{ $_.InstanceId -match 'VID_{vid}&PID_{pid}' }} | Select-Object -First 1; " +
-                    $"if ($d) {{ " +
-                    $"  $svc  = (Get-PnpDeviceProperty -InstanceId $d.InstanceId -KeyName 'DEVPKEY_Device_Service' -ErrorAction SilentlyContinue).Data; " +
-                    $"  $prob = (Get-PnpDeviceProperty -InstanceId $d.InstanceId -KeyName 'DEVPKEY_Device_ProblemCode' -ErrorAction SilentlyContinue).Data; " +
-                    $"  Write-Output \"PRESENT|status=$($d.Status)|class=$($d.Class)|service=$svc|problem=$prob|name=$($d.FriendlyName)\" " +
+                    $"$all = @(Get-PnpDevice -ErrorAction SilentlyContinue | " +
+                    $"  Where-Object {{ $_.InstanceId -match 'VID_{vid}&PID_{pid}' }}); " +
+                    $"if ($all.Count -gt 0) {{ " +
+                    $"  foreach ($d in $all) {{ " +
+                    $"    $svc  = (Get-PnpDeviceProperty -InstanceId $d.InstanceId -KeyName 'DEVPKEY_Device_Service' -ErrorAction SilentlyContinue).Data; " +
+                    $"    $prob = (Get-PnpDeviceProperty -InstanceId $d.InstanceId -KeyName 'DEVPKEY_Device_ProblemCode' -ErrorAction SilentlyContinue).Data; " +
+                    $"    Write-Output \"PRESENT|status=$($d.Status)|class=$($d.Class)|service=$svc|problem=$prob|name=$($d.FriendlyName)|id=$($d.InstanceId)\" " +
+                    $"  }} " +
                     $"}} else {{ Write-Output 'ABSENT' }}";
                 var enc = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
                 var psi = new ProcessStartInfo
@@ -438,11 +446,21 @@ public class WindowsPrinterService : IWindowsPrinterService
 
                 if (stdout.StartsWith("ABSENT", StringComparison.OrdinalIgnoreCase))
                     sb.Append($"Dispositivo VID_{vid}&PID_{pid}: NÃO detectado pelo Windows (verifique cabo/porta USB). ");
-                else if (stdout.StartsWith("PRESENT", StringComparison.OrdinalIgnoreCase))
+                else if (stdout.Contains("PRESENT", StringComparison.OrdinalIgnoreCase))
                 {
-                    var pipe = stdout.IndexOf('|');
-                    var details = pipe >= 0 && pipe + 1 < stdout.Length ? stdout[(pipe + 1)..] : stdout;
-                    sb.Append($"Dispositivo detectado [{details}]. ");
+                    // Show EVERY matching node (parent + composite children) — the printer
+                    // function with the real port binding is often a child interface, not
+                    // the top-level device, so a single line is not enough to diagnose this.
+                    var lines = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .Where(l => l.StartsWith("PRESENT", StringComparison.OrdinalIgnoreCase));
+                    int n = 0;
+                    foreach (var line in lines)
+                    {
+                        n++;
+                        var pipe = line.IndexOf('|');
+                        var details = pipe >= 0 && pipe + 1 < line.Length ? line[(pipe + 1)..] : line;
+                        sb.Append($"[Nó {n}: {details}] ");
+                    }
                 }
                 else if (!string.IsNullOrEmpty(stdout))
                     sb.Append($"Estado do dispositivo: {stdout}. ");
