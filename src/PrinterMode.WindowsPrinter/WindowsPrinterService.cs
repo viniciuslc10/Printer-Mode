@@ -221,6 +221,61 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    public async Task<IReadOnlyList<string>> GetPrintMonitorsAsync(CancellationToken ct = default)
+    {
+        // Lists every Print Monitor registered with the Spooler. Many POS/thermal-printer
+        // vendors (Gertec included) ship their OWN monitor DLL instead of relying on the
+        // generic "USB Monitor" — it creates its OWN vendor-specific port, NOT USB001, and
+        // does so only through ITS OWN mechanism (which may not fire automatically the way
+        // usbprint.sys's port creation does). Diffing this list before/after the vendor's
+        // driver install reveals whether such a custom monitor exists.
+        return await Task.Run(() =>
+        {
+            try
+            {
+                using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                    @"SYSTEM\CurrentControlSet\Control\Print\Monitors");
+                if (key == null) return (IReadOnlyList<string>)Array.Empty<string>();
+                return (IReadOnlyList<string>)key.GetSubKeyNames();
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"GetPrintMonitorsAsync: {ex.Message}");
+                return (IReadOnlyList<string>)Array.Empty<string>();
+            }
+        }, ct);
+    }
+
+    public async Task<IReadOnlyList<string>> GetPortsForMonitorAsync(string monitorName, CancellationToken ct = default)
+    {
+        // Reads the port list a SPECIFIC monitor has registered, from
+        // Control\Print\Monitors\<name>\Ports — the same registry pattern the standard "USB
+        // Monitor" uses (see FindUsbPortFromRegistryAsync), generalized to any vendor monitor.
+        // This lets us find a port created by a custom vendor monitor even when it never
+        // shows up via the generic USB-port detection paths.
+        if (string.IsNullOrWhiteSpace(monitorName))
+            return Array.Empty<string>();
+
+        return await Task.Run(() =>
+        {
+            try
+            {
+                using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                    $@"SYSTEM\CurrentControlSet\Control\Print\Monitors\{monitorName}\Ports");
+                if (key == null) return (IReadOnlyList<string>)Array.Empty<string>();
+                var ports = key.GetSubKeyNames().Where(s => !string.IsNullOrEmpty(s)).ToList();
+                if (ports.Count > 0)
+                    _log.Info($"GetPortsForMonitor('{monitorName}'): found [{string.Join(", ", ports)}]");
+                return (IReadOnlyList<string>)ports;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"GetPortsForMonitorAsync('{monitorName}'): {ex.Message}");
+                return (IReadOnlyList<string>)Array.Empty<string>();
+            }
+        }, ct);
+    }
+
     public async Task<string?> FindDevicePortByVidPidAsync(string vid, string pid, CancellationToken ct = default)
     {
         // Reads the port the PHYSICAL device (VID/PID) is actually bound to, straight from
