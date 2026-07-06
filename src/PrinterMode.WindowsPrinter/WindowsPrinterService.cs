@@ -418,10 +418,17 @@ public class WindowsPrinterService : IWindowsPrinterService
         var result = new List<DetectedUsbDevice>();
         try
         {
+            // For every present device we also read DEVPKEY_Device_BusReportedDeviceDesc — the
+            // USB product string (e.g. "Gertec G250"). This is CRUCIAL for undriven devices that
+            // sit in "Unspecified": their FriendlyName is empty and the only recognizable name
+            // lives in the bus-reported description. Delimiter '~|~' avoids '|' collisions.
             var script =
                 "Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | ForEach-Object { " +
+                "$bus=''; try { $bus = (Get-PnpDeviceProperty -InstanceId $_.InstanceId " +
+                "-KeyName 'DEVPKEY_Device_BusReportedDeviceDesc' -ErrorAction SilentlyContinue).Data } catch {}; " +
                 "$n = \"$($_.FriendlyName)\" -replace '[\\r\\n]',' '; " +
-                "Write-Output \"$($_.InstanceId)~|~$($_.Class)~|~$($_.Status)~|~$n\" }";
+                "$b = \"$bus\" -replace '[\\r\\n]',' '; " +
+                "Write-Output \"$($_.InstanceId)~|~$($_.Class)~|~$($_.Status)~|~$n~|~$b\" }";
             var enc = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
             var psi = new ProcessStartInfo
             {
@@ -433,7 +440,7 @@ public class WindowsPrinterService : IWindowsPrinterService
             using var proc = Process.Start(psi)!;
             var outTask = proc.StandardOutput.ReadToEndAsync();
             var errTask = proc.StandardError.ReadToEndAsync();
-            proc.WaitForExit(20_000);
+            proc.WaitForExit(30_000);
             var stdout = outTask.GetAwaiter().GetResult();
             errTask.GetAwaiter().GetResult();
 
@@ -449,16 +456,18 @@ public class WindowsPrinterService : IWindowsPrinterService
                 var cls = parts[1].Trim();
                 var status = parts[2].Trim();
                 var name = parts[3].Trim();
+                var busName = parts.Length >= 5 ? parts[4].Trim() : "";
 
                 string? vid = null, pid = null, port = null;
                 var mVid = Regex.Match(instanceId, @"VID_([0-9A-Fa-f]{4})", RegexOptions.IgnoreCase);
                 if (mVid.Success) vid = mVid.Groups[1].Value.ToUpperInvariant();
                 var mPid = Regex.Match(instanceId, @"PID_([0-9A-Fa-f]{4})", RegexOptions.IgnoreCase);
                 if (mPid.Success) pid = mPid.Groups[1].Value.ToUpperInvariant();
-                var mCom = Regex.Match(name, @"\((COM\d+)\)", RegexOptions.IgnoreCase);
+                // COM port can be in either the friendly name or the bus description.
+                var mCom = Regex.Match($"{name} {busName}", @"\((COM\d+)\)", RegexOptions.IgnoreCase);
                 if (mCom.Success) port = mCom.Groups[1].Value.ToUpperInvariant() + ":";
 
-                result.Add(new DetectedUsbDevice(instanceId, vid, pid, port, name, status, cls));
+                result.Add(new DetectedUsbDevice(instanceId, vid, pid, port, name, status, cls, busName));
             }
         }
         catch (Exception ex)
@@ -504,7 +513,9 @@ public class WindowsPrinterService : IWindowsPrinterService
             int bestScore = 0;
             foreach (var d in devices)
             {
-                var nameLc = d.FriendlyName.ToLowerInvariant();
+                // Match against BOTH the driver friendly name AND the USB bus-reported name,
+                // because an undriven printer ("Unspecified") only carries its name in the latter.
+                var nameLc = $"{d.FriendlyName} {d.BusName}".ToLowerInvariant();
                 if (exclude.Any(x => nameLc.Contains(x))) continue;
 
                 int score = 0;
@@ -516,8 +527,13 @@ public class WindowsPrinterService : IWindowsPrinterService
                 if (d.DeviceClass.Equals("Ports", StringComparison.OrdinalIgnoreCase)) score += 45;
                 if (d.Port != null) score += 40;
                 if (generic.Any(g => nameLc.Contains(g))) score += 50;
-                if (d.Status.Equals("Error", StringComparison.OrdinalIgnoreCase) ||
-                    d.Status.Equals("Unknown", StringComparison.OrdinalIgnoreCase)) score += 15;
+                // Undriven USB device ("Unspecified": no class, error/unknown status, has a VID).
+                // This is exactly what a connected-but-not-installed printer looks like.
+                bool undrivenUsb = d.Vid != null &&
+                    (string.IsNullOrEmpty(d.DeviceClass) ||
+                     d.Status.Equals("Error", StringComparison.OrdinalIgnoreCase) ||
+                     d.Status.Equals("Unknown", StringComparison.OrdinalIgnoreCase));
+                if (undrivenUsb) score += 25;
 
                 if (score > bestScore) { bestScore = score; best = d; }
             }
@@ -552,18 +568,25 @@ public class WindowsPrinterService : IWindowsPrinterService
         {
             var devices = EnumerateUsbDevices(ct);
             if (devices.Count == 0) return "nenhum dispositivo USB listado";
+            // Show REAL USB devices (those with a VID) first — the printer is one of them —
+            // and among those the undriven ones first, since that's what a connected-but-not-
+            // installed printer looks like. System devices (no VID) are least relevant.
             var relevant = devices
                 .Where(d =>
                 {
-                    var n = d.FriendlyName.ToLowerInvariant();
+                    var n = $"{d.FriendlyName} {d.BusName}".ToLowerInvariant();
                     return !n.Contains("hub") && !n.Contains("host controller") && !n.Contains("root ");
                 })
-                .Take(20)
+                .OrderByDescending(d => d.Vid != null)
+                .ThenByDescending(d => string.IsNullOrEmpty(d.DeviceClass) ||
+                                       d.Status.Equals("Error", StringComparison.OrdinalIgnoreCase))
+                .Take(25)
                 .Select(d =>
                 {
                     var vp = d.Vid != null ? $"VID_{d.Vid}&PID_{d.Pid}" : "sem-VID";
                     var p = d.Port != null ? $" {d.Port}" : "";
-                    return $"• {d.FriendlyName} [{vp} class={d.DeviceClass} status={d.Status}{p}]";
+                    var cls = string.IsNullOrEmpty(d.DeviceClass) ? "SemDriver" : d.DeviceClass;
+                    return $"• {d.BestName} [{vp} class={cls} status={d.Status}{p}]";
                 });
             return string.Join("\n", relevant);
         }, ct);

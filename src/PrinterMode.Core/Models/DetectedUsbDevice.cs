@@ -13,4 +13,12 @@ public record DetectedUsbDevice(
     string? Port,
     string FriendlyName,
     string Status,
-    string DeviceClass);
+    string DeviceClass,
+    string BusName = "")
+{
+    /// <summary>Best human name: the driver friendly name, or the USB bus-reported product
+    /// string when the device is undriven (shows in "Unspecified" with an empty FriendlyName).</summary>
+    public string BestName =>
+        !string.IsNullOrWhiteSpace(FriendlyName) ? FriendlyName :
+        !string.IsNullOrWhiteSpace(BusName) ? BusName : "(sem nome)";
+}
