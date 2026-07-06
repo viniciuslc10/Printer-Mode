@@ -1726,6 +1726,51 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    public async Task<bool> EnsureGenericTextDriverAsync(CancellationToken ct = default)
+    {
+        // Guarantees the built-in "Generic / Text Only" print driver is registered with the
+        // spooler so Add-Printer can use it. It ships inbox with Windows but sometimes needs
+        // Add-PrinterDriver to surface it. Used as the guaranteed final fallback so a printer
+        // is always created (raw/ESC-POS text) even when no vendor driver could be used.
+        return await Task.Run(() =>
+        {
+            try
+            {
+                bool Present()
+                {
+                    using var s = new ManagementObjectSearcher("SELECT Name FROM Win32_PrinterDriver");
+                    foreach (ManagementObject d in s.Get())
+                    {
+                        var n = d["Name"]?.ToString() ?? "";
+                        if (n.StartsWith("Generic / Text Only", StringComparison.OrdinalIgnoreCase))
+                            return true;
+                    }
+                    return false;
+                }
+
+                if (Present())
+                {
+                    _log.Info("EnsureGenericTextDriver: already registered.");
+                    return true;
+                }
+
+                var script = "try { Add-PrinterDriver -Name 'Generic / Text Only' -ErrorAction Stop; 'OK' } " +
+                             "catch { $_.Exception.Message }";
+                var enc = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+                RunProcess("powershell.exe", $"-NoProfile -NonInteractive -EncodedCommand {enc}");
+
+                var ok = Present();
+                _log.Info($"EnsureGenericTextDriver: registered={ok}");
+                return ok;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"EnsureGenericTextDriverAsync: {ex.Message}");
+                return false;
+            }
+        }, ct);
+    }
+
     public async Task RestartSpoolerAsync(CancellationToken ct = default)
     {
         _log.Info("Restarting Print Spooler...");

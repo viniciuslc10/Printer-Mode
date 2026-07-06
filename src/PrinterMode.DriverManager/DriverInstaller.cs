@@ -1038,6 +1038,28 @@ public class DriverInstaller : IDriverInstaller
                     }
                 }
 
+                // Guaranteed final fallback: no vendor driver could be used, but a real port
+                // exists — so create the printer with the built-in "Generic / Text Only" driver.
+                // For an ESC/POS thermal printer this prints receipts/text fine; the queue can be
+                // switched to the vendor driver later. The user asked: if one driver fails, pull
+                // the other so the printer is created no matter what.
+                if (!printerAdded && !string.IsNullOrEmpty(portName))
+                {
+                    var portsNow = await _printerService.GetAvailablePortsAsync(ct);
+                    if (portsNow.Contains(portName, StringComparer.OrdinalIgnoreCase))
+                    {
+                        progress?.Report("Criando impressora com driver genérico (Generic / Text Only)...");
+                        if (await _printerService.EnsureGenericTextDriverAsync(ct) &&
+                            await _printerService.AddPrinterAsync(request.PrinterName, "Generic / Text Only", portName, ct))
+                        {
+                            printerAdded = true;
+                            usedDriverName = "Generic / Text Only";
+                            steps.Add("Impressora criada com driver genérico (Generic / Text Only) — troque pelo driver do fabricante depois, se desejar.");
+                            _log.Info($"Fallback succeeded: printer created with 'Generic / Text Only' on port '{portName}'");
+                        }
+                    }
+                }
+
                 if (!printerAdded)
                 {
                     _log.Error($"AddPrinterAsync failed for all candidates. port='{portName}' tried=[{string.Join(", ", driverNamesToTry)}]");

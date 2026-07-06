@@ -38,6 +38,7 @@ public interface IWindowsPrinterService
     Task<(string? DriverName, string? PortName)> FindAutoInstalledPrinterInfoAsync(string manufacturerHint, string modelHint, CancellationToken ct = default);
     Task<string?> FindPortFromNewPrinterAsync(IReadOnlyList<string> printersBefore, CancellationToken ct = default);
     Task<(string? Name, string? DriverName, string? PortName)> FindNewlyCreatedPrinterAsync(IReadOnlyList<string> printersBefore, CancellationToken ct = default);
+    Task<bool> EnsureGenericTextDriverAsync(CancellationToken ct = default);
     Task RestartSpoolerAsync(CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetSharedPrintersAsync(string host, CancellationToken ct = default);
     Task<bool> CreateLprPortAsync(string portName, string host, string queueName, CancellationToken ct = default);
