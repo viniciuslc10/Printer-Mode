@@ -62,6 +62,8 @@ public class DriverInstaller : IDriverInstaller
             string? discoveredUsbPort = null; // populated during Step 1 polling so Step 2 doesn't race
             IReadOnlyList<string> portsBeforeInstall = [];    // snapshot for diff-based USB port detection
             IReadOnlyList<string> printersBeforeInstall = []; // snapshot for new-printer port detection
+            bool usbInterfacePathAttempted = false;           // surfaced in the failure message
+            string? usbInterfacePathFound = null;             // so the user sees this, not just the log
 
             // ── Resolve the REAL connected device BEFORE the driver install step ───────────
             // The catalog VID/PID can be a wrong placeholder (confirmed: GertecG250.inf's
@@ -233,8 +235,11 @@ public class DriverInstaller : IDriverInstaller
                     // ── Phase 1: Fast WMI check — no Spooler restart ──────────────────────
                     // Win32_Printer already contains the driver name AND port name that PnP
                     // assigned. Query it directly (no PowerShell process spawn → fast).
-                    // 5 polls × 1.5 s ≈ 7-8 s max. Covers the common USB plug-and-play case.
-                    for (int q = 0; q < 5 && (resolvedSilent == null || (needsUsbPort && discoveredUsbPort == null)); q++)
+                    // Gated ONLY on the driver name (its real purpose here) — NOT on the port.
+                    // Port detection is handled thoroughly in Step 2; coupling this loop's exit
+                    // to "port found" meant it ran to its FULL 7.5s every time for any device
+                    // whose port isn't found this way, even after the driver resolved instantly.
+                    for (int q = 0; q < 5 && resolvedSilent == null; q++)
                     {
                         if (q > 0) await Task.Delay(1500, ct);
 
@@ -255,21 +260,16 @@ public class DriverInstaller : IDriverInstaller
                                 ?? await _printerService.FindPortFromNewPrinterAsync(printersBeforeInstall, ct);
                     }
 
-                    // ── Phase 2: Restart Spooler only if Phase 1 didn't resolve ──────────
+                    // ── Phase 2: Restart Spooler only if Phase 1 didn't resolve the driver ──
+                    // Gated ONLY on the driver name, same reasoning as Phase 1. If the driver
+                    // is already known, this entire phase (and its Spooler restart) is skipped.
                     IReadOnlyList<string> driversAfterSilent = driversBefore;
-                    if (resolvedSilent == null || (needsUsbPort && discoveredUsbPort == null))
+                    if (resolvedSilent == null)
                     {
-                        if (resolvedSilent == null)
-                        {
-                            progress?.Report("Reiniciando serviço de impressão para carregar o driver...");
-                            await _printerService.RestartSpoolerAsync(ct);
-                        }
-                        else
-                        {
-                            progress?.Report("Aguardando porta USB...");
-                        }
+                        progress?.Report("Reiniciando serviço de impressão para carregar o driver...");
+                        await _printerService.RestartSpoolerAsync(ct);
 
-                        for (int poll = 0; poll < 6 && (resolvedSilent == null || (needsUsbPort && discoveredUsbPort == null)); poll++)
+                        for (int poll = 0; poll < 6 && resolvedSilent == null; poll++)
                         {
                             await Task.Delay(3000, ct);
 
@@ -538,8 +538,30 @@ public class DriverInstaller : IDriverInstaller
                             ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
                             ?? await _printerService.FindPortFromNewPrinterAsync(printersBeforeInstall, ct);
 
-                    // 5) One combined recovery attempt (~12s): fresh Spooler, then cycle the
+                    // 5) Direct device-interface path (fast, no waiting). usbprint.sys exposes a
+                    //    device interface (GUID_DEVINTERFACE_USBPRINT) for every bound USB
+                    //    printer-class device — independent of whether the Spooler's USB Print
+                    //    Monitor ever creates a named port (the step that keeps failing here).
+                    //    Tried FIRST, before any restart/re-enum, since it needs neither.
+                    if (discoveredUsbPort == null &&
+                        !string.IsNullOrEmpty(request.Driver.VendorId) &&
+                        !string.IsNullOrEmpty(request.Driver.ProductId))
+                    {
+                        usbInterfacePathAttempted = true;
+                        usbInterfacePathFound = await _printerService.FindUsbPrintDeviceInterfacePathAsync(
+                            request.Driver.VendorId!, request.Driver.ProductId!, ct);
+                        if (!string.IsNullOrEmpty(usbInterfacePathFound))
+                        {
+                            await _printerService.EnsurePortRegisteredAsync(usbInterfacePathFound, ct);
+                            discoveredUsbPort = usbInterfacePathFound;
+                            _log.Info($"Using raw USBPRINT device interface path as port: '{usbInterfacePathFound}'");
+                        }
+                    }
+
+                    // 6) One combined recovery attempt (~10s): fresh Spooler, then cycle the
                     //    resolved device (the arrival event the fresh USB Monitor reacts to).
+                    //    Last resort — every variant of this has failed in testing so far, kept
+                    //    only because it is the cheapest remaining check.
                     if (discoveredUsbPort == null &&
                         !string.IsNullOrEmpty(request.Driver.VendorId) &&
                         !string.IsNullOrEmpty(request.Driver.ProductId))
@@ -548,7 +570,7 @@ public class DriverInstaller : IDriverInstaller
                         await _printerService.RestartSpoolerAsync(ct);
                         await _printerService.ReEnumerateDeviceByVidPidAsync(
                             request.Driver.VendorId!, request.Driver.ProductId!, ct);
-                        for (int p = 0; p < 3 && discoveredUsbPort == null; p++)
+                        for (int p = 0; p < 2 && discoveredUsbPort == null; p++)
                         {
                             await Task.Delay(2000, ct);
                             discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
@@ -557,48 +579,6 @@ public class DriverInstaller : IDriverInstaller
                         }
                         if (discoveredUsbPort != null)
                             await _printerService.EnsurePortRegisteredAsync(discoveredUsbPort, ct);
-                    }
-
-                    // 5b) Direct device-interface path (fully automatic, no physical action).
-                    // usbprint.sys exposes a device interface (GUID_DEVINTERFACE_USBPRINT) for
-                    // every bound USB printer-class device — this exists independently of whether
-                    // the Spooler's USB Print Monitor ever creates a named port for it (which is
-                    // exactly the step that keeps failing here). Enumerating this interface finds
-                    // the RAW communication path to the hardware directly, and registering that
-                    // path as a Local Port lets Windows write to the device without depending on
-                    // the USB Monitor's port-creation notification at all.
-                    if (discoveredUsbPort == null &&
-                        !string.IsNullOrEmpty(request.Driver.VendorId) &&
-                        !string.IsNullOrEmpty(request.Driver.ProductId))
-                    {
-                        var devicePath = await _printerService.FindUsbPrintDeviceInterfacePathAsync(
-                            request.Driver.VendorId!, request.Driver.ProductId!, ct);
-                        if (!string.IsNullOrEmpty(devicePath))
-                        {
-                            await _printerService.EnsurePortRegisteredAsync(devicePath, ct);
-                            discoveredUsbPort = devicePath;
-                            _log.Info($"Using raw USBPRINT device interface path as port: '{devicePath}'");
-                        }
-                    }
-
-                    // 6) One DriverStore INF attempt (~8s) — forces the REAL manufacturer INF
-                    //    (staged by its installer) to match this device, distinct from a plain
-                    //    device cycle. Skipped if a port was already found above.
-                    if (discoveredUsbPort == null)
-                    {
-                        var storeInfs = FindNewDriverStoreInfs(new HashSet<string>(), request.Driver);
-                        var bestInf = storeInfs.FirstOrDefault();
-                        if (bestInf != null)
-                        {
-                            progress?.Report("Associando driver ao dispositivo USB via DriverStore...");
-                            await InstallViaPnpUtilAsync(bestInf, ct);
-                            await _printerService.RestartSpoolerAsync(ct);
-                            await Task.Delay(4000, ct);
-                            discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
-                                ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
-                                ?? await _printerService.FindUsbPortFromRegistryAsync(ct)
-                                ?? await _printerService.FindPortFromNewPrinterAsync(printersBeforeInstall, ct);
-                        }
                     }
 
                     portName = request.PortName ?? discoveredUsbPort ?? "USB001";
@@ -870,12 +850,18 @@ public class DriverInstaller : IDriverInstaller
                             var deviceList = await _printerService.ListConnectedUsbDevicesAsync(ct);
                             var monitorsNowFinal = await _printerService.GetPrintMonitorsAsync(ct);
                             var monitorInfo = $"Monitores de porta registrados no Windows: {string.Join(", ", monitorsNowFinal)}.";
+                            var interfaceInfo = !usbInterfacePathAttempted
+                                ? "Interface USBPRINT: não verificada (VID/PID indisponível)."
+                                : usbInterfacePathFound != null
+                                    ? $"Interface USBPRINT encontrada mas não aceita pelo Windows como porta: {usbInterfacePathFound}"
+                                    : "Interface USBPRINT: nenhuma encontrada para este dispositivo.";
                             _log.Error($"Device diagnostics: {diag}");
                             _log.Error($"Connected USB devices:\n{deviceList}");
                             _log.Error($"Print monitors: {monitorInfo}");
+                            _log.Error($"USBPRINT interface: {interfaceInfo}");
                             return InstallResult.Fail(
                                 "Porta USB não encontrada no Windows.",
-                                $"{diag}\n{monitorInfo}\n\n" +
+                                $"{diag}\n{monitorInfo}\n{interfaceInfo}\n\n" +
                                 $"Dispositivos USB conectados:\n{deviceList}\n\n" +
                                 "Verifique se a impressora está conectada e ligada. Desconecte e reconecte o cabo USB e tente novamente. " +
                                 "Se o problema persistir, o driver do fabricante pode não ter vinculado a impressora ao Windows.",
