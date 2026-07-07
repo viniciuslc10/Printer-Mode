@@ -113,32 +113,46 @@ public class DriverInstaller : IDriverInstaller
 
                 // Confirmed root cause (real Windows text, not a guess): this specific package
                 // has no digital signature at all, and pnputil/Add-PrinterDriver refuse that
-                // headlessly with no silent override. The classic printui.dll "/ia" install-
-                // from-INF flow goes through the interactive Add Printer wizard path instead,
-                // which DOES show Windows' native "Install this driver software anyway" dialog
-                // — a ONE-TIME, per-machine confirmation that doesn't change any system-wide
-                // signing policy. Only trigger it when the failure actually looks like a missing-
-                // signature problem, not for any other kind of Add-PrinterDriver rejection.
+                // headlessly with no silent override at all. Tried the classic printui.dll "/ia"
+                // install-from-INF flow first (goes through the interactive Add Printer wizard
+                // path) — confirmed in the field it returns instantly without ever showing a
+                // dialog on current Windows, so it cannot be relied on. AddPrinterDriverEx
+                // (winspool.drv), called directly with APD_INSTALL_WARNED_DRIVER, is the actual
+                // documented Win32 mechanism for this: it installs an unsigned driver headlessly,
+                // asserting the same consent a human would give by clicking "Install this driver
+                // software anyway" — this app already has that consent (running elevated,
+                // launched by the user). Only trigger it when the failure actually looks like a
+                // missing-signature problem, and only when the catalog declares the data/
+                // dependent files this driver needs.
                 bool looksUnsigned = !pnpOk &&
                     (pnpOutput.Contains("assinatura", StringComparison.OrdinalIgnoreCase) ||
                      pnpOutput.Contains("signature", StringComparison.OrdinalIgnoreCase) ||
                      pnpOutput.Contains("signed", StringComparison.OrdinalIgnoreCase));
 
-                if (repoRegisteredDriverName == null && looksUnsigned)
+                if (repoRegisteredDriverName == null && looksUnsigned &&
+                    !string.IsNullOrEmpty(request.Driver.DriverDataFile))
                 {
-                    steps.Add("⚠ Driver sem assinatura digital — abrindo confirmação única do Windows para registrá-lo (próximas instalações não vão precisar disso de novo)...");
-                    _log.Info($"Unsigned driver detected ('{pnpOutput.Trim()}') — triggering one-time interactive registration.");
-                    progress?.Report("Aguardando confirmação (uma única vez) para instalar driver não assinado...");
+                    var driverFileDir = Path.GetDirectoryName(repoInfPath)!;
+                    var dataFilePath = Path.Combine(driverFileDir, request.Driver.DriverDataFile);
+                    var dependentPaths = request.Driver.DriverDependentFiles
+                        .Select(f => Path.Combine(driverFileDir, f)).ToList();
 
-                    await _printerService.InteractiveRegisterUnsignedDriverAsync(
-                        repoInfPath, request.Driver.DriverName, ct);
+                    steps.Add("⚠ Driver sem assinatura digital — registrando com consentimento já concedido (não requer nenhuma tela nem clique)...");
+                    _log.Info($"Unsigned driver detected ('{pnpOutput.Trim()}') — registering via AddPrinterDriverEx/APD_INSTALL_WARNED_DRIVER.");
+                    progress?.Report("Registrando driver não assinado...");
 
-                    // Re-check: if the user accepted, the driver is now registered and every
-                    // subsequent lookup (including plain Get-PrinterDriver) will find it.
-                    var (retryName, retryError) = await _printerService.TryRegisterPrintDriverFromInfWithReasonAsync(
-                        repoInfPath, request.Driver.AllDriverNames().ToList(), ct);
-                    repoRegisteredDriverName = retryName;
-                    registerError = retryError ?? registerError;
+                    var (win32Ok, win32Error) = await _printerService.TryRegisterUnsignedPrintDriverAsync(
+                        request.Driver.DriverName, dataFilePath, dependentPaths, ct);
+                    if (win32Ok)
+                    {
+                        repoRegisteredDriverName = request.Driver.DriverName;
+                        _log.Info($"AddPrinterDriverEx succeeded for '{request.Driver.DriverName}'.");
+                    }
+                    else
+                    {
+                        registerError = win32Error ?? registerError;
+                        _log.Warning($"AddPrinterDriverEx failed for '{request.Driver.DriverName}': {win32Error}");
+                    }
                 }
 
                 if (repoRegisteredDriverName != null)

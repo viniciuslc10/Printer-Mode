@@ -10,7 +10,7 @@ public interface IWindowsPrinterService
     Task<(bool ok, string? error)> TryAddPrinterWithReasonAsync(string printerName, string driverName, string portName, CancellationToken ct = default);
     Task<string?> TryRegisterPrintDriverFromInfAsync(string infPath, IReadOnlyList<string> candidateNames, CancellationToken ct = default);
     Task<(string? name, string? error)> TryRegisterPrintDriverFromInfWithReasonAsync(string infPath, IReadOnlyList<string> candidateNames, CancellationToken ct = default);
-    Task<bool> InteractiveRegisterUnsignedDriverAsync(string infPath, string modelName, CancellationToken ct = default);
+    Task<(bool ok, string? error)> TryRegisterUnsignedPrintDriverAsync(string driverName, string dataFilePath, IReadOnlyList<string> dependentFilePaths, CancellationToken ct = default);
     Task<bool> PrinterExistsAsync(string printerName, CancellationToken ct = default);
     Task<string?> GetPrinterDriverAsync(string printerName, CancellationToken ct = default);
     Task<bool> UpdatePrinterPortAsync(string printerName, string newPortName, CancellationToken ct = default);

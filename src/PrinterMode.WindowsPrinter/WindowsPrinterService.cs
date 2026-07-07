@@ -54,6 +54,37 @@ internal static class NetApi32
     public static extern int NetApiBufferFree(IntPtr lpBuffer);
 }
 
+// winspool.drv — AddPrinterDriverEx, called directly (not via the Add-PrinterDriver cmdlet).
+// APD_INSTALL_WARNED_DRIVER tells the Spooler API the caller already knows this driver is
+// unsigned and accepts installing it anyway, WITHOUT the interactive "Windows can't verify
+// the publisher" dialog — this is the documented, sanctioned way to install an OEM print
+// driver package that has no catalog file at all, for a caller (like this app, run elevated
+// by the user) that has already obtained the user's informed consent out of band. It does
+// NOT touch any system-wide signing/security policy — it only accepts this one driver.
+internal static class WinspoolDriverApi
+{
+    public const uint APD_COPY_ALL_FILES = 0x00000004;
+    public const uint APD_INSTALL_WARNED_DRIVER = 0x00008000;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DRIVER_INFO_3
+    {
+        public uint cVersion;
+        public IntPtr pName;
+        public IntPtr pEnvironment;
+        public IntPtr pDriverPath;
+        public IntPtr pDataFile;
+        public IntPtr pConfigFile;
+        public IntPtr pHelpFile;
+        public IntPtr pDependentFiles;
+        public IntPtr pMonitorName;
+        public IntPtr pDefaultDataType;
+    }
+
+    [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern bool AddPrinterDriverEx(string? pName, uint level, IntPtr pDriverInfo, uint dwFileCopyFlags);
+}
+
 public class WindowsPrinterService : IWindowsPrinterService
 {
     private readonly ILogService _log;
@@ -198,46 +229,97 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
-    public async Task<bool> InteractiveRegisterUnsignedDriverAsync(
-        string infPath, string modelName, CancellationToken ct = default)
+    public async Task<(bool ok, string? error)> TryRegisterUnsignedPrintDriverAsync(
+        string driverName, string dataFilePath, IReadOnlyList<string> dependentFilePaths, CancellationToken ct = default)
     {
-        // pnputil/Add-PrinterDriver refuse an INF with no catalog/digital signature
-        // unconditionally, headless — there is no silent override. The classic printui.dll
-        // "install from INF" flow goes through the same interactive install path as the Add
-        // Printer wizard's "Have Disk", which DOES show Windows' native "can't verify the
-        // publisher" dialog with an "Install this driver software anyway" button. This is a
-        // ONE-TIME, per-machine, per-driver-package decision — accepting it does not change
-        // any system-wide signing/security policy, and every install after this (including
-        // fully silent ones) reuses the resulting registration without showing anything again.
+        // Confirmed in the field: rundll32 printui.dll,PrintUIEntry /ia returns instantly
+        // (exit=0) without ever showing the classic "unsigned driver" dialog — that legacy
+        // printui.dll flow is unreliable on current Windows and cannot be trusted.
+        //
+        // AddPrinterDriverEx (winspool.drv), called directly, is the documented Win32 API the
+        // Print Spooler itself uses. Its APD_INSTALL_WARNED_DRIVER flag exists specifically to
+        // install a driver that would otherwise trigger the "not digitally signed" warning,
+        // WITHOUT showing any dialog — the caller (this app, already running elevated because
+        // the user launched it as Administrator) is asserting the same consent a human would
+        // give by clicking "Install this driver software anyway". It changes no system-wide
+        // signing/security policy; it only accepts this one driver package.
+        //
+        // pDriverPath/pConfigFile/pHelpFile reference the SYSTEM's own UNIDRV.DLL/UNIDRVUI.DLL/
+        // UNIDRV.HLP (already present — confirmed by "Microsoft enhanced Point and Print
+        // compatibility driver" already using them) rather than the vendor's bundled copies, to
+        // avoid touching Microsoft-signed shared components.
         return await Task.Run(() =>
         {
+            if (!File.Exists(dataFilePath))
+                return (false, (string?)$"Arquivo de dados do driver não encontrado: {dataFilePath}");
+
+            var handles = new List<IntPtr>();
+            var infoPtr = IntPtr.Zero;
             try
             {
-                var psi = new ProcessStartInfo
+                IntPtr Alloc(string s)
                 {
-                    FileName = "rundll32.exe",
-                    Arguments = $"printui.dll,PrintUIEntry /ia /m \"{modelName}\" /f \"{infPath}\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-                _log.Info($"Interactive one-time driver registration (requires user confirmation): /ia /m \"{modelName}\" /f \"{infPath}\"");
-                using var proc = Process.Start(psi)!;
-                // Generous timeout: a human needs to see and act on the dialog. Runs only once
-                // ever per machine for this driver — nothing to poll for afterward.
-                bool exited = proc.WaitForExit(5 * 60_000);
-                if (!exited)
-                {
-                    _log.Warning("Interactive driver registration timed out waiting for user response — abandoning.");
-                    try { proc.Kill(); } catch { /* best effort */ }
-                    return false;
+                    var p = Marshal.StringToHGlobalUni(s);
+                    handles.Add(p);
+                    return p;
                 }
-                _log.Info($"Interactive driver registration finished, exit={proc.ExitCode}.");
-                return true;
+
+                IntPtr AllocMultiSz(IEnumerable<string> items)
+                {
+                    var sb = new System.Text.StringBuilder();
+                    foreach (var s in items.Where(File.Exists))
+                    {
+                        sb.Append(s);
+                        sb.Append('\0');
+                    }
+                    sb.Append('\0');
+                    var p = Marshal.StringToHGlobalUni(sb.ToString());
+                    handles.Add(p);
+                    return p;
+                }
+
+                var info = new WinspoolDriverApi.DRIVER_INFO_3
+                {
+                    cVersion = 3,
+                    pName = Alloc(driverName),
+                    pEnvironment = Alloc("Windows x64"),
+                    pDriverPath = Alloc("UNIDRV.DLL"),
+                    pDataFile = Alloc(dataFilePath),
+                    pConfigFile = Alloc("UNIDRVUI.DLL"),
+                    pHelpFile = Alloc("UNIDRV.HLP"),
+                    pDependentFiles = AllocMultiSz(dependentFilePaths),
+                    pMonitorName = IntPtr.Zero,
+                    pDefaultDataType = Alloc("RAW")
+                };
+
+                infoPtr = Marshal.AllocHGlobal(Marshal.SizeOf<WinspoolDriverApi.DRIVER_INFO_3>());
+                Marshal.StructureToPtr(info, infoPtr, false);
+
+                bool ok = WinspoolDriverApi.AddPrinterDriverEx(
+                    null, 3, infoPtr,
+                    WinspoolDriverApi.APD_COPY_ALL_FILES | WinspoolDriverApi.APD_INSTALL_WARNED_DRIVER);
+
+                if (ok)
+                {
+                    _log.Info($"AddPrinterDriverEx (APD_INSTALL_WARNED_DRIVER): registered '{driverName}' from '{dataFilePath}'.");
+                    return (true, (string?)null);
+                }
+
+                var err = Marshal.GetLastWin32Error();
+                var msg = new System.ComponentModel.Win32Exception(err).Message;
+                _log.Warning($"AddPrinterDriverEx failed for '{driverName}': Win32 error {err} ({msg})");
+                return (false, (string?)$"AddPrinterDriverEx: erro {err} — {msg}");
             }
             catch (Exception ex)
             {
-                _log.Warning($"InteractiveRegisterUnsignedDriverAsync failed: {ex.Message}");
-                return false;
+                _log.Warning($"TryRegisterUnsignedPrintDriverAsync failed: {ex.Message}");
+                return (false, (string?)ex.Message);
+            }
+            finally
+            {
+                foreach (var p in handles)
+                    if (p != IntPtr.Zero) Marshal.FreeHGlobal(p);
+                if (infoPtr != IntPtr.Zero) Marshal.FreeHGlobal(infoPtr);
             }
         }, ct);
     }

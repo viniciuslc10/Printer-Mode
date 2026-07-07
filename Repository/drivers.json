@@ -471,6 +471,8 @@
       "driverFolder": "Gertec\\G250",
       "infFile": "PrinterDriver\\x64\\GAPrinterv1x64.INF",
       "infFileX86": "PrinterDriver\\x86\\GAPrinterv1x86.INF",
+      "driverDataFile": "GAC80250.GPD",
+      "driverDependentFiles": ["GAPrinterv1.dll", "GPUNI.dll", "STDNAMES.GPD", "TTFSUB.GPD"],
       "installerExe": "Gertec_G250_Driver_v1.1.exe",
       "installerArgs": "/SILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",

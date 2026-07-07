@@ -18,6 +18,15 @@ public class DriverInfo
 
     // Optional 32-bit variant of InfFile, used instead of InfFile on a 32-bit OS.
     public string? InfFileX86 { get; set; }
+
+    // For UNIDRV-based (GPD) print drivers with no digital signature: the model's own data
+    // file (.GPD, relative to the folder containing InfFile/InfFileX86) and any OEM files it
+    // depends on (e.g. a ResourceDLL). Used only as a fallback, via AddPrinterDriverEx +
+    // APD_INSTALL_WARNED_DRIVER, when pnputil/Add-PrinterDriver refuse the package outright for
+    // lacking a signature. Left empty for drivers that don't need this path.
+    public string? DriverDataFile { get; set; }
+    public List<string> DriverDependentFiles { get; set; } = [];
+
     public string DriverName { get; set; } = string.Empty;
     public string? Version { get; set; }
     public PaperConfig DefaultPaper { get; set; } = new();
