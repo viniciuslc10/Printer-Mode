@@ -488,9 +488,23 @@ public class DriverInstaller : IDriverInstaller
                         }
                     }
 
-                    // 4) Standard USB port, if one already exists (instant).
-                    discoveredUsbPort ??= await _printerService.FindBestUsbPortAsync(ct)
+                    // 4) Standard USB port, if one already exists. VERIFIED against the live
+                    //    Spooler port list before being accepted — FindUsbPortFromRegistryAsync
+                    //    reads the USB Monitor's registry key, which can hold a leftover entry
+                    //    from an earlier attempt that never actually became a real Win32_PrinterPort
+                    //    entry. An unverified value here would silently skip step 5 below (it only
+                    //    runs while discoveredUsbPort is null) — exactly the phantom-port bug
+                    //    already fixed once for print monitors; the registry path has the same risk.
+                    var candidatePort = await _printerService.FindBestUsbPortAsync(ct)
                         ?? await _printerService.FindUsbPortFromRegistryAsync(ct);
+                    if (!string.IsNullOrEmpty(candidatePort))
+                    {
+                        var realPortsCheck = await _printerService.GetAvailablePortsAsync(ct);
+                        if (realPortsCheck.Contains(candidatePort, StringComparer.OrdinalIgnoreCase))
+                            discoveredUsbPort = candidatePort;
+                        else
+                            _log.Warning($"Discarded unverified candidate port '{candidatePort}' — not in live Spooler port list.");
+                    }
 
                     // 5) PRIMARY MECHANISM — the raw USBPRINT device-interface path.
                     //    usbprint.sys registers this interface as soon as it binds the device
