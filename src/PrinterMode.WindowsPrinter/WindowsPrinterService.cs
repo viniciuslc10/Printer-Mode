@@ -218,6 +218,43 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    public async Task<string?> FindBestUsbPortViaPowerShellAsync(CancellationToken ct = default)
+    {
+        // Same query as FindBestUsbPortAsync, but through Get-PrinterPort (PrintManagement
+        // module) instead of the legacy WMI Win32_PrinterPort class. Confirmed repeatedly in
+        // this exact environment: Win32_PrinterPort can lag well behind reality — a port that
+        // genuinely exists (verified by hand in Printer Properties) was invisible to it. The
+        // same lesson already applied to driver detection (GetInstalledDriversAsync moved to
+        // Get-PrinterDriver for this reason) is applied here for ports.
+        return await Task.Run(() =>
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = "-NoProfile -NonInteractive -Command " +
+                        "\"Get-PrinterPort | Where-Object { $_.Name -like 'USB*' -or $_.Name -like 'DOT4*' -or $_.Name -like 'WSD*' } " +
+                        "| Select-Object -First 1 -ExpandProperty Name\"",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true
+                };
+                using var proc = Process.Start(psi)!;
+                var output = proc.StandardOutput.ReadToEnd().Trim();
+                proc.WaitForExit(15_000);
+                var best = string.IsNullOrEmpty(output) ? null : output;
+                _log.Info($"FindBestUsbPortViaPowerShellAsync: '{best ?? "none"}'");
+                return best;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"FindBestUsbPortViaPowerShellAsync: {ex.Message}");
+                return null;
+            }
+        }, ct);
+    }
+
     public async Task<string?> FindNewPortSinceSnapshotAsync(
         IReadOnlyList<string> portsBefore, CancellationToken ct = default)
     {

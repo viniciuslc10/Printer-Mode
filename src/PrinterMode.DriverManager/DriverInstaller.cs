@@ -995,7 +995,10 @@ public class DriverInstaller : IDriverInstaller
                     for (int i = 0; i < 3 && realUsbPort == null; i++)
                     {
                         if (i > 0) await Task.Delay(2000, ct);
-                        realUsbPort = await _printerService.FindBestUsbPortAsync(ct);
+                        // PowerShell's Get-PrinterPort first — bypasses the WMI Win32_PrinterPort
+                        // lag confirmed repeatedly in this environment. WMI kept as fallback.
+                        realUsbPort = await _printerService.FindBestUsbPortViaPowerShellAsync(ct)
+                            ?? await _printerService.FindBestUsbPortAsync(ct);
                     }
                     if (realUsbPort != null)
                     {
