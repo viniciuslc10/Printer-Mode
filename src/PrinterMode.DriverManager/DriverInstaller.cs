@@ -540,12 +540,21 @@ public class DriverInstaller : IDriverInstaller
                         usbInterfacePathAttempted = true;
                         usbInterfacePathFound = await _printerService.FindUsbPrintDeviceInterfacePathAsync(
                             request.Driver.VendorId!, request.Driver.ProductId!, ct);
-                        if (!string.IsNullOrEmpty(usbInterfacePathFound) &&
-                            await _printerService.EnsurePortRegisteredAsync(usbInterfacePathFound, ct))
+                        if (!string.IsNullOrEmpty(usbInterfacePathFound))
                         {
+                            // Try pre-registering it as a Local Port, but do NOT gate on success:
+                            // Add-PrinterPort has its own (stricter) name validation and can reject
+                            // a raw device-interface path outright, while Add-Printer -PortName
+                            // (called later, in Step 3) creates an ad-hoc local port implicitly as
+                            // part of printer creation and may accept the very same string. Blocking
+                            // here on Add-PrinterPort's success meant Add-Printer was NEVER even
+                            // attempted with this path — the real, decisive test never ran.
+                            var preRegistered = await _printerService.EnsurePortRegisteredAsync(usbInterfacePathFound, ct);
                             discoveredUsbPort = usbInterfacePathFound;
-                            steps.Add($"Porta criada a partir da interface USBPRINT do dispositivo.");
-                            _log.Info($"Using raw USBPRINT device interface path as port: '{usbInterfacePathFound}'");
+                            steps.Add(preRegistered
+                                ? "Porta criada a partir da interface USBPRINT do dispositivo."
+                                : "Porta da interface USBPRINT será criada implicitamente ao adicionar a impressora.");
+                            _log.Info($"Using raw USBPRINT device interface path as port: '{usbInterfacePathFound}' (pre-registered={preRegistered})");
                         }
                     }
 
