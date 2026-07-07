@@ -1217,16 +1217,43 @@ public class WindowsPrinterService : IWindowsPrinterService
     {
         return await Task.Run(() =>
         {
+            var ok = false;
             try
             {
                 var args = $"/dl /n \"{printerName}\"";
-                return RunPrintUi(args);
+                ok = RunPrintUi(args);
             }
             catch (Exception ex)
             {
-                _log.Error($"Failed to delete printer {printerName}", ex);
-                return false;
+                _log.Error($"Failed to delete printer {printerName} via printui", ex);
             }
+
+            // printui only removes a local printer object. A leftover per-user network
+            // PRINTER CONNECTION with the same display name (e.g. from an earlier Shared-mode
+            // test) is a separate registry entry that printui won't touch, and is one confirmed
+            // way two icons with the identical name end up in Devices and Printers. Remove-Printer
+            // covers both kinds; run it too, unconditionally, and don't let its failure mask a
+            // printui success (or vice versa).
+            try
+            {
+                var script = $"Remove-Printer -Name '{EscapePs(printerName)}' -ErrorAction SilentlyContinue";
+                var enc = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {enc}",
+                    UseShellExecute = false, CreateNoWindow = true
+                };
+                using var proc = Process.Start(psi)!;
+                proc.WaitForExit(15_000);
+                ok = ok || proc.ExitCode == 0;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Remove-Printer fallback failed for '{printerName}': {ex.Message}");
+            }
+
+            return ok;
         }, ct);
     }
 
@@ -1727,6 +1754,33 @@ public class WindowsPrinterService : IWindowsPrinterService
     {
         return await Task.Run(() =>
         {
+            // Get-Printer (PrintManagement module) reflects the live Spooler state
+            // immediately; Win32_Printer (WMI) has repeatedly been confirmed to lag behind it
+            // in this environment. Try PowerShell first, WMI only as a fallback if it fails
+            // to run at all (e.g. module not present).
+            try
+            {
+                var script = $"if (Get-Printer -Name '{EscapePs(printerName)}' -ErrorAction SilentlyContinue) " +
+                             "{ 'YES' } else { 'NO' }";
+                var enc = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {enc}",
+                    UseShellExecute = false, CreateNoWindow = true,
+                    RedirectStandardOutput = true
+                };
+                using var proc = Process.Start(psi)!;
+                var stdout = proc.StandardOutput.ReadToEnd().Trim();
+                proc.WaitForExit(15_000);
+                if (stdout.Equals("YES", StringComparison.OrdinalIgnoreCase)) return true;
+                if (stdout.Equals("NO", StringComparison.OrdinalIgnoreCase)) return false;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"PrinterExistsAsync (PowerShell) failed, falling back to WMI: {ex.Message}");
+            }
+
             try
             {
                 using var searcher = new ManagementObjectSearcher(

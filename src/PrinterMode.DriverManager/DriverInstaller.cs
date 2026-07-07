@@ -746,12 +746,19 @@ public class DriverInstaller : IDriverInstaller
             // The user explicitly clicked Install, so we always want a clean printer with the
             // correct driver and port. Any existing printer with this name is either a ghost
             // (in the spooler but invisible in the UI) or an old install with possibly wrong
-            // driver/port. Delete it unconditionally so the create path always runs.
-            var printerExists = await _printerService.PrinterExistsAsync(request.PrinterName, ct);
-            if (printerExists)
+            // driver/port. Delete unconditionally — do NOT gate this on PrinterExistsAsync
+            // (Win32_Printer/WMI), which has repeatedly lagged behind reality in this
+            // environment; skipping the delete because a stale check said "doesn't exist" is
+            // exactly how a leftover object from an earlier run survives alongside the new one,
+            // producing two printers with the identical name. Deleting a printer that doesn't
+            // exist is a harmless no-op, so just always try, then verify and retry once.
+            _log.Info($"Removing any existing printer named '{request.PrinterName}' before clean install.");
+            progress?.Report("Removendo impressora existente para reinstalação limpa...");
+            await _printerService.DeletePrinterAsync(request.PrinterName, ct);
+            await Task.Delay(1500, ct);
+            if (await _printerService.PrinterExistsAsync(request.PrinterName, ct))
             {
-                _log.Info($"Printer '{request.PrinterName}' already registered in spooler — removing for clean reinstall.");
-                progress?.Report("Removendo impressora existente para reinstalação limpa...");
+                // Still there (or a second stale duplicate) — one more pass.
                 await _printerService.DeletePrinterAsync(request.PrinterName, ct);
                 await Task.Delay(1500, ct);
             }
