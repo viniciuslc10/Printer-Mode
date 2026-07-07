@@ -806,20 +806,30 @@ public class DriverInstaller : IDriverInstaller
                 // For an ESC/POS thermal printer this prints receipts/text fine; the queue can be
                 // switched to the vendor driver later. The user asked: if one driver fails, pull
                 // the other so the printer is created no matter what.
+                //
+                // IMPORTANT: do NOT gate this on GetAvailablePortsAsync (WMI) containing the port.
+                // That WMI query has the SAME lag already confirmed for PortExists() — a port that
+                // genuinely exists (Add-PrinterPort said so) can still be invisible to WMI for a
+                // while. Add-Printer's own errors so far have been about the DRIVER, never the
+                // port, which is the real signal that the port itself is fine. Gating here on a
+                // known-stale WMI check was silently skipping this entire fallback.
                 if (!printerAdded && !string.IsNullOrEmpty(portName))
                 {
-                    var portsNow = await _printerService.GetAvailablePortsAsync(ct);
-                    if (portsNow.Contains(portName, StringComparer.OrdinalIgnoreCase))
+                    progress?.Report("Criando impressora com driver genérico (Generic / Text Only)...");
+                    var genericDriverReady = await _printerService.EnsureGenericTextDriverAsync(ct);
+                    var (genericOk, genericError) = await _printerService.TryAddPrinterWithReasonAsync(
+                        request.PrinterName, "Generic / Text Only", portName, ct);
+                    if (genericDriverReady && genericOk)
                     {
-                        progress?.Report("Criando impressora com driver genérico (Generic / Text Only)...");
-                        if (await _printerService.EnsureGenericTextDriverAsync(ct) &&
-                            await _printerService.AddPrinterAsync(request.PrinterName, "Generic / Text Only", portName, ct))
-                        {
-                            printerAdded = true;
-                            usedDriverName = "Generic / Text Only";
-                            steps.Add("Impressora criada com driver genérico (Generic / Text Only) — troque pelo driver do fabricante depois, se desejar.");
-                            _log.Info($"Fallback succeeded: printer created with 'Generic / Text Only' on port '{portName}'");
-                        }
+                        printerAdded = true;
+                        usedDriverName = "Generic / Text Only";
+                        steps.Add("Impressora criada com driver genérico (Generic / Text Only) — troque pelo driver do fabricante depois, se desejar.");
+                        _log.Info($"Fallback succeeded: printer created with 'Generic / Text Only' on port '{portName}'");
+                    }
+                    else
+                    {
+                        lastAddPrinterError = genericError ?? lastAddPrinterError;
+                        _log.Warning($"Generic/Text Only fallback also failed: driverReady={genericDriverReady} error={genericError}");
                     }
                 }
 
@@ -827,8 +837,33 @@ public class DriverInstaller : IDriverInstaller
                 {
                     _log.Error($"AddPrinterAsync failed for all candidates. port='{portName}' tried=[{string.Join(", ", driverNamesToTry)}]");
 
-                    // Diagnose root cause: a missing port causes Add-Printer to fail for ALL
-                    // driver names, masquerading as "driver not accepted". Check the port first.
+                    // If Add-Printer's own error clearly names the DRIVER as the problem (now
+                    // readable — CLIXML decoding was fixed), trust that over guessing "port
+                    // missing": GetAvailablePortsAsync (WMI) can lag behind a port that was
+                    // genuinely just created, exactly like PortExists() did for Add-PrinterPort.
+                    // Misreporting this as "porta não encontrada" sent every previous test down
+                    // the wrong path — the actual, fixable issue is a driver NAME mismatch.
+                    bool errorMentionsDriver = !string.IsNullOrEmpty(lastAddPrinterError) &&
+                        (lastAddPrinterError.Contains("driver", StringComparison.OrdinalIgnoreCase));
+                    if (errorMentionsDriver)
+                    {
+                        var installedNow = await _printerService.GetInstalledDriversAsync(ct);
+                        _log.Error($"Root cause: driver name mismatch. Tried=[{string.Join(", ", driverNamesToTry)}] " +
+                                   $"Installed=[{string.Join(", ", installedNow.Take(20))}]");
+                        return InstallResult.Fail(
+                            "O driver não foi reconhecido pelo Windows pelo nome esperado.",
+                            $"Erro do Windows: {lastAddPrinterError}\n\n" +
+                            $"Nomes tentados: {string.Join(", ", driverNamesToTry)}\n" +
+                            $"Drivers instalados no Windows: {string.Join(", ", installedNow.Take(20))}\n\n" +
+                            "O driver do fabricante foi instalado, mas o nome exato registrado no Windows " +
+                            "não corresponde a nenhum dos nomes conhecidos para este modelo. Compare a lista " +
+                            "acima e ajuste o nome do driver no catálogo (drivers.json) se necessário.",
+                            steps);
+                    }
+
+                    // Otherwise, diagnose as a missing port — a missing port also causes
+                    // Add-Printer to fail for ALL driver names, masquerading as "driver not
+                    // accepted", so this remains a real, distinct failure mode to check.
                     if (request.ConnectionType == ConnectionType.USB)
                     {
                         var currentPorts = await _printerService.GetAvailablePortsAsync(ct);
