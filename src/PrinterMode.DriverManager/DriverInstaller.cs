@@ -442,6 +442,26 @@ public class DriverInstaller : IDriverInstaller
                     // printer-class USB port no matter how many times it's cycled. This keeps
                     // only the checks that can plausibly find/create a port, capped at ~15s total.
 
+                    // 0) THE definitive fix for the recurring "Interface USBPRINT: não
+                    //    verificada" symptom: discoveredUsbPort may already be non-null here,
+                    //    set by Step 1's needsUsbPort check or Phase 1/2 (all BEFORE this switch
+                    //    runs) — every one of those calls FindUsbPortFromRegistryAsync, which
+                    //    reads the USB Monitor's registry key and can return a leftover entry
+                    //    from an earlier attempt that never became a real Win32_PrinterPort.
+                    //    An unverified value here silently skips step 5 below (the USBPRINT
+                    //    interface mechanism, the one actually meant to solve this) since it only
+                    //    runs while the port is still null. Verify against the LIVE Spooler port
+                    //    list now, before anything else in this case runs.
+                    if (discoveredUsbPort != null)
+                    {
+                        var livePortsAtStart = await _printerService.GetAvailablePortsAsync(ct);
+                        if (!livePortsAtStart.Contains(discoveredUsbPort, StringComparer.OrdinalIgnoreCase))
+                        {
+                            _log.Warning($"Discarding unverified port '{discoveredUsbPort}' carried over from driver-install phase — not in live Spooler list.");
+                            discoveredUsbPort = null;
+                        }
+                    }
+
                     // 1) User-selected port wins — instant, no detection needed.
                     if (!string.IsNullOrWhiteSpace(request.PortName))
                     {
