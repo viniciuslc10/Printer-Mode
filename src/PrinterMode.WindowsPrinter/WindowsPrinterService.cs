@@ -130,6 +130,59 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    public async Task<string?> TryRegisterPrintDriverFromInfAsync(
+        string infPath, IReadOnlyList<string> candidateNames, CancellationToken ct = default)
+    {
+        // pnputil /add-driver only stages a driver into the PnP DriverStore and binds it to
+        // the matching HARDWARE — it does NOT register a Print Spooler driver entry. A
+        // package that includes a real printer-class INF still needs an explicit
+        // Add-PrinterDriver call for its driver name to ever appear in Get-PrinterDriver /
+        // become usable by Add-Printer -DriverName. This tries each known candidate name
+        // against the given INF and returns the one that Windows actually accepts, if any.
+        if (string.IsNullOrWhiteSpace(infPath) || !File.Exists(infPath) || candidateNames.Count == 0)
+            return null;
+
+        return await Task.Run(() =>
+        {
+            foreach (var name in candidateNames.Where(n => !string.IsNullOrWhiteSpace(n)))
+            {
+                try
+                {
+                    var script =
+                        $"try {{ Add-PrinterDriver -Name '{name.Replace("'", "''")}' " +
+                        $"-InfPath '{infPath.Replace("'", "''")}' -ErrorAction Stop; 'OK' }} " +
+                        $"catch {{ \"ERR:$($_.Exception.Message)\" }}";
+                    var enc = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = "powershell.exe",
+                        Arguments = $"-NoProfile -NonInteractive -EncodedCommand {enc}",
+                        UseShellExecute = false, CreateNoWindow = true,
+                        RedirectStandardOutput = true, RedirectStandardError = true
+                    };
+                    using var proc = Process.Start(psi)!;
+                    var outTask = proc.StandardOutput.ReadToEndAsync();
+                    var errTask = proc.StandardError.ReadToEndAsync();
+                    proc.WaitForExit(20_000);
+                    var stdout = outTask.GetAwaiter().GetResult().Trim();
+                    errTask.GetAwaiter().GetResult();
+
+                    if (stdout.Equals("OK", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _log.Info($"TryRegisterPrintDriverFromInf: registered '{name}' from '{infPath}'.");
+                        return name;
+                    }
+                    _log.Info($"TryRegisterPrintDriverFromInf: '{name}' rejected for '{infPath}': {ExtractPsError(stdout)}");
+                }
+                catch (Exception ex)
+                {
+                    _log.Warning($"TryRegisterPrintDriverFromInfAsync('{name}'): {ex.Message}");
+                }
+            }
+            return null;
+        }, ct);
+    }
+
     public async Task<string?> FindBestUsbPortAsync(CancellationToken ct = default)
     {
         return await Task.Run(() =>

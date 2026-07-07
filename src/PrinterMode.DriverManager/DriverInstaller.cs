@@ -308,16 +308,38 @@ public class DriverInstaller : IDriverInstaller
                         _log.Warning("Driver not detected after all phases. Searching DriverStore...");
                         progress?.Report("Buscando driver no DriverStore do Windows...");
                         var newInfFiles = FindNewDriverStoreInfs(storeSnapBefore, request.Driver);
+                        string? printDriverInfPath = null;
                         foreach (var stagedInf in newInfFiles)
                         {
                             _log.Info($"Found staged inf in DriverStore: '{stagedInf}'");
                             var pnpOk = await InstallViaPnpUtilAsync(stagedInf, ct);
-                            if (pnpOk) break;
+                            if (pnpOk)
+                            {
+                                printDriverInfPath = stagedInf;
+                                break;
+                            }
+                        }
+
+                        // pnputil only binds the driver to the matching HARDWARE — it does not
+                        // register it as a Print Spooler driver, so its name never appears in
+                        // Get-PrinterDriver / becomes usable by Add-Printer on its own. If the
+                        // staged INF is a genuine printer-class package, explicitly register it
+                        // under one of this model's known names so the branded name is usable
+                        // instead of falling back to Generic/Text Only.
+                        if (printDriverInfPath != null)
+                        {
+                            var registeredName = await _printerService.TryRegisterPrintDriverFromInfAsync(
+                                printDriverInfPath, request.Driver.AllDriverNames().ToList(), ct);
+                            if (registeredName != null)
+                            {
+                                resolvedSilent = registeredName;
+                                _log.Info($"Registered print driver '{registeredName}' from DriverStore INF.");
+                            }
                         }
 
                         await Task.Delay(3000, ct);
                         var driversAfterStore = await _printerService.GetInstalledDriversAsync(ct);
-                        resolvedSilent = ResolveActualDriverName(request.Driver, driversAfterStore)
+                        resolvedSilent ??= ResolveActualDriverName(request.Driver, driversAfterStore)
                             ?? driversAfterStore.Except(driversBefore, StringComparer.OrdinalIgnoreCase)
                                                .FirstOrDefault(d => !IsSystemDriver(d));
 
