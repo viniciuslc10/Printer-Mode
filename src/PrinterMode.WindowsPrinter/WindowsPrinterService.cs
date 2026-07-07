@@ -198,6 +198,50 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    public async Task<bool> InteractiveRegisterUnsignedDriverAsync(
+        string infPath, string modelName, CancellationToken ct = default)
+    {
+        // pnputil/Add-PrinterDriver refuse an INF with no catalog/digital signature
+        // unconditionally, headless — there is no silent override. The classic printui.dll
+        // "install from INF" flow goes through the same interactive install path as the Add
+        // Printer wizard's "Have Disk", which DOES show Windows' native "can't verify the
+        // publisher" dialog with an "Install this driver software anyway" button. This is a
+        // ONE-TIME, per-machine, per-driver-package decision — accepting it does not change
+        // any system-wide signing/security policy, and every install after this (including
+        // fully silent ones) reuses the resulting registration without showing anything again.
+        return await Task.Run(() =>
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "rundll32.exe",
+                    Arguments = $"printui.dll,PrintUIEntry /ia /m \"{modelName}\" /f \"{infPath}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                _log.Info($"Interactive one-time driver registration (requires user confirmation): /ia /m \"{modelName}\" /f \"{infPath}\"");
+                using var proc = Process.Start(psi)!;
+                // Generous timeout: a human needs to see and act on the dialog. Runs only once
+                // ever per machine for this driver — nothing to poll for afterward.
+                bool exited = proc.WaitForExit(5 * 60_000);
+                if (!exited)
+                {
+                    _log.Warning("Interactive driver registration timed out waiting for user response — abandoning.");
+                    try { proc.Kill(); } catch { /* best effort */ }
+                    return false;
+                }
+                _log.Info($"Interactive driver registration finished, exit={proc.ExitCode}.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"InteractiveRegisterUnsignedDriverAsync failed: {ex.Message}");
+                return false;
+            }
+        }, ct);
+    }
+
     public async Task<string?> FindBestUsbPortAsync(CancellationToken ct = default)
     {
         return await Task.Run(() =>

@@ -105,11 +105,42 @@ public class DriverInstaller : IDriverInstaller
                 // one has no .cat file) commonly fails unless the INF was already staged into
                 // the DriverStore via pnputil /add-driver /install. Do this unconditionally,
                 // then attempt the real Spooler registration.
-                await InstallViaPnpUtilAsync(repoInfPath, ct);
+                var (pnpOk, pnpOutput) = await InstallViaPnpUtilWithOutputAsync(repoInfPath, ct);
 
                 var (registeredName, registerError) = await _printerService.TryRegisterPrintDriverFromInfWithReasonAsync(
                     repoInfPath, request.Driver.AllDriverNames().ToList(), ct);
                 repoRegisteredDriverName = registeredName;
+
+                // Confirmed root cause (real Windows text, not a guess): this specific package
+                // has no digital signature at all, and pnputil/Add-PrinterDriver refuse that
+                // headlessly with no silent override. The classic printui.dll "/ia" install-
+                // from-INF flow goes through the interactive Add Printer wizard path instead,
+                // which DOES show Windows' native "Install this driver software anyway" dialog
+                // — a ONE-TIME, per-machine confirmation that doesn't change any system-wide
+                // signing policy. Only trigger it when the failure actually looks like a missing-
+                // signature problem, not for any other kind of Add-PrinterDriver rejection.
+                bool looksUnsigned = !pnpOk &&
+                    (pnpOutput.Contains("assinatura", StringComparison.OrdinalIgnoreCase) ||
+                     pnpOutput.Contains("signature", StringComparison.OrdinalIgnoreCase) ||
+                     pnpOutput.Contains("signed", StringComparison.OrdinalIgnoreCase));
+
+                if (repoRegisteredDriverName == null && looksUnsigned)
+                {
+                    steps.Add("⚠ Driver sem assinatura digital — abrindo confirmação única do Windows para registrá-lo (próximas instalações não vão precisar disso de novo)...");
+                    _log.Info($"Unsigned driver detected ('{pnpOutput.Trim()}') — triggering one-time interactive registration.");
+                    progress?.Report("Aguardando confirmação (uma única vez) para instalar driver não assinado...");
+
+                    await _printerService.InteractiveRegisterUnsignedDriverAsync(
+                        repoInfPath, request.Driver.DriverName, ct);
+
+                    // Re-check: if the user accepted, the driver is now registered and every
+                    // subsequent lookup (including plain Get-PrinterDriver) will find it.
+                    var (retryName, retryError) = await _printerService.TryRegisterPrintDriverFromInfWithReasonAsync(
+                        repoInfPath, request.Driver.AllDriverNames().ToList(), ct);
+                    repoRegisteredDriverName = retryName;
+                    registerError = retryError ?? registerError;
+                }
+
                 if (repoRegisteredDriverName != null)
                 {
                     steps.Add($"Driver de impressão registrado: {repoRegisteredDriverName}");
@@ -1602,10 +1633,16 @@ public class DriverInstaller : IDriverInstaller
 
     private async Task<bool> InstallViaPnpUtilAsync(string infPath, CancellationToken ct)
     {
+        var (ok, _) = await InstallViaPnpUtilWithOutputAsync(infPath, ct);
+        return ok;
+    }
+
+    private async Task<(bool ok, string output)> InstallViaPnpUtilWithOutputAsync(string infPath, CancellationToken ct)
+    {
         if (!File.Exists(infPath))
         {
             _log.Warning($"pnputil fallback: inf not found at '{infPath}'");
-            return false;
+            return (false, "Arquivo INF não encontrado.");
         }
 
         try
@@ -1631,12 +1668,12 @@ public class DriverInstaller : IDriverInstaller
             await stderrTask;
             _log.Info($"pnputil exit: {proc.ExitCode}. Output: {output.Trim()}");
 
-            return proc.ExitCode == 0 || proc.ExitCode == 3010;
+            return (proc.ExitCode == 0 || proc.ExitCode == 3010, output);
         }
         catch (Exception ex)
         {
             _log.Warning($"pnputil fallback failed: {ex.Message}");
-            return false;
+            return (false, ex.Message);
         }
     }
 
