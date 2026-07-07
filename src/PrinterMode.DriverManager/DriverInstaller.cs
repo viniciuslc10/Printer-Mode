@@ -64,6 +64,7 @@ public class DriverInstaller : IDriverInstaller
             IReadOnlyList<string> printersBeforeInstall = []; // snapshot for new-printer port detection
             bool usbInterfacePathAttempted = false;           // surfaced in the failure message
             string? usbInterfacePathFound = null;             // so the user sees this, not just the log
+            string? usbPortRegisterError = null;              // the REAL Windows error, not a guess
 
             // ── Resolve the REAL connected device BEFORE the driver install step ───────────
             // The catalog VID/PID can be a wrong placeholder (confirmed: GertecG250.inf's
@@ -556,12 +557,13 @@ public class DriverInstaller : IDriverInstaller
                             // part of printer creation and may accept the very same string. Blocking
                             // here on Add-PrinterPort's success meant Add-Printer was NEVER even
                             // attempted with this path — the real, decisive test never ran.
-                            var preRegistered = await _printerService.EnsurePortRegisteredAsync(usbInterfacePathFound, ct);
+                            var (preRegistered, registerError) = await _printerService.TryRegisterPortWithReasonAsync(usbInterfacePathFound, ct);
                             discoveredUsbPort = usbInterfacePathFound;
+                            usbPortRegisterError = registerError;
                             steps.Add(preRegistered
                                 ? "Porta criada a partir da interface USBPRINT do dispositivo."
-                                : "Porta da interface USBPRINT será criada implicitamente ao adicionar a impressora.");
-                            _log.Info($"Using raw USBPRINT device interface path as port: '{usbInterfacePathFound}' (pre-registered={preRegistered})");
+                                : $"Porta da interface USBPRINT: Add-PrinterPort falhou ({registerError}); Add-Printer tentará criá-la diretamente.");
+                            _log.Info($"Using raw USBPRINT device interface path as port: '{usbInterfacePathFound}' (pre-registered={preRegistered}, error='{registerError}')");
                         }
                     }
 
@@ -724,16 +726,19 @@ public class DriverInstaller : IDriverInstaller
 
                 bool printerAdded = false;
                 string usedDriverName = driverNamesToTry[0];
+                string? lastAddPrinterError = null;
                 foreach (var candidateName in driverNamesToTry)
                 {
                     _log.Info($"Trying AddPrinterAsync with driver: '{candidateName}'");
                     progress?.Report($"Criando impressora (driver: {candidateName})...");
-                    if (await _printerService.AddPrinterAsync(request.PrinterName, candidateName, portName, ct))
+                    var (ok, err) = await _printerService.TryAddPrinterWithReasonAsync(request.PrinterName, candidateName, portName, ct);
+                    if (ok)
                     {
                         printerAdded = true;
                         usedDriverName = candidateName;
                         break;
                     }
+                    lastAddPrinterError = err;
                 }
 
                 if (!printerAdded)
@@ -858,7 +863,7 @@ public class DriverInstaller : IDriverInstaller
                             var interfaceInfo = !usbInterfacePathAttempted
                                 ? "Interface USBPRINT: não verificada (VID/PID indisponível)."
                                 : usbInterfacePathFound != null
-                                    ? $"Interface USBPRINT encontrada mas não aceita pelo Windows como porta: {usbInterfacePathFound}"
+                                    ? $"Interface USBPRINT: {usbInterfacePathFound}\nErro real do Windows ao registrar como porta: {usbPortRegisterError ?? "(Add-Printer também rejeitou; sem mensagem de erro capturada)"}"
                                     : "Interface USBPRINT: nenhuma encontrada para este dispositivo.";
                             _log.Error($"Device diagnostics: {diag}");
                             _log.Error($"Connected USB devices:\n{deviceList}");
@@ -866,7 +871,8 @@ public class DriverInstaller : IDriverInstaller
                             _log.Error($"USBPRINT interface: {interfaceInfo}");
                             return InstallResult.Fail(
                                 "Porta USB não encontrada no Windows.",
-                                $"{diag}\n{monitorInfo}\n{interfaceInfo}\n\n" +
+                                $"{diag}\n{monitorInfo}\n{interfaceInfo}\n" +
+                                $"Erro real do Add-Printer: {lastAddPrinterError ?? "(não tentado)"}\n\n" +
                                 $"Dispositivos USB conectados:\n{deviceList}\n\n" +
                                 "Verifique se a impressora está conectada e ligada. Desconecte e reconecte o cabo USB e tente novamente. " +
                                 "Se o problema persistir, o driver do fabricante pode não ter vinculado a impressora ao Windows.",

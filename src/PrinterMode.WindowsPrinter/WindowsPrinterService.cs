@@ -109,15 +109,24 @@ public class WindowsPrinterService : IWindowsPrinterService
 
     public async Task<bool> AddPrinterAsync(string printerName, string driverName, string portName, CancellationToken ct = default)
     {
+        var (ok, _) = await TryAddPrinterWithReasonAsync(printerName, driverName, portName, ct);
+        return ok;
+    }
+
+    public async Task<(bool ok, string? error)> TryAddPrinterWithReasonAsync(
+        string printerName, string driverName, string portName, CancellationToken ct = default)
+    {
         return await Task.Run(() =>
         {
             // PowerShell Add-Printer is the most reliable method on Windows 10/11.
             // WMI is kept as fallback. Neither shows system error dialogs on failure.
-            if (AddPrinterViaPowerShell(printerName, driverName, portName))
-                return true;
+            var (psOk, psError) = AddPrinterViaPowerShellWithReason(printerName, driverName, portName);
+            if (psOk) return (true, (string?)null);
 
-            _log.Warning("PowerShell Add-Printer failed, trying WMI fallback.");
-            return AddPrinterViaWmi(printerName, driverName, portName);
+            _log.Warning($"PowerShell Add-Printer failed ({psError}), trying WMI fallback.");
+            var (wmiOk, wmiError) = AddPrinterViaWmiWithReason(printerName, driverName, portName);
+            var combined = wmiOk ? null : $"PowerShell: {psError} | WMI: {wmiError}";
+            return (wmiOk, combined);
         }, ct);
     }
 
@@ -410,12 +419,20 @@ public class WindowsPrinterService : IWindowsPrinterService
 
     public async Task<bool> EnsurePortRegisteredAsync(string portName, CancellationToken ct = default)
     {
-        // Guarantees the given port exists in the Print Spooler so Add-Printer accepts it.
-        // USB001/DOT4/WSD ports are created by the USB Monitor and cannot be added manually,
-        // but COMx and generic local ports CAN be registered via Add-PrinterPort. This makes
-        // a device-keyed COM port (from a CDC thermal printer) usable by the spooler.
+        var (ok, _) = await TryRegisterPortWithReasonAsync(portName, ct);
+        return ok;
+    }
+
+    public async Task<(bool ok, string? error)> TryRegisterPortWithReasonAsync(string portName, CancellationToken ct = default)
+    {
+        // Guarantees the given port exists in the Print Spooler so Add-Printer accepts it, and
+        // returns the ACTUAL Windows/PowerShell error text when it fails. The previous version
+        // ran Add-PrinterPort via the generic RunProcess helper, which redirects but never reads
+        // stdout/stderr — so the exact reason Add-PrinterPort rejects a name (invalid characters,
+        // name too long, access denied, monitor doesn't support it, etc.) was silently discarded.
+        // Without it we were guessing blindly; this makes the real cause visible.
         if (string.IsNullOrWhiteSpace(portName))
-            return false;
+            return (false, "nome de porta vazio");
 
         // COMx/LPTx use the canonical colon form the spooler expects; any other name
         // (including a raw device interface path like "\\?\USB#VID_...") is registered exactly
@@ -455,7 +472,7 @@ public class WindowsPrinterService : IWindowsPrinterService
                 if (PortExists())
                 {
                     _log.Info($"EnsurePortRegistered: '{registerName}' already present in spooler.");
-                    return true;
+                    return (true, (string?)null);
                 }
 
                 // USB Monitor ports can't be added by hand — they must come from usbprint.sys.
@@ -464,29 +481,44 @@ public class WindowsPrinterService : IWindowsPrinterService
                     portName.StartsWith("WSD", StringComparison.OrdinalIgnoreCase))
                 {
                     _log.Info($"EnsurePortRegistered: '{portName}' is a monitor-managed port — cannot add manually.");
-                    return false;
+                    return (false, "porta gerenciada pelo USB Monitor — não pode ser criada manualmente");
                 }
 
-                // Register via the Local Port monitor. Use AddPortEx directly through the spooler
-                // (Add-PrinterPort validates COM/LPT names and can reject an arbitrary device
-                // path); prnport.vbs / Add-PrinterPort is tried, and the presence is re-verified.
                 var escaped = registerName.Replace("'", "''");
-                var script = $"try {{ Add-PrinterPort -Name '{escaped}' -ErrorAction Stop; 'OK' }} catch {{ $_.Exception.Message }}";
+                var script = $"try {{ Add-PrinterPort -Name '{escaped}' -ErrorAction Stop; 'OK' }} catch {{ \"ERR:$($_.Exception.Message)\" }}";
                 var enc = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
-                RunProcess("powershell.exe", $"-NoProfile -NonInteractive -EncodedCommand {enc}");
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {enc}",
+                    UseShellExecute = false, CreateNoWindow = true,
+                    RedirectStandardOutput = true, RedirectStandardError = true
+                };
+                using var proc = Process.Start(psi)!;
+                var outTask = proc.StandardOutput.ReadToEndAsync();
+                var errTask = proc.StandardError.ReadToEndAsync();
+                proc.WaitForExit(15_000);
+                var stdout = outTask.GetAwaiter().GetResult().Trim();
+                var stderr = errTask.GetAwaiter().GetResult().Trim();
+                _log.Info($"Add-PrinterPort '{registerName}': stdout='{stdout}' stderr='{stderr}'");
 
                 if (PortExists())
                 {
                     _log.Info($"EnsurePortRegistered: registered '{registerName}' in spooler.");
-                    return true;
+                    return (true, (string?)null);
                 }
-                _log.Warning($"EnsurePortRegistered: '{registerName}' still not present after Add-PrinterPort.");
-                return false;
+
+                var reason = stdout.StartsWith("ERR:", StringComparison.OrdinalIgnoreCase)
+                    ? stdout[4..]
+                    : (!string.IsNullOrWhiteSpace(stderr) ? stderr : stdout);
+                if (string.IsNullOrWhiteSpace(reason)) reason = "Add-PrinterPort não confirmou a criação (sem mensagem de erro).";
+                _log.Warning($"EnsurePortRegistered: '{registerName}' still not present after Add-PrinterPort. Reason: {reason}");
+                return (false, reason);
             }
             catch (Exception ex)
             {
                 _log.Warning($"EnsurePortRegisteredAsync: {ex.Message}");
-                return false;
+                return (false, ex.Message);
             }
         }, ct);
     }
@@ -2026,7 +2058,7 @@ public class WindowsPrinterService : IWindowsPrinterService
         }
     }
 
-    private bool AddPrinterViaPowerShell(string printerName, string driverName, string portName)
+    private (bool ok, string? error) AddPrinterViaPowerShellWithReason(string printerName, string driverName, string portName)
     {
         try
         {
@@ -2054,20 +2086,20 @@ public class WindowsPrinterService : IWindowsPrinterService
             var stderrTask = process.StandardError.ReadToEndAsync();
             var stdoutTask = process.StandardOutput.ReadToEndAsync();
             process.WaitForExit(30_000);
-            var stderr = stderrTask.GetAwaiter().GetResult();
+            var stderr = stderrTask.GetAwaiter().GetResult().Trim();
             stdoutTask.GetAwaiter().GetResult(); // discard stdout
 
-            _log.Info($"PowerShell Add-Printer exit={process.ExitCode} stderr='{stderr.Trim()}'");
-            return process.ExitCode == 0;
+            _log.Info($"PowerShell Add-Printer exit={process.ExitCode} stderr='{stderr}'");
+            return (process.ExitCode == 0, process.ExitCode == 0 ? null : (string.IsNullOrWhiteSpace(stderr) ? $"exit code {process.ExitCode}" : stderr));
         }
         catch (Exception ex)
         {
             _log.Error($"PowerShell Add-Printer exception: {ex.Message}");
-            return false;
+            return (false, ex.Message);
         }
     }
 
-    private bool AddPrinterViaWmi(string printerName, string driverName, string portName)
+    private (bool ok, string? error) AddPrinterViaWmiWithReason(string printerName, string driverName, string portName)
     {
         try
         {
@@ -2088,20 +2120,20 @@ public class WindowsPrinterService : IWindowsPrinterService
             if (result == null)
             {
                 _log.Error($"WMI printer creation returned null for {printerName}");
-                return false;
+                return (false, "Put() retornou null");
             }
             _log.Info($"Printer added via WMI: {printerName} (path={result.Path})");
-            return true;
+            return (true, null);
         }
         catch (ManagementException ex)
         {
             _log.Error($"WMI printer creation failed: ErrorCode={ex.ErrorCode} Message='{ex.Message}'");
-            return false;
+            return (false, $"{ex.ErrorCode}: {ex.Message}");
         }
         catch (Exception ex)
         {
             _log.Error($"WMI printer creation unexpected error: {ex.Message}");
-            return false;
+            return (false, ex.Message);
         }
     }
 

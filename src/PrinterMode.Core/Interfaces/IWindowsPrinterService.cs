@@ -7,6 +7,7 @@ public interface IWindowsPrinterService
     Task<bool> CreateTcpIpPortAsync(string portName, string ipAddress, int port, CancellationToken ct = default);
     Task<bool> CreateUsbPortAsync(string portName, CancellationToken ct = default);
     Task<bool> AddPrinterAsync(string printerName, string driverName, string portName, CancellationToken ct = default);
+    Task<(bool ok, string? error)> TryAddPrinterWithReasonAsync(string printerName, string driverName, string portName, CancellationToken ct = default);
     Task<bool> PrinterExistsAsync(string printerName, CancellationToken ct = default);
     Task<string?> GetPrinterDriverAsync(string printerName, CancellationToken ct = default);
     Task<bool> UpdatePrinterPortAsync(string printerName, string newPortName, CancellationToken ct = default);
@@ -26,6 +27,7 @@ public interface IWindowsPrinterService
     Task<string?> FindDevicePortByVidPidAsync(string vid, string pid, CancellationToken ct = default);
     Task<string?> FindUsbPrintDeviceInterfacePathAsync(string vid, string pid, CancellationToken ct = default);
     Task<bool> EnsurePortRegisteredAsync(string portName, CancellationToken ct = default);
+    Task<(bool ok, string? error)> TryRegisterPortWithReasonAsync(string portName, CancellationToken ct = default);
     Task<string> GetUsbDeviceDiagnosticsAsync(string vid, string pid, CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetPrintMonitorsAsync(CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetPortsForMonitorAsync(string monitorName, CancellationToken ct = default);
