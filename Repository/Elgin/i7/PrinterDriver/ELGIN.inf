@@ -1,0 +1,94 @@
+[Version]
+Signature="$Windows NT$"
+Class=Printer
+ClassGUID={4D36E979-E325-11CE-BFC1-08002BE10318}
+Provider=%OEM%
+CatalogFile=elgin.cat
+DriverVer=03/15/2021,1.7.3
+
+
+[SourceDisksNames.x86]
+1   = ,,,
+
+[SourceDisksNames.amd64]
+1   = ,,,
+
+[SourceDisksFiles]
+I7.XPD   = 1
+I9.XPD   = 1
+DrvRender_ELGIN.dll        = 1
+DrvUI_ELGIN.dll            = 1
+DrvRender_x64_ELGIN.dll  = 1
+DrvUI_x64_ELGIN.dll      = 1
+LM_ELGIN.dll              = 1
+LM_x64_ELGIN.dll         = 1
+
+[DestinationDirs]
+DefaultDestDir=66000
+
+[Manufacturer]
+"ELGIN"=MODEL_HPRT, NTx86, NTamd64
+
+[MODEL_HPRT]
+
+"ELGIN i7(USB)" = TP80A, USBPRINT\ELGINi70AB7,USBPRINT\ELGINI7CAAE
+"ELGIN i9(USB)" = TP806,USBPRINT\ELGINi9CE36, USBPRINT\ELGIN_I9D3FB
+
+[MODEL_HPRT.NTx86]
+"ELGIN i7(USB)" = TP80A, USBPRINT\ELGINi70AB7,USBPRINT\ELGINI7CAAE
+"ELGIN i9(USB)" = TP806,USBPRINT\ELGINi9CE36, USBPRINT\ELGIN_I9D3FB
+
+[MODEL_HPRT.NTamd64]
+"ELGIN i7(USB)" = TP80A, USBPRINT\ELGINi70AB7,USBPRINT\ELGINI7CAAE
+"ELGIN i9(USB)" = TP806,USBPRINT\ELGINi9CE36, USBPRINT\ELGIN_I9D3FB
+
+
+[TP80A.NT]
+CopyFiles=ESC_FILES_BASE,FILES_NT,LM
+DriverFile=DrvRender_ELGIN.dll
+ConfigFile=DrvUI_ELGIN.dll
+DataFile=I7.XPD
+LanguageMonitor="HPRT POS Language Monitor,LM_ELGIN.dll"
+
+[TP80A.NTamd64]
+CopyFiles=ESC_FILES_BASE,FILES_AMD64,LM
+DriverFile=DrvRender_x64_ELGIN.dll
+ConfigFile=DrvUI_x64_ELGIN.dll
+DataFile=I7.XPD
+LanguageMonitor="HPRT POS Language Monitor,LM_x64_ELGIN.dll"
+
+
+[TP806.NT]
+CopyFiles=ESC_FILES_BASE,FILES_NT
+DriverFile=DrvRender_ELGIN.dll
+ConfigFile=DrvUI_ELGIN.dll
+DataFile=I9.XPD
+LanguageMonitor="HPRT POS Language Monitor,LM_ELGIN.dll"
+
+[TP806.NTamd64]
+CopyFiles=ESC_FILES_BASE,FILES_AMD64
+DriverFile=DrvRender_x64_ELGIN.dll
+ConfigFile=DrvUI_x64_ELGIN.dll
+DataFile=I9.XPD
+LanguageMonitor="HPRT POS Language Monitor,LM_x64_ELGIN.dll"
+
+
+[ESC_FILES_BASE]
+I7.XPD
+I9.XPD
+
+
+[LM]
+LM_ELGIN.dll
+LM_x64_ELGIN.dll
+
+[FILES_NT]
+DrvUI_ELGIN.dll
+DrvRender_ELGIN.dll
+
+[FILES_AMD64]
+DrvUI_x64_ELGIN.dll
+DrvRender_x64_ELGIN.dll
+
+[Strings]
+OEM="ELGIN"

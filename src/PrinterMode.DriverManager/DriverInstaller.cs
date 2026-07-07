@@ -101,6 +101,20 @@ public class DriverInstaller : IDriverInstaller
             if (repoInfPath != null)
             {
                 progress?.Report("Registrando driver de impressão oficial...");
+
+                // Some catalog entries ship a self-signed OEM certificate (e.g. Elgin i7/i9,
+                // Bematech MP4200 — confirmed "CN=Printer", not chained to a public root).
+                // Importing it first (idempotent — importing an already-trusted cert is a
+                // harmless no-op) makes the package's already-valid catalog trusted, so the
+                // normal pnputil/Add-PrinterDriver calls below succeed like any signed driver —
+                // no unsigned-driver override needed for this family.
+                if (!string.IsNullOrEmpty(request.Driver.DriverCertFile))
+                {
+                    var certPath = Path.Combine(Path.GetDirectoryName(repoInfPath)!, request.Driver.DriverCertFile);
+                    if (await _printerService.TryTrustCertificateAsync(certPath, ct))
+                        _log.Info($"Trusted OEM certificate '{certPath}'.");
+                }
+
                 // Stage via pnputil FIRST: Add-PrinterDriver on an unsigned OEM package (this
                 // one has no .cat file) commonly fails unless the INF was already staged into
                 // the DriverStore via pnputil /add-driver /install. Do this unconditionally,

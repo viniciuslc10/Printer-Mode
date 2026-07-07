@@ -324,6 +324,55 @@ public class WindowsPrinterService : IWindowsPrinterService
         }, ct);
     }
 
+    public async Task<bool> TryTrustCertificateAsync(string certPath, CancellationToken ct = default)
+    {
+        // Some OEM POS-printer packages sign their own catalog with a self-signed cert
+        // (confirmed pattern: "CN=Printer", not chained to any public root) and ship that same
+        // cert as an .cer file for the installer to import. Importing it into both Trusted Root
+        // and Trusted Publisher makes Add-PrinterDriver accept the (already legitimately signed,
+        // just not publicly trusted) catalog normally — no unsigned-driver override needed, and
+        // this only trusts this one specific certificate, not driver signing in general.
+        return await Task.Run(() =>
+        {
+            if (!File.Exists(certPath))
+            {
+                _log.Warning($"TryTrustCertificateAsync: cert not found at '{certPath}'.");
+                return false;
+            }
+
+            try
+            {
+                var path = certPath.Replace("'", "''");
+                var script =
+                    $"Import-Certificate -FilePath '{path}' -CertStoreLocation Cert:\\LocalMachine\\Root -ErrorAction Stop | Out-Null; " +
+                    $"Import-Certificate -FilePath '{path}' -CertStoreLocation Cert:\\LocalMachine\\TrustedPublisher -ErrorAction Stop | Out-Null";
+                var enc = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {enc}",
+                    UseShellExecute = false, CreateNoWindow = true,
+                    RedirectStandardOutput = true, RedirectStandardError = true
+                };
+                using var proc = Process.Start(psi)!;
+                var stderrTask = proc.StandardError.ReadToEndAsync();
+                var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+                proc.WaitForExit(20_000);
+                var stderr = stderrTask.GetAwaiter().GetResult();
+                stdoutTask.GetAwaiter().GetResult();
+                var ok = proc.ExitCode == 0;
+                _log.Info($"TryTrustCertificateAsync('{certPath}'): exit={proc.ExitCode}" +
+                          (ok ? "" : $" error={ExtractPsError(stderr)}"));
+                return ok;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"TryTrustCertificateAsync failed: {ex.Message}");
+                return false;
+            }
+        }, ct);
+    }
+
     public async Task<string?> FindBestUsbPortAsync(CancellationToken ct = default)
     {
         return await Task.Run(() =>

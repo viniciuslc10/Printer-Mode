@@ -27,6 +27,13 @@ public class DriverInfo
     public string? DriverDataFile { get; set; }
     public List<string> DriverDependentFiles { get; set; } = [];
 
+    // For drivers signed with a self-signed OEM certificate not chained to any public root
+    // (confirmed pattern: several OEM POS-printer packages ship an "OEM.cer" matching a
+    // self-signed "CN=Printer" cert used to sign their own .cat). Relative to the folder
+    // containing InfFile/InfFileX86. Importing it into Trusted Root + Trusted Publisher makes
+    // the existing signed catalog validate normally — no unsigned-driver override needed.
+    public string? DriverCertFile { get; set; }
+
     public string DriverName { get; set; } = string.Empty;
     public string? Version { get; set; }
     public PaperConfig DefaultPaper { get; set; } = new();
