@@ -320,6 +320,24 @@ public class DriverInstaller : IDriverInstaller
                             }
                         }
 
+                        // If DriverStore had nothing, some vendor packages (confirmed here:
+                        // "GA-Printer Driver" installs as a PROGRAM, not just staged into the
+                        // DriverStore) drop their files under Program Files instead. Check there
+                        // too — same targeted, name-matched search, no blind full-disk scan.
+                        if (printDriverInfPath == null)
+                        {
+                            var pfInfs = FindPrintDriverInfInProgramFiles(request.Driver);
+                            foreach (var pfInf in pfInfs)
+                            {
+                                _log.Info($"Found candidate print-driver inf in Program Files: '{pfInf}'");
+                                if (await InstallViaPnpUtilAsync(pfInf, ct))
+                                {
+                                    printDriverInfPath = pfInf;
+                                    break;
+                                }
+                            }
+                        }
+
                         // pnputil only binds the driver to the matching HARDWARE — it does not
                         // register it as a Print Spooler driver, so its name never appears in
                         // Get-PrinterDriver / becomes usable by Add-Printer on its own. If the
@@ -333,7 +351,7 @@ public class DriverInstaller : IDriverInstaller
                             if (registeredName != null)
                             {
                                 resolvedSilent = registeredName;
-                                _log.Info($"Registered print driver '{registeredName}' from DriverStore INF.");
+                                _log.Info($"Registered print driver '{registeredName}' from '{printDriverInfPath}'.");
                             }
                         }
 
@@ -1469,6 +1487,52 @@ public class DriverInstaller : IDriverInstaller
             return byClass;
         }
         catch { return []; }
+    }
+
+    private IReadOnlyList<string> FindPrintDriverInfInProgramFiles(DriverInfo driver)
+    {
+        // Some vendor packages (confirmed here: "GA-Printer Driver" shows up as an installed
+        // PROGRAM, not just a device driver) install their own files under Program Files
+        // rather than staging through the DriverStore — meaning FindNewDriverStoreInfs, which
+        // only looks in DriverStore\FileRepository, would never see a print-driver INF that
+        // exists there. Targeted scan: only recurse into top-level folders whose NAME already
+        // matches the manufacturer/model (fast — avoids a blind full-disk INF search).
+        var mfgLower = driver.Manufacturer.ToLowerInvariant();
+        var modelLower = driver.Model.Replace("-", "").Replace(" ", "").ToLowerInvariant();
+        var roots = new[]
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+        }.Where(Directory.Exists).Distinct();
+
+        var results = new List<string>();
+        foreach (var root in roots)
+        {
+            IEnumerable<string> topDirs;
+            try { topDirs = Directory.GetDirectories(root); }
+            catch { continue; }
+
+            foreach (var dir in topDirs)
+            {
+                var dirName = Path.GetFileName(dir).ToLowerInvariant();
+                if (!dirName.Contains(mfgLower) && !dirName.Contains(modelLower) &&
+                    !dirName.Contains("ga-printer") && !dirName.Contains("gaprinter"))
+                    continue;
+
+                try
+                {
+                    results.AddRange(Directory.GetFiles(dir, "*.inf", SearchOption.AllDirectories));
+                }
+                catch (Exception ex)
+                {
+                    _log.Warning($"FindPrintDriverInfInProgramFiles: could not scan '{dir}': {ex.Message}");
+                }
+            }
+        }
+
+        if (results.Count > 0)
+            _log.Info($"FindPrintDriverInfInProgramFiles: found [{string.Join(", ", results)}]");
+        return results;
     }
 
     private async Task<bool> InstallViaPnpUtilAsync(string infPath, CancellationToken ct)
