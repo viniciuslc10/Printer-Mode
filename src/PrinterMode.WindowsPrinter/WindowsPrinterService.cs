@@ -1217,23 +1217,12 @@ public class WindowsPrinterService : IWindowsPrinterService
     {
         return await Task.Run(() =>
         {
-            var ok = false;
-            try
-            {
-                var args = $"/dl /n \"{printerName}\"";
-                ok = RunPrintUi(args);
-            }
-            catch (Exception ex)
-            {
-                _log.Error($"Failed to delete printer {printerName} via printui", ex);
-            }
-
-            // printui only removes a local printer object. A leftover per-user network
-            // PRINTER CONNECTION with the same display name (e.g. from an earlier Shared-mode
-            // test) is a separate registry entry that printui won't touch, and is one confirmed
-            // way two icons with the identical name end up in Devices and Printers. Remove-Printer
-            // covers both kinds; run it too, unconditionally, and don't let its failure mask a
-            // printui success (or vice versa).
+            // printui.dll's PrintUIEntry /dl shows a NATIVE, BLOCKING message box ("Não é
+            // possível remover a impressora...") when the named printer doesn't exist — this
+            // froze the automated install waiting for a manual OK click, exactly the kind of
+            // manual intervention this app must never require. Remove-Printer with
+            // -ErrorAction SilentlyContinue is fully silent and idempotent (no error, no
+            // dialog, whether or not the printer exists), so it's now the only mechanism used.
             try
             {
                 var script = $"Remove-Printer -Name '{EscapePs(printerName)}' -ErrorAction SilentlyContinue";
@@ -1246,14 +1235,13 @@ public class WindowsPrinterService : IWindowsPrinterService
                 };
                 using var proc = Process.Start(psi)!;
                 proc.WaitForExit(15_000);
-                ok = ok || proc.ExitCode == 0;
+                return proc.ExitCode == 0;
             }
             catch (Exception ex)
             {
-                _log.Warning($"Remove-Printer fallback failed for '{printerName}': {ex.Message}");
+                _log.Warning($"DeletePrinterAsync (Remove-Printer) failed for '{printerName}': {ex.Message}");
+                return false;
             }
-
-            return ok;
         }, ct);
     }
 
@@ -2203,31 +2191,6 @@ public class WindowsPrinterService : IWindowsPrinterService
         };
         using var p = Process.Start(psi);
         p?.WaitForExit(15_000);
-    }
-
-    private bool RunPrintUi(string arguments)
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = "rundll32.exe",
-            Arguments = $"printui.dll,PrintUIEntry {arguments}",
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardError = true
-        };
-
-        try
-        {
-            using var process = Process.Start(psi)!;
-            process.WaitForExit(30_000);
-            _log.Debug($"printui exit code: {process.ExitCode}, args: {arguments}");
-            return process.ExitCode == 0;
-        }
-        catch (Exception ex)
-        {
-            _log.Error($"printui failed: {ex.Message}");
-            return false;
-        }
     }
 
     private (bool ok, string? error) AddPrinterViaPowerShellWithReason(string printerName, string driverName, string portName)
