@@ -4,12 +4,12 @@
         xmlns:conv="clr-namespace:PrinterMode.UI.Converters"
         Title="PrinterMode"
         Height="700" Width="530"
-        MinHeight="620" MinWidth="480"
+        MinHeight="500" MinWidth="480"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BgDarkBrush}"
         WindowStyle="None"
         AllowsTransparency="True"
-        ResizeMode="CanMinimize">
+        ResizeMode="CanResize">
 
   <Window.Resources>
     <conv:BoolToVisibilityConverter x:Key="BoolVis"/>
@@ -83,6 +83,9 @@
           <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,8,0">
             <Button Style="{StaticResource IconButton}" Click="Minimize_Click">
               <TextBlock Text="─" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+            </Button>
+            <Button Style="{StaticResource IconButton}" Click="Maximize_Click" ToolTip="Maximizar/Restaurar">
+              <TextBlock Text="☐" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
             </Button>
             <Button Style="{StaticResource IconButton}" Click="Close_Click">
               <TextBlock Text="✕" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
@@ -519,23 +522,40 @@
           <Border Padding="14,11" CornerRadius="8"
                   Background="#0CFFFFFF" BorderThickness="1"
                   BorderBrush="{StaticResource BorderBrush2}">
-            <StackPanel Orientation="Horizontal">
-              <TextBlock Text="⏳" FontSize="13" Margin="0,0,8,0"
+            <!-- Grid instead of a horizontal StackPanel: a horizontal StackPanel gives its
+                 children infinite available width, so TextWrapping="Wrap" never actually
+                 wrapped — long diagnostic messages (USB device lists, error details) were
+                 silently clipped at the window's right edge instead of wrapping. The "*"
+                 column here gives the text real width to wrap against. -->
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" Text="⏳" FontSize="13" Margin="0,0,8,0"
                          Foreground="{StaticResource TextMutedBrush}"
                          Visibility="{Binding IsInstalling, Converter={StaticResource BoolVis}}"
                          VerticalAlignment="Top"/>
-              <TextBlock Text="✔" FontSize="13" Margin="0,0,8,0"
+              <TextBlock Grid.Column="0" Text="✔" FontSize="13" Margin="0,0,8,0"
                          Foreground="{StaticResource SuccessBrush}"
                          Visibility="{Binding ShowSuccess, Converter={StaticResource BoolVis}}"
                          VerticalAlignment="Top"/>
-              <TextBlock Text="✖" FontSize="13" Margin="0,0,8,0"
+              <TextBlock Grid.Column="0" Text="✖" FontSize="13" Margin="0,0,8,0"
                          Foreground="{StaticResource ErrorBrush}"
                          Visibility="{Binding ShowError, Converter={StaticResource BoolVis}}"
                          VerticalAlignment="Top"/>
-              <TextBlock Text="{Binding StatusText}" FontSize="12" TextWrapping="Wrap"
-                         Foreground="{StaticResource TextSecondaryBrush}"
-                         VerticalAlignment="Center"/>
-            </StackPanel>
+              <!-- Read-only TextBox (not TextBlock): lets the user select and copy the full
+                   message — including long diagnostic text — with Ctrl+C. Styled borderless/
+                   transparent so it looks identical to a label. -->
+              <TextBox Grid.Column="1" Text="{Binding StatusText, Mode=OneWay}"
+                       FontSize="12" TextWrapping="Wrap"
+                       Foreground="{StaticResource TextSecondaryBrush}"
+                       Background="Transparent" BorderThickness="0"
+                       IsReadOnly="True" IsReadOnlyCaretVisible="True"
+                       VerticalAlignment="Center"
+                       MaxHeight="260" VerticalScrollBarVisibility="Auto"
+                       Padding="0"/>
+            </Grid>
           </Border>
 
         </StackPanel>
