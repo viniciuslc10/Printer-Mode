@@ -1,0 +1,183 @@
+*GPDSpecVersion: "1.0"
+*Include: "StdNames.gpd"
+*GPDFileVersion: "1.1"
+*GPDFileName: "compact.GPD"
+*ModelName: "Diebold Procomp IM1X3I"
+*MasterUnits: PAIR(144, 144)
+*ResourceDLL: "ME_DRV_T230A.Dll"
+*PrinterType: SERIAL
+*Feature: Orientation
+{
+    *rcNameID: =ORIENTATION_DISPLAY
+    *DefaultOption: PORTRAIT
+    *Option: PORTRAIT
+    {
+        *rcNameID: =PORTRAIT_DISPLAY
+    }
+    *Option: LANDSCAPE_CC270
+    {
+        *rcNameID: =LANDSCAPE_DISPLAY
+    }
+}
+*Feature: InputBin
+{
+    *rcNameID: =PAPER_SOURCE_DISPLAY
+    *DefaultOption: Option1
+    *Option: Option1
+    {
+        *rcNameID: 259
+        *OptionID: 259
+    }
+}
+*Feature: Resolution
+{
+    *rcNameID: =RESOLUTION_DISPLAY
+    *DefaultOption: Option2
+    *Option: Option1
+    {
+        *Name: "144 x 72 " =DOTS_PER_INCH
+        *DPI: PAIR(144, 72)
+        *TextDPI: PAIR(144, 72)
+        *PinsPerLogPass: 8
+        *PinsPerPhysPass: 8
+        *SpotDiameter: 100
+        *Command: CmdBeginRaster { *Cmd : "<1B>A<08>" }
+        *Command: CmdEndRaster { *Cmd : "<1B>A<0C>" }
+        *Command: CmdSendBlockData { *Cmd : "<1B>L" %l{NumOfDataBytes } }
+    }
+    *Option: Option2
+    {
+        *Name: "72 x 72 " =DOTS_PER_INCH
+        *DPI: PAIR(72, 72)
+        *TextDPI: PAIR(72, 72)
+        *PinsPerLogPass: 8
+        *PinsPerPhysPass: 8
+        *SpotDiameter: 100
+        *Command: CmdBeginRaster { *Cmd : "<1B>A<08>" }
+        *Command: CmdEndRaster { *Cmd : "<1B>A<0C>" }
+        *Command: CmdSendBlockData { *Cmd : "<1B>K" %l{NumOfDataBytes } }
+    }
+}
+*Feature: PaperSize
+{
+    *rcNameID: =PAPER_SIZE_DISPLAY
+    *DefaultOption: Option2
+    *Option: Option1
+    {
+        *rcNameID: 277
+        *OptionID: 277
+*%        *PageDimensions: PAIR(505, 1418)
+*%        *PrintableArea: PAIR(480, 1418)
+        *PageDimensions: PAIR(505, 864)
+        *PrintableArea: PAIR(480, 864)
+        *PrintableOrigin: PAIR(14, 0)
+    }
+    *Option: Option2
+    {
+        *rcNameID: 278
+        *OptionID: 278
+        *PageDimensions: PAIR(505, 17008)
+        *PrintableArea: PAIR(480, 17008)
+        *PrintableOrigin: PAIR(14, 0)
+    }
+}
+*Feature: Halftone
+{
+    *rcNameID: =HALFTONING_DISPLAY
+    *DefaultOption: HT_PATSIZE_AUTO
+    *Option: HT_PATSIZE_AUTO
+    {
+        *rcNameID: =HT_AUTO_SELECT_DISPLAY
+    }
+    *Option: HT_PATSIZE_SUPERCELL_M
+    {
+        *rcNameID: =HT_SUPERCELL_DISPLAY
+    }
+    *Option: HT_PATSIZE_6x6_M
+    {
+        *rcNameID: =HT_DITHER6X6_DISPLAY
+    }
+    *Option: HT_PATSIZE_8x8_M
+    {
+        *rcNameID: =HT_DITHER8X8_DISPLAY
+    }
+}
+*Feature: Memory
+{
+    *rcNameID: =PRINTER_MEMORY_DISPLAY
+    *DefaultOption: 6KB
+    *Option: 6KB
+    {
+        *Name: "6KB"
+        *MemoryConfigKB: PAIR(6, 6)
+    }
+}
+
+*Feature: Gaveta
+{
+    *Name: "Gaveta"
+    *FeatureType: PRINTER_PROPERTY
+    *DefaultOption: NaoAbrir
+    *Option: Abrir
+    {
+        *Name: "Abrir Gaveta"
+        *Command: CmdEndJob
+         {
+             *Order: JOB_FINISH.2
+             *Cmd: "<1B>p0<0C>0"
+         }
+    }
+    *Option: NaoAbrir
+    {
+        *Name: "Não Abrir"
+    }
+}
+
+*Command: CmdStartDoc
+{
+    *Order: DOC_SETUP.1
+    *Cmd: "<1B>C<02>"
+}
+*Command: CmdEndJob
+{
+    *Order: JOB_FINISH.1
+    *Cmd: "<1B>A<0C>"
+}
+*RotateCoordinate?: FALSE
+*RotateRaster?: FALSE
+*RotateFont?: FALSE
+*TextCaps: LIST(TC_OP_CHARACTER,TC_EA_DOUBLE,TC_IA_ABLE,TC_UA_ABLE,TC_SO_ABLE)
+*MemoryUsage: LIST(FONT, RASTER, VECTOR)
+*CursorXAfterCR: AT_CURSOR_X_ORIGIN
+*YMoveThreshold: *
+*YMoveUnit: 72
+*Command: CmdYMoveRelDown { *Cmd : "<1B>A" %c{(DestYRel / 2) }"<0A>" }
+*Command: CmdCR { *Cmd : "" }
+*Command: CmdLF { *Cmd : "<1B>A<0C0A>" }
+*Command: CmdFF { *Cmd : "<0C>" }
+*EjectPageWithFF?: TRUE
+*OutputDataFormat: V_BYTE
+*OptimizeLeftBound?: FALSE
+*CursorXAfterSendBlockData: AT_GRXDATA_END
+*CursorYAfterSendBlockData: NO_MOVE
+*DefaultFont: 5
+*DefaultCTT: -1
+*switch: Orientation
+{
+    *case: PORTRAIT
+    {
+        *DeviceFonts: LIST(5,6,7,8,9,10)
+    }
+    *case: LANDSCAPE_CC270
+    {
+        *DeviceFonts: LIST()
+    }
+}
+*Command: CmdBoldOn { *Cmd : "<1B>E" }
+*Command: CmdBoldOff { *Cmd : "<1B>F" }
+*Command: CmdItalicOn { *Cmd : "<1B>J<01>" }
+*Command: CmdItalicOff { *Cmd : "<1B>J<02>" }
+*Command: CmdUnderlineOn { *Cmd : "<1B><2D><01>" }
+*Command: CmdUnderlineOff { *Cmd : "<1B><2D><02>" }
+*Command: CmdStrikeThruOn { *Cmd : "<1B>V" }
+*Command: CmdStrikeThruOff { *Cmd : "<1B>M" }

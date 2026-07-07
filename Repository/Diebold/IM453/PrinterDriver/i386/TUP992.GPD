@@ -1,0 +1,142 @@
+*GPDSpecVersion: "1.0"
+*Include: "StdNames.gpd"
+*GPDFileVersion: "1.0"
+*GPDFileName: "TUP992.GPD"
+*ModelName: "Diebold Procomp TUP992 112mm"
+*MasterUnits: PAIR(203, 203)
+*ResourceDLL: "ME_DRV_T230A.Dll"
+*PrinterType: SERIAL
+*Feature: Orientation
+{
+    *rcNameID: =ORIENTATION_DISPLAY
+    *DefaultOption: PORTRAIT
+    *Option: PORTRAIT
+    {
+        *rcNameID: =PORTRAIT_DISPLAY
+    }
+    *Option: LANDSCAPE_CC270
+    {
+        *rcNameID: =LANDSCAPE_DISPLAY
+    }
+}
+*Feature: InputBin
+{
+    *rcNameID: =PAPER_SOURCE_DISPLAY
+    *DefaultOption: Option1
+    *Option: Option1
+    {
+        *rcNameID: 259
+        *OptionID: 259
+    }
+}
+
+*Feature: Resolution
+{
+    *rcNameID: =RESOLUTION_DISPLAY
+    *DefaultOption: Option1
+    *Option: Option1
+    {
+        *Name: "203 x 203 " =DOTS_PER_INCH
+        *DPI: PAIR(203, 203)
+        *TextDPI: PAIR(203, 203)
+        *PinsPerLogPass: 1
+        *PinsPerPhysPass: 1
+        *SpotDiameter: 100
+        *%*MinStripBlankPixels: 6
+        *%EXTERN_GLOBAL: *StripBlanks: LIST(ENCLOSED)
+        *Command: CmdSendBlockData
+        {
+	*CallbackID: 6
+	*Params : LIST(NumOfDataBytes)
+        }
+    }
+}
+
+*Feature: PaperSize
+{
+    *rcNameID: =PAPER_SIZE_DISPLAY
+    *DefaultOption: Option2
+    *Option: Option1
+    {
+        *rcNameID: 279
+        *PageDimensions: PAIR(896, 4000)
+        *PrintableArea: PAIR(832, 4000)
+        *PrintableOrigin: PAIR(32, 0)
+    }
+    *Option: Option2
+    {
+        *rcNameID: 280
+        *PageDimensions: PAIR(896, 24000)
+        *PrintableArea: PAIR(832, 24000)
+        *PrintableOrigin: PAIR(32, 0)
+    }
+}
+
+*Feature: Halftone
+{
+    *rcNameID: =HALFTONING_DISPLAY
+    *DefaultOption: HT_PATSIZE_AUTO
+    *Option: HT_PATSIZE_AUTO
+    {
+        *rcNameID: =HT_AUTO_SELECT_DISPLAY
+    }
+    *Option: HT_PATSIZE_SUPERCELL_M
+    {
+        *rcNameID: =HT_SUPERCELL_DISPLAY
+    }
+    *Option: HT_PATSIZE_6x6_M
+    {
+        *rcNameID: =HT_DITHER6X6_DISPLAY
+    }
+    *Option: HT_PATSIZE_8x8_M
+    {
+        *rcNameID: =HT_DITHER8X8_DISPLAY
+    }
+}
+
+*Command: CmdStartJob
+{
+    *Order: JOB_SETUP.1
+    *CallbackID: 1
+}
+
+*Command: CmdEndJob
+{
+    *Order: JOB_FINISH.1
+    *CallbackID: 2
+}
+
+*Command: CmdStartPage
+{
+    *Order: PAGE_SETUP.1
+    *CallbackID: 3
+}
+
+*Command: CmdEndPage
+{
+    *Order: PAGE_FINISH.1
+    *CallbackID: 4
+}
+
+*RasterSendAllData?:TRUE
+*SendMultipleRows?: TRUE
+*BadCursorMoveInGrxMode:LIST(X_PORTRAIT,Y_LANDSCAPE)
+*RotateCoordinate?: FALSE
+*RotateRaster?: FALSE
+*RotateFont?: FALSE
+*YMoveUnit: 203
+*Command: CmdYMoveRelDown
+{
+	*CallbackID: 8
+	*Params : LIST(DestYRel)
+}
+*%Command: CmdYMoveRelDown { *Cmd : "<1B><3E>0" %l[1,65535]{max_repeat(DestYRel)}}
+*CursorXAfterSendBlockData: AT_GRXDATA_END
+*CursorYAfterSendBlockData: AUTO_INCREMENT
+*CursorXAfterCR: AT_CURSOR_X_ORIGIN
+*Command: CmdLF { *Cmd : "<00>" }
+*Command: CmdFF { *Cmd : "<00>" }
+*Command: CmdCR { *Cmd : "<00>" }
+*EjectPageWithFF?: TRUE
+*OutputDataFormat: H_BYTE
+*OptimizeLeftBound?: FALSE

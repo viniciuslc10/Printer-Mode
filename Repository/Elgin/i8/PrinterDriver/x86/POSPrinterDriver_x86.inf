@@ -1,0 +1,63 @@
+;
+;	Printer Installation File
+;
+;	 List of supported printers, manufacturers
+;
+
+[Version]
+Signature="$Windows NT$"
+Provider=%POS%
+ClassGUID={4D36E979-E325-11CE-BFC1-08002BE10318}
+Class=Printer
+
+
+[ClassInstall32.NT]
+AddReg=printer_class_addreg
+
+[printer_class_addreg]
+HKR,,,,%PrinterClassName%
+HKR,,Icon,,"-4"
+HKR,,Installer32,,"ntprint.dll,ClassInstall32"
+HKR,,NoDisplayClass,,1
+HKR,,EnumPropPages32,,"printui.dll,PrinterPropPageProvider"
+
+;
+; Manufacturer section.
+;
+; This section lists all of the manufacturers
+; that we will display in the Dialog box
+;
+
+[Manufacturer]
+"ELGIN"
+
+;
+; Model Specifications Section
+;
+
+[ELGIN]
+"ELGIN i8"   = POS80C.GPD
+;
+; Installer section(s) referenced above.
+;
+
+[POS80C.GPD]
+CopyFiles=@POS80.DLL,@POS80C.GPD
+DataSection=UNIDRV_DATA
+Include=NTPRINT.INF
+Needs=TTFSUB.OEM,UNIDRV.OEM
+
+[DestinationDirs]
+DefaultDestDir=66000
+
+[SourceDisksNames.x86]
+1 = %disk1%,,,
+
+[SourceDisksFiles]
+POS80.DLL     = 1
+POS80C.GPD    = 1
+
+
+[Strings]
+PrinterClassName="Printers"
+disk1="POS Printer Driver Setup Disk"

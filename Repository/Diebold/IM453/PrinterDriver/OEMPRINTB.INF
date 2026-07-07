@@ -1,0 +1,250 @@
+;
+; Copyright Diebold Procomp, Inc.
+;
+;   Arquivo de instalação dos Drivers da impressora térmica IM4X3T
+;
+;
+
+[Version]
+Signature="$Windows NT$"
+CatalogFile=ix4x3tB.cat
+DriverVer=09/05/2017,1.9.0.0
+Provider=%ME%
+ClassGUID={4D36E979-E325-11CE-BFC1-08002BE10318}
+Class=Printer
+
+;
+; Manufacturer section.
+;
+; This section lists all of the manufacturers
+; that we will display in the Dialog box
+;
+
+[Manufacturer]
+"Diebold Procomp" = DieboldProcomp, NTx86, NTamd64
+
+;
+; Model Specifications Section
+;
+
+[DieboldProcomp.NTx86]
+"Diebold Procomp IM4X3TP_B" = IM433T,LPTENUM\Diebold_Procomp_IM4X13ab,LPTENUM\Diebold_Procomp_IT4X1aa9
+"Diebold Procomp IM4X3TU_B" = IM433T,USBPRINT\Diebold_Procomp_IM4X106b,USBPRINT\Diebold_Procomp_IT4X1969
+"Diebold Procomp IM4X3T_B" = IM433T,LPTENUM\Diebold_Procomp_IM4X2b6a,LPTENUM\_Mecaf_IM423T7624,LPTENUM\_Mecaf_IT423TB439
+"Diebold Procomp TSP143MP_B" = TSP143,LPTENUM\Diebold_Procomp_TSP1c181
+"Diebold Procomp TSP143MU_B" = TSP143,USBPRINT\Diebold_Procomp_TSP1c241,USBPRINT\Diebold_Procomp_TSP1524a
+;"Diebold Procomp TSP143M_B" = TSP143
+"Diebold Procomp IM453HU_B" = IM433T,USBPRINT\Diebold_Procomp_IM457c7f
+"Diebold Procomp IM453HP_B" = IM433T,LPTENUM\Diebold_Procomp_IM457fbf
+;"Diebold Procomp IM453H_B" = IM433T
+"Diebold Procomp IM4X2TD_B" = IM4X2TD,LPTENUM\Diebold_Procomp_IM4Xd3fa,USBPRINT\Diebold_Procomp_IM4Xd03a
+"Diebold Procomp IM4X2T" = IT402TP.GPD,LPTENUM\MecafMecaf_IT402T_Pi1B66,LPTENUM\Mecaf_IT402T_Pic
+"Diebold Procomp IM1X3I"  = compact.GPD,LPTENUM\MecafCompact_MP518E,Compact_MP
+"Diebold Procomp IM1X3IU"  = compact.GPD,USBPRINT\Diebold_Procomp_IM11dcb3,USBPRINT\Diebold_Procomp_IM15ecb2
+"Diebold Procomp IM1X3IP" = compact.GPD,LPTENUM\Diebold_Procomp_IM11df73
+"Diebold Procomp IM1X3I Somente Texto" = COMPACT_TO.GPD,LPTENUM\MecafCOMPACT_TO75F3,COMPACT_TO
+"Diebold Procomp IM1X3I Aut Simples" = COMPACT_AS_TO.GPD,LPTENUM\MecafCOMPACT_AS_TO75F3,COMPACT_AS_TO
+"Diebold Procomp IM693H_B" = IM433T,USBPRINT\Diebold_Nixdorf_IM691D81
+;"Diebold Procomp TUP992 112mm" = TUP992
+"Diebold Procomp IT653T_B" = IT653T,USBPRINT\Diebold_Procomp_IT658ce7
+"Diebold Procomp IT653TP_B" = IT653T,LPTENUM\Diebold_Procomp_IT6576cc
+"Diebold Procomp IT533T_B" = IT533T,USBPRINT\Diebold_Procomp_IT53c907
+"Diebold Procomp TermicaU_B" = IM433T,USBPRINT\1284_CID_Diebold_Thermal_Printer
+"Diebold Procomp TermicaP_B" = IM433T,LPTENUM\1284_CID_Diebold_Thermal_Printer
+"Mecaf Perfecta_B" = IM433T,USBPRINT\Diebold_Thermal_Prinac81
+
+
+
+
+[DieboldProcomp.NTamd64]
+"Diebold Procomp IM4X3TP_B" = IM433T,LPTENUM\Diebold_Procomp_IM4X13ab,LPTENUM\Diebold_Procomp_IT4X1aa9
+"Diebold Procomp IM4X3TU_B" = IM433T,USBPRINT\Diebold_Procomp_IM4X106b,USBPRINT\Diebold_Procomp_IT4X1969
+"Diebold Procomp IM4X3T_B" = IM433T,LPTENUM\Diebold_Procomp_IM4X2b6a,LPTENUM\_Mecaf_IM423T7624,LPTENUM\_Mecaf_IT423TB439
+"Diebold Procomp TSP143MP_B" = TSP143,LPTENUM\Diebold_Procomp_TSP1c181
+"Diebold Procomp TSP143MU_B" = TSP143,USBPRINT\Diebold_Procomp_TSP1c241,USBPRINT\Diebold_Procomp_TSP1524a
+;"Diebold Procomp TSP143M_B" = TSP143
+"Diebold Procomp IM453HU_B" = IM433T,USBPRINT\Diebold_Procomp_IM457c7f
+"Diebold Procomp IM693H_B" = IM433T,USBPRINT\Diebold_Nixdorf_IM691D81
+;"Diebold Procomp IM453H_B" = IM433T
+"Diebold Procomp IM4X2TD_B" = IM4X2TD,LPTENUM\Diebold_Procomp_IM4Xd3fa,USBPRINT\Diebold_Procomp_IM4Xd03a
+"Diebold Procomp IM4X2T" = IT402TP.GPD,LPTENUM\MecafMecaf_IT402T_Pi1B66,LPTENUM\Mecaf_IT402T_Pic
+"Diebold Procomp IM1X3I"  = compact.GPD,LPTENUM\MecafCompact_MP518E,Compact_MP
+"Diebold Procomp IM1X3IU"  = compact.GPD,USBPRINT\Diebold_Procomp_IM11dcb3,USBPRINT\Diebold_Procomp_IM15ecb2
+"Diebold Procomp IM1X3IP" = compact.GPD,LPTENUM\Diebold_Procomp_IM11df73
+"Diebold Procomp IM1X3I Somente Texto" = COMPACT_TO.GPD,LPTENUM\MecafCOMPACT_TO75F3,COMPACT_TO
+"Diebold Procomp IM1X3I Aut Simples" = COMPACT_AS_TO.GPD,LPTENUM\MecafCOMPACT_AS_TO75F3,COMPACT_AS_TO
+"Diebold Procomp IM453HP_B" = IM433T,LPTENUM\Diebold_Procomp_IM457fbf
+;"Diebold Procomp TUP992 112mm" = TUP992
+"Diebold Procomp IT653T_B" = IT653T,USBPRINT\Diebold_Procomp_IT658ce7
+"Diebold Procomp IT653TP_B" = IT653T,LPTENUM\Diebold_Procomp_IT6576cc
+"Diebold Procomp IT533T_B" = IT533T,USBPRINT\Diebold_Procomp_IT53c907
+"Diebold Procomp TermicaU_B" = IM433T,USBPRINT\1284_CID_Diebold_Thermal_Printer
+"Diebold Procomp TermicaP_B" = IM433T,LPTENUM\1284_CID_Diebold_Thermal_Printer
+"Mecaf Perfecta_B" = IM433T,USBPRINT\Diebold_Thermal_Prinac81
+
+
+;
+; Installer section(s) referenced above.
+;
+
+[IM433T]
+;CopyFiles=@ME_DRV_T230B.GPD,UNIDRV,COMMONFILES
+CopyFiles=@ME_DRV_T230B.GPD,COMMONFILES,LegacyLm
+DataSection=UNIDRV_DATA
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM,UNIDRV_DATA
+;DataSection=UNIDRV_DATA
+DataFile=ME_DRV_T230B.GPD
+LanguageMonitor=ME_LM_T530, ME_LM_T530.dll
+AddReg=LangMonRegs
+
+[TUP992]
+;CopyFiles=@TUP992.GPD,UNIDRV,COMMONFILES
+CopyFiles=@TUP992.GPD,COMMONFILES,LegacyLm
+DataSection=UNIDRV_DATA
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM,UNIDRV_DATA
+;DataSection=UNIDRV_DATA
+DataFile=TUP992.GPD
+LanguageMonitor=ME_LM_T530, ME_LM_T530.dll
+
+[TSP143]
+;CopyFiles=@TSP143B.GPD,UNIDRV,COMMONFILES
+CopyFiles=@TSP143B.GPD,COMMONFILES,LegacyLm
+DataSection=UNIDRV_DATA
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM,UNIDRV_DATA
+;DataSection=UNIDRV_DATA
+DataFile=TSP143B.GPD
+LanguageMonitor=ME_LM_T530, ME_LM_T530.dll
+
+[IM4X2TD]
+;CopyFiles=@IM4X2TDB.GPD,UNIDRV,COMMONFILES
+CopyFiles=@IM4X2TDB.GPD,COMMONFILES,LegacyLm
+DataSection=UNIDRV_DATA
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM,UNIDRV_DATA
+;DataSection=UNIDRV_DATA
+DataFile=IM4X2TDB.GPD
+LanguageMonitor=ME_LM_T530, ME_LM_T530.dll
+
+[IT402TP.GPD]
+CopyFiles=@ME_DRV_T230B.DLL,@IT402TP.GPD,@IT402T_RP.INI,@IT402T_RP.DLL
+DataSection=UNIDRV_DATA
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM,UNIDRV_DATA
+DataFile=IT402TP.GPD
+
+[compact.GPD]
+CopyFiles=@compact.GPD,@ME_LM_T530.DLL,@ME_DRV_T230B.DLL,Compactlm
+DataSection=UNIDRV_DATA
+DataFile=compact.GPD
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM,UNIDRV_DATA
+LanguageMonitor=ME_LM_T530, ME_LM_T530.DLL
+
+[COMPACT_TO.GPD]
+CopyFiles=@COMPACT_TO.GPD,COMPACTCOMMONFILES,Compactlm
+DataSection=UNIDRV_DATA
+DataFile=COMPACT_TO.GPD
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM,UNIDRV_DATA
+LanguageMonitor=ME_LM_T530, ME_LM_T530.DLL
+
+[COMPACT_AS_TO.GPD]
+CopyFiles=@COMPACT_AS_TO.GPD,COMPACTCOMMONFILES,Compactlm
+DataSection=UNIDRV_DATA
+DataFile=COMPACT_AS_TO.GPD
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM,UNIDRV_DATA
+LanguageMonitor=ME_LM_T530, ME_LM_T530.DLL
+
+[IT653T]
+CopyFiles=@ME_DRV_T230B.GPD,COMMONFILES,LegacyLm
+DataSection=UNIDRV_DATA
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM,UNIDRV_DATA
+;DataSection=UNIDRV_DATA
+DataFile=ME_DRV_T230B.GPD
+LanguageMonitor=ME_LM_T530, ME_LM_T530.dll
+
+[IT533T]
+CopyFiles=@ME_DRV_T530A.Dll,@ME_DRV_T530A.GPD,@ME_LM_T530.dll,@t530uni.dll,@t530ui.dll,@t530.ini
+DataSection=UNIDRV_DATA
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM,UNIDRV_DATA
+DataFile=ME_DRV_T530A.GPD
+LanguageMonitor=ME_LM_T530, ME_LM_T530.dll
+
+[LangMonRegs]
+HKLM,%LMSubKey%,%LMTrPathK%,0x00020002,%LMTrPathV%
+
+[COMPACTCOMMONFILES]
+ME_DRV_T230B.DLL
+COMPACT_RP.INI
+COMPACT_RP.DLL
+ME_LM_T530.DLL
+
+[LegacyLm]
+ME_LM_T230.DLL
+
+[Compactlm]
+ME_LM_M153.DLL
+
+[COMMONFILES]
+T230UI.DLL
+T230UNI.DLL
+t230.ini
+t230ui.hlp
+ME_LM_T530.DLL
+ME_DRV_T230B.dll
+
+[DestinationDirs]
+DefaultDestDir=66000
+Compactlm=11
+LegacyLm=11
+
+
+[SourceDisksNames.x86]
+1 = %disk1%,,,"i386"
+
+[SourceDisksNames.amd64]
+1 = %disk1%,,,"x64"
+
+[SourceDisksFiles]
+compact.GPD = 1
+COMPACT_AS_TO.GPD = 1
+compact_rp.dll = 1
+compact_rp.ini = 1
+COMPACT_TO.GPD = 1
+ME_DRV_T230B.Dll = 1
+ME_DRV_T230B.GPD = 1
+IM4X2TDB.GPD = 1
+IT402TP.GPD = 1
+IT402T_RP.INI = 1
+IT402T_RP.DLL = 1
+ME_LM_M153.DLL = 1
+ME_LM_T230.DLL = 1
+ME_LM_T530.DLL  = 1
+T230UI.DLL = 1
+T230UNI.DLL = 1
+t230.ini = 1
+t230ui.hlp = 1
+TSP143B.GPD = 1
+TUP992.GPD = 1
+t530ui.dll =1
+t530uni.dll =1
+t530.ini =1
+ME_DRV_T530A.Dll =1
+ME_DRV_T530A.GPD=1
+
+[Strings]
+PrinterClassName="Printers"
+ME="Diebold Procomp"
+disk1="Diebold Procomp Printer Driver Setup Disk"
+Printer="Diebold Procomp IM4X3T"
+LMSubKey="SYSTEM\CurrentControlSet\Control\Print\Monitors\ME_LM_T530"
+LMTrPathK="TracePath"
+LMTrPathV="C:\PROLOG\"
+
+; vim:syntax=cfg

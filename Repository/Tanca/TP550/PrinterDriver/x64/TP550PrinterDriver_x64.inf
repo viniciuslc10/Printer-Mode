@@ -1,0 +1,55 @@
+;
+;	Printer Installation File
+;
+;	 List of supported printers, manufacturers
+;
+
+[Version]
+Signature="$Windows NT$"
+Provider=%TANCA%
+ClassGUID={4D36E979-E325-11CE-BFC1-08002BE10318}
+Class=Printer
+
+;
+; Manufacturer section.
+;
+; This section lists all of the manufacturers
+; that we will display in the Dialog box
+;
+
+[Manufacturer]
+"TANCA"=TANCA, NTamd64
+
+;
+; Model Specifications Section
+;
+
+[POS]
+"TANCA TP-550" = 550_80C.GPD
+
+[POS.NTamd64]
+"TANCA TP-550" = 550_80C.GPD
+
+;
+; Installer section(s) referenced above.
+;
+[550_80C.GPD]
+CopyFiles=@550_80.DLL,@550_80C.GPD
+DataSection=UNIDRV_DATA
+DataFile=P80C.GPD
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM
+
+[DestinationDirs]
+DefaultDestDir=66000
+
+[SourceDisksNames.amd64]
+1 = %disk1%,,,
+
+[SourceDisksFiles]
+550_80.DLL  = 1
+550_80C.GPD = 1
+
+[Strings]
+PrinterClassName="Printers"
+disk1="TANCA Printer Driver Setup Disk"
