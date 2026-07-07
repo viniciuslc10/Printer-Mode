@@ -101,8 +101,15 @@ public class DriverInstaller : IDriverInstaller
             if (repoInfPath != null)
             {
                 progress?.Report("Registrando driver de impressão oficial...");
-                repoRegisteredDriverName = await _printerService.TryRegisterPrintDriverFromInfAsync(
+                // Stage via pnputil FIRST: Add-PrinterDriver on an unsigned OEM package (this
+                // one has no .cat file) commonly fails unless the INF was already staged into
+                // the DriverStore via pnputil /add-driver /install. Do this unconditionally,
+                // then attempt the real Spooler registration.
+                await InstallViaPnpUtilAsync(repoInfPath, ct);
+
+                var (registeredName, registerError) = await _printerService.TryRegisterPrintDriverFromInfWithReasonAsync(
                     repoInfPath, request.Driver.AllDriverNames().ToList(), ct);
+                repoRegisteredDriverName = registeredName;
                 if (repoRegisteredDriverName != null)
                 {
                     steps.Add($"Driver de impressão registrado: {repoRegisteredDriverName}");
@@ -110,11 +117,11 @@ public class DriverInstaller : IDriverInstaller
                 }
                 else
                 {
-                    // Add-PrinterDriver rejected every candidate name (unsigned driver blocked,
-                    // architecture mismatch, etc). Stage it via pnputil so a later DriverStore
-                    // scan in Step 1 still has a chance to pick it up.
-                    await InstallViaPnpUtilAsync(repoInfPath, ct);
-                    _log.Warning($"Could not register driver directly from '{repoInfPath}' — staged via pnputil for later detection.");
+                    // Surfaced to the user (not just the log) — this is the real Windows/PowerShell
+                    // error, not a guess, so if it fails again we know exactly why instead of
+                    // silently falling back to Generic / Text Only.
+                    steps.Add($"⚠ Driver oficial não registrado ({registerError ?? "motivo desconhecido"}) — usando driver genérico como último recurso.");
+                    _log.Warning($"Could not register driver directly from '{repoInfPath}': {registerError}");
                 }
             }
 

@@ -133,17 +133,30 @@ public class WindowsPrinterService : IWindowsPrinterService
     public async Task<string?> TryRegisterPrintDriverFromInfAsync(
         string infPath, IReadOnlyList<string> candidateNames, CancellationToken ct = default)
     {
+        var (name, _) = await TryRegisterPrintDriverFromInfWithReasonAsync(infPath, candidateNames, ct);
+        return name;
+    }
+
+    public async Task<(string? name, string? error)> TryRegisterPrintDriverFromInfWithReasonAsync(
+        string infPath, IReadOnlyList<string> candidateNames, CancellationToken ct = default)
+    {
         // pnputil /add-driver only stages a driver into the PnP DriverStore and binds it to
         // the matching HARDWARE — it does NOT register a Print Spooler driver entry. A
         // package that includes a real printer-class INF still needs an explicit
         // Add-PrinterDriver call for its driver name to ever appear in Get-PrinterDriver /
         // become usable by Add-Printer -DriverName. This tries each known candidate name
-        // against the given INF and returns the one that Windows actually accepts, if any.
-        if (string.IsNullOrWhiteSpace(infPath) || !File.Exists(infPath) || candidateNames.Count == 0)
-            return null;
+        // against the given INF and returns the one that Windows actually accepts, if any,
+        // along with the real error text for the last rejected candidate so the caller can
+        // show the user WHY (unsigned driver blocked, wrong architecture, etc) instead of a
+        // silent fallback to Generic / Text Only.
+        if (string.IsNullOrWhiteSpace(infPath) || !File.Exists(infPath))
+            return (null, "Arquivo INF não encontrado.");
+        if (candidateNames.Count == 0)
+            return (null, "Nenhum nome de driver candidato informado.");
 
         return await Task.Run(() =>
         {
+            string? lastError = null;
             foreach (var name in candidateNames.Where(n => !string.IsNullOrWhiteSpace(n)))
             {
                 try
@@ -170,16 +183,18 @@ public class WindowsPrinterService : IWindowsPrinterService
                     if (stdout.Equals("OK", StringComparison.OrdinalIgnoreCase))
                     {
                         _log.Info($"TryRegisterPrintDriverFromInf: registered '{name}' from '{infPath}'.");
-                        return name;
+                        return (name, (string?)null);
                     }
-                    _log.Info($"TryRegisterPrintDriverFromInf: '{name}' rejected for '{infPath}': {ExtractPsError(stdout)}");
+                    lastError = $"'{name}': {ExtractPsError(stdout)}";
+                    _log.Info($"TryRegisterPrintDriverFromInf: {lastError}");
                 }
                 catch (Exception ex)
                 {
+                    lastError = $"'{name}': {ex.Message}";
                     _log.Warning($"TryRegisterPrintDriverFromInfAsync('{name}'): {ex.Message}");
                 }
             }
-            return null;
+            return (null, lastError);
         }, ct);
     }
 
