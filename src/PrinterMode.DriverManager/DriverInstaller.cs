@@ -184,9 +184,16 @@ public class DriverInstaller : IDriverInstaller
 
                     try
                     {
+                        // Timed explicitly: the vendor installer itself can take anywhere from a
+                        // few seconds to well over a minute (file extraction, driver signing
+                        // checks, DriverStore staging) — logging this tells us definitively
+                        // whether a slow install is our code's overhead or the vendor EXE's own
+                        // runtime, which we cannot speed up.
+                        var installSw = System.Diagnostics.Stopwatch.StartNew();
                         using var proc = Process.Start(psi)!;
                         await proc.WaitForExitAsync(ct);
-                        _log.Info($"Silent installer exit: {proc.ExitCode}");
+                        installSw.Stop();
+                        _log.Info($"Silent installer exit: {proc.ExitCode} (took {installSw.Elapsed.TotalSeconds:F1}s)");
 
                         if (proc.ExitCode != 0 && proc.ExitCode != 3010 && proc.ExitCode != 1641)
                         {
@@ -209,7 +216,7 @@ public class DriverInstaller : IDriverInstaller
                         // NOT duplicated here — it happens once, in the USB port-creation step below,
                         // to avoid running the same multi-second mechanisms twice per install.
                         progress?.Report("Aguardando conclusão da instalação do driver...");
-                        await Task.Delay(5000, ct);
+                        await Task.Delay(3000, ct);
 
                         discoveredUsbPort = await _printerService.FindBestUsbPortAsync(ct)
                             ?? await _printerService.FindNewPortSinceSnapshotAsync(portsBeforeInstall, ct)
@@ -239,7 +246,7 @@ public class DriverInstaller : IDriverInstaller
                     // Port detection is handled thoroughly in Step 2; coupling this loop's exit
                     // to "port found" meant it ran to its FULL 7.5s every time for any device
                     // whose port isn't found this way, even after the driver resolved instantly.
-                    for (int q = 0; q < 5 && resolvedSilent == null; q++)
+                    for (int q = 0; q < 3 && resolvedSilent == null; q++)
                     {
                         if (q > 0) await Task.Delay(1500, ct);
 
@@ -269,7 +276,7 @@ public class DriverInstaller : IDriverInstaller
                         progress?.Report("Reiniciando serviço de impressão para carregar o driver...");
                         await _printerService.RestartSpoolerAsync(ct);
 
-                        for (int poll = 0; poll < 6 && resolvedSilent == null; poll++)
+                        for (int poll = 0; poll < 3 && resolvedSilent == null; poll++)
                         {
                             await Task.Delay(3000, ct);
 
