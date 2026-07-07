@@ -15,6 +15,9 @@ public class DriverInfo
     public string? ProductId { get; set; }
     public string DriverFolder { get; set; } = string.Empty;
     public string InfFile { get; set; } = string.Empty;
+
+    // Optional 32-bit variant of InfFile, used instead of InfFile on a 32-bit OS.
+    public string? InfFileX86 { get; set; }
     public string DriverName { get; set; } = string.Empty;
     public string? Version { get; set; }
     public PaperConfig DefaultPaper { get; set; } = new();

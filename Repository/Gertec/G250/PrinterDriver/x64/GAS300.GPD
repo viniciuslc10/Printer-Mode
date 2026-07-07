@@ -1,0 +1,399 @@
+*GPDSpecVersion: "1.0"
+*Include: "StdNames.gpd"
+*GPDFileVersion: "1.0"
+*GPDFileName: "GAS300.GPD"
+*ModelName: "GA-S300 Series"
+*MasterUnits: PAIR(203, 203)
+*ResourceDLL: "GAPrinterv1.DLL"
+*PrinterType: SERIAL
+*Feature: Orientation
+{
+    *rcNameID: =ORIENTATION_DISPLAY
+    *DefaultOption: PORTRAIT
+    *Option: PORTRAIT
+    {
+        *rcNameID: =PORTRAIT_DISPLAY
+    }
+    *Option: LANDSCAPE_CC270
+    {
+        *rcNameID: =LANDSCAPE_DISPLAY
+    }
+}
+*Feature: InputBin
+{
+    *rcNameID: =PAPER_SOURCE_DISPLAY
+    *DefaultOption: Option1
+    *Option: Option1
+    {
+        *rcNameID: 269
+        *OptionID: 269
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.3
+            *Cmd: "<1D>UB<0218>"
+        }
+    }
+        *Option: Option2
+    {        
+        *rcNameID: 268
+        *OptionID: 268
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.3
+            *Cmd: "<1D>UB<0118>"
+        }
+    }
+        *Option: Option3
+    {
+        *rcNameID: 270
+        *OptionID: 270
+    }
+        *Option: Option4
+    {
+        *rcNameID: 271
+        *OptionID: 271
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.3
+            *Cmd: "<1D>UB<0418>"
+        }
+    }
+        *Option: Option5
+    {
+        *rcNameID: 272
+        *OptionID: 272
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.3
+            *Cmd: "<1D>UB<0518>"
+        }
+    }
+}
+*Feature: Resolution
+{
+    *rcNameID: =RESOLUTION_DISPLAY
+    *DefaultOption: Option1
+    *Option: Option1
+    {
+        *Name: "203 x 203 " =DOTS_PER_INCH
+        *DPI: PAIR(203, 203)
+        *TextDPI: PAIR(203, 203)
+        *PinsPerLogPass: 24
+        *SpotDiameter: 170
+        *Command: CmdSendBlockData { *Cmd : "<1D>v0<00>" %l{NumOfDataBytes /24} "<1800>"}
+    }
+}
+*Feature: PaperSize
+{
+    *rcNameID: =PAPER_SIZE_DISPLAY
+    *DefaultOption: Option2
+    *Option: Option1
+    {
+        *rcNameID: 258
+        *OptionID: 258
+        *PageDimensions: PAIR(576, 1678)
+        *PrintableArea: PAIR(576, 1678)
+        *PrintableOrigin: PAIR(0, 0)
+    }
+    *Option: Option2
+    {
+        *rcNameID: 259
+        *OptionID: 259
+        *PageDimensions: PAIR(576, 2374)
+        *PrintableArea: PAIR(576, 2374)
+        *PrintableOrigin: PAIR(0, 0)
+    }
+    *Option: Option3
+    {
+        *rcNameID: 260
+        *OptionID: 260
+        *PageDimensions: PAIR(576, 26182)
+        *PrintableArea: PAIR(576, 26182)
+        *PrintableOrigin: PAIR(0, 0)
+    }
+
+    *Option: CUSTOMSIZE
+    {
+        *rcNameID: =USER_DEFINED_SIZE_DISPLAY
+        *MinSize: PAIR(576, 160)
+        *MaxSize: PAIR(576, 32767)
+        *MaxPrintableWidth: 576
+        *MinLeftMargin: 0
+        *CenterPrintable?: TRUE
+    }
+}
+*Feature: MediaType
+{
+    *rcNameID: =MEDIA_TYPE_DISPLAY
+    *DefaultOption: Option1
+    *Option: Option1
+    {
+        *rcNameID: 261
+        *OptionID: 261
+    }
+    *Option: Option2
+    {
+        *rcNameID: 262
+        *OptionID: 262
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: "<1B>p<0019FF>"
+        }
+    }
+    *Option: Option3
+    {
+        *rcNameID: 263
+        *OptionID: 263
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: "<1B>p<0119FF>"
+        }
+    }
+    *Option: Option4
+    {
+        *rcNameID: 264
+        *OptionID: 264
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: "<1B>p<0019FF1B>p<0119FF>"
+        }
+    }
+    *Option: Option5
+    {
+        *rcNameID: 265
+        *OptionID: 265
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: "<1B>q<0019FF>"
+        }
+    }
+    *Option: Option6
+    {
+        *rcNameID: 266
+        *OptionID: 266
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: "<1B>q<0119FF>"
+        }
+    }
+    *Option: Option7
+    {
+        *rcNameID: 267
+        *OptionID: 267
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: "<1B>q<0019FF1B>q<0119FF>"
+        }
+    }
+}
+*Feature: PrintQuality
+{
+    *rcNameID: =TEXT_QUALITY_DISPLAY
+    *DefaultOption: Option1
+    *Option: Option1
+    {
+        *rcNameID: 278
+    }
+    *Option: Option2
+    {
+        *rcNameID: 279
+        *Command: CmdSelect
+        {
+            *Order: PAGE_SETUP.2
+            *Cmd: "<1B>a<011C>p<0100>"
+        }
+    }
+    *Option: Option3
+    {
+        *rcNameID: 280
+        *Command: CmdSelect
+        {
+            *Order: PAGE_SETUP.2
+            *Cmd: "<1B>a<011C>p<0200>"
+        }
+    }
+    *Option: Option4
+    {
+        *rcNameID: 281
+        *Command: CmdSelect
+        {
+            *Order: PAGE_SETUP.2
+            *Cmd: "<1B>a<011C>p<0300>"
+        }
+    }
+    *Option: Option5
+    {
+        *rcNameID: 282
+        *Command: CmdSelect
+        {
+            *Order: PAGE_SETUP.2
+            *Cmd: "<1B>a<011C>p<0400>"
+        }
+    }
+    *Option: Option6
+    {
+        *rcNameID: 283
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.3
+            *Cmd: "<1B>a<011C>p<0500>"
+        }
+    }
+    *Option: Option7
+    {
+        *rcNameID: 284
+        *Command: CmdSelect
+        {
+            *Order: PAGE_SETUP.2
+            *Cmd: "<1B>a<011C>p<0600>"
+        }
+    }
+    *Option: Option8
+    {
+        *rcNameID: 285
+        *Command: CmdSelect
+        {
+            *Order: PAGE_SETUP.2
+            *Cmd: "<1B>a<011C>p<0700>"
+        }
+    }
+    *Option: Option9
+    {
+        *rcNameID: 286
+        *Command: CmdSelect
+        {
+            *Order: PAGE_SETUP.2
+            *Cmd: "<1B>a<011C>p<0800>"
+        }
+    }
+    *Option: Option10
+    {
+        *rcNameID: 287
+        *Command: CmdSelect
+        {
+            *Order: PAGE_SETUP.2
+            *Cmd: "<1B>a<011C>p<0900>"
+        }
+    }
+}
+*Feature: OutputBin
+{
+    *rcNameID: =OUTPUTBIN_DISPLAY
+     *DefaultOption: Option2
+    *Option: Option1
+    {
+        *rcNameID: 300
+    }
+    *Option: Option2
+    {
+        *rcNameID: 301
+        *Command: CmdSelect
+        {
+            *Order: PAGE_FINISH.2 
+            *Cmd: "<1B43040203>"
+        }
+    }
+    *Option: Option3
+    {
+        *rcNameID: 302
+        *Command: CmdSelect
+        {
+            *Order: PAGE_SETUP.1
+            *Cmd: "<1B43040203>"
+        }
+    }    
+    *Option: Option4
+    {
+        *rcNameID: 303
+        *Command: CmdSelect
+        {
+            *Order: JOB_FINISH.3 
+            *Cmd: "<1B43040203>"  
+        }
+    }
+    *Option: Option5
+    {
+        *rcNameID: 304
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.4
+            *Cmd: "<1B43040203>"
+        }
+    }  
+}
+*Feature: Halftone
+{
+    *rcNameID: =HALFTONING_DISPLAY
+    *DefaultOption: HT_PATSIZE_AUTO
+    *Option: HT_PATSIZE_AUTO
+    {
+        *rcNameID: =HT_AUTO_SELECT_DISPLAY
+    }
+    *Option: HT_PATSIZE_SUPERCELL_M
+    {
+        *rcNameID: =HT_SUPERCELL_DISPLAY
+    }
+    *Option: HT_PATSIZE_6x6_M
+    {
+        *rcNameID: =HT_DITHER6X6_DISPLAY
+    }
+    *Option: HT_PATSIZE_8x8_M
+    {
+        *rcNameID: =HT_DITHER8X8_DISPLAY
+    }
+}
+*Command: CmdStartDoc
+{
+    *Order: DOC_SETUP.1
+    *Cmd: "<1B>@"
+}
+*Command: CmdEndJob
+{
+    *Order: JOB_FINISH.1
+    *Cmd: "<1B>r<1D>T"
+}
+*Command: CmdEndPage
+{
+    *Order: PAGE_FINISH.1
+    *Cmd: "<1D>S"
+}
+*RotateCoordinate?: FALSE
+*RotateRaster?: FALSE
+*RotateFont?: FALSE
+*switch: Orientation
+{
+    *case: PORTRAIT
+    {
+        *TextCaps: LIST(TC_OP_CHARACTER,TC_EA_DOUBLE,TC_IA_ABLE,TC_UA_ABLE,TC_RA_ABLE)
+    }
+    *case: LANDSCAPE_CC270
+    {
+        *TextCaps: LIST(TC_OP_CHARACTER,TC_RA_ABLE)
+    }
+}
+*CursorXAfterCR: AT_PRINTABLE_X_ORIGIN
+*YMoveAttributes: LIST(SEND_CR_FIRST)
+*XMoveThreshold: 0
+*YMoveThreshold: *
+*XMoveUnit: 203
+*YMoveUnit: 203
+
+*Command: CmdXMoveAbsolute { *Cmd : "<001B>$" %l{DestX} }
+*Command: CmdYMoveRelDown {  *Cmd : "<1B>J" %c[0,255]{max_repeat( DestYRel )} }
+
+*Command: CmdCR { *Cmd : "<>" }
+*Command: CmdLF { *Cmd : "<>" }
+*Command: CmdFF { *Cmd : "<>" }
+
+*EjectPageWithFF?: TRUE
+*OutputDataFormat: H_BYTE
+*OptimizeLeftBound?: FALSE
+*CursorXAfterSendBlockData: AT_GRXDATA_END
+*CursorYAfterSendBlockData: NO_MOVE
+*DefaultCTT: 0

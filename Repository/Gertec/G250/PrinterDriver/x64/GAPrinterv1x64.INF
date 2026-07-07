@@ -1,0 +1,103 @@
+;
+;	Printer Installation File
+;
+;	 List of supported printers, manufacturers
+;
+
+[Version]
+Signature="$Windows NT$"
+Provider=%GAPrinterv1%
+ClassGUID={4D36E979-E325-11CE-BFC1-08002BE10318}
+Class=Printer
+CatalogFile=GAPrinterv1x64.cat
+DriverVer=08/09/2010,4.0.1.0
+
+;
+; Manufacturer section.
+;
+; This section lists all of the manufacturers
+; that we will display in the Dialog box
+;
+
+[Manufacturer]
+"GAPrinterv1"=GAPrinterv1, NTamd64
+
+;
+; Model Specifications Section
+;
+
+[GAPrinterv1]
+"GA-C80250 Series"                      = GAC80250.GPD
+"GA-E200 Series"                      = GAE200.GPD
+
+"GA-L300 Series"                      = GAL300.GPD
+"GA-S300 Series"                      = GAS300.GPD
+
+
+[GAPrinterv1.NTamd64]
+"GA-C80250 Series"                      = GAC80250.GPD
+"GA-E200 Series"                      = GAE200.GPD
+
+"GA-L300 Series"                      = GAL300.GPD
+"GA-S300 Series"                      = GAS300.GPD
+
+
+;
+; Installer section(s) referenced above.
+;
+
+
+[GAC80250.GPD]
+CopyFiles=@GAPrinterv1.dll,@GAC80250.GPD
+DataSection=UNIDRV_DATA
+DataFile=GAC80250.GPD
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM
+
+[GAE200.GPD]
+CopyFiles=@GAPrinterv1.dll,@GAE200.GPD
+DataSection=UNIDRV_DATA
+DataFile=GAE200.GPD
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM
+
+
+
+[GAL300.GPD]
+CopyFiles=@GAPrinterv1.dll,@GAL300.GPD
+DataSection=UNIDRV_DATA
+DataFile=GAL300.GPD
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM
+
+[GAS300.GPD]
+CopyFiles=@GAPrinterv1.dll,@GAS300.GPD
+DataSection=UNIDRV_DATA
+DataFile=GAS300.GPD
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM
+
+
+
+[GPUNI]
+GPUNI.DLL
+
+[DestinationDirs]
+DefaultDestDir=66000
+
+[SourceDisksNames.amd64]
+1 = %disk1%,,,
+
+[SourceDisksFiles]
+GAPrinterv1.DLL                = 1
+GPUNI.DLL                    = 1
+GPUNI.INI                     = 1
+GAC80250.GPD              = 1
+GAE200.GPD                    = 1
+GAL300.GPD                    = 1
+GAS300.GPD                    = 1
+
+
+[Strings]
+PrinterClassName="Printers"
+disk1="Printer Driver Setup Disk"

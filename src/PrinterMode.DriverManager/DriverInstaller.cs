@@ -89,6 +89,35 @@ public class DriverInstaller : IDriverInstaller
                 }
             }
 
+            // ── Register the real print driver INF shipped in the Repository, if present ──
+            // Vendor silent installers frequently only stage the USB device driver / service
+            // and never call Add-PrinterDriver themselves — confirmed on the Gertec G250: the
+            // "GA-Printer Driver" program installs fully, yet Get-PrinterDriver never shows it.
+            // When the catalog ships a real (non-placeholder) INF for this model, register it
+            // directly instead of relying on the installer EXE + DriverStore/ProgramFiles search
+            // to happen to find it. This result takes priority over any name guessed later.
+            string? repoRegisteredDriverName = null;
+            var repoInfPath = ResolveRealInfPath(request.Driver);
+            if (repoInfPath != null)
+            {
+                progress?.Report("Registrando driver de impressão oficial...");
+                repoRegisteredDriverName = await _printerService.TryRegisterPrintDriverFromInfAsync(
+                    repoInfPath, request.Driver.AllDriverNames().ToList(), ct);
+                if (repoRegisteredDriverName != null)
+                {
+                    steps.Add($"Driver de impressão registrado: {repoRegisteredDriverName}");
+                    _log.Info($"Driver registered directly from repository INF '{repoInfPath}': '{repoRegisteredDriverName}'");
+                }
+                else
+                {
+                    // Add-PrinterDriver rejected every candidate name (unsigned driver blocked,
+                    // architecture mismatch, etc). Stage it via pnputil so a later DriverStore
+                    // scan in Step 1 still has a chance to pick it up.
+                    await InstallViaPnpUtilAsync(repoInfPath, ct);
+                    _log.Warning($"Could not register driver directly from '{repoInfPath}' — staged via pnputil for later detection.");
+                }
+            }
+
             if (request.SkipDriverInstall)
             {
                 driverInstalled = true;
@@ -437,6 +466,11 @@ public class DriverInstaller : IDriverInstaller
                 if (!driverInstalled)
                     return InstallResult.Fail("Não foi possível instalar o driver.", null, steps);
             }
+
+            // The direct repository-INF registration is authoritative — it's a confirmed real
+            // driver name, not a guess — so it overrides whatever name Step 1 detected/guessed.
+            if (repoRegisteredDriverName != null)
+                detectedDriverName = repoRegisteredDriverName;
 
             // Step 2: Create the port
             progress?.Report("Criando porta de impressão...");
@@ -1490,6 +1524,20 @@ public class DriverInstaller : IDriverInstaller
             return byClass;
         }
         catch { return []; }
+    }
+
+    // Picks the architecture-appropriate INF shipped in the Repository for this driver, if the
+    // catalog declares one (placeholder/template INFs are skipped by DriverFilesExist/callers
+    // treating a missing real driver as "no repo INF" — here we just check the file exists).
+    private string? ResolveRealInfPath(DriverInfo driver)
+    {
+        var infFile = !Environment.Is64BitOperatingSystem && !string.IsNullOrEmpty(driver.InfFileX86)
+            ? driver.InfFileX86
+            : driver.InfFile;
+        if (string.IsNullOrEmpty(infFile)) return null;
+
+        var path = Path.Combine(_repository.ResolveDriverPath(driver), infFile);
+        return File.Exists(path) ? path : null;
     }
 
     private IReadOnlyList<string> FindPrintDriverInfInProgramFiles(DriverInfo driver)
