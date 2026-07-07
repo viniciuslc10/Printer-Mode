@@ -512,6 +512,19 @@ public class WindowsPrinterService : IWindowsPrinterService
                     ? stdout[4..]
                     : (!string.IsNullOrWhiteSpace(stderr) ? stderr : stdout);
                 if (string.IsNullOrWhiteSpace(reason)) reason = "Add-PrinterPort não confirmou a criação (sem mensagem de erro).";
+
+                // "The specified port already exists" means the port genuinely IS usable —
+                // it was created (this run or an earlier one) through a code path (the newer
+                // PrintManagement module's own backing store) that Win32_PrinterPort's WMI
+                // provider had not yet reflected when PortExists() checked. Trust Add-PrinterPort's
+                // own signal over a WMI query that can lag behind it; treat this as success.
+                if (reason.Contains("already exist", StringComparison.OrdinalIgnoreCase) ||
+                    reason.Contains("já existe", StringComparison.OrdinalIgnoreCase))
+                {
+                    _log.Info($"EnsurePortRegistered: '{registerName}' reported as already existing by Add-PrinterPort (WMI hadn't caught up) — treating as registered.");
+                    return (true, (string?)null);
+                }
+
                 _log.Warning($"EnsurePortRegistered: '{registerName}' still not present after Add-PrinterPort. Reason: {reason}");
                 return (false, reason);
             }
@@ -2089,8 +2102,9 @@ public class WindowsPrinterService : IWindowsPrinterService
             var stderr = stderrTask.GetAwaiter().GetResult().Trim();
             stdoutTask.GetAwaiter().GetResult(); // discard stdout
 
-            _log.Info($"PowerShell Add-Printer exit={process.ExitCode} stderr='{stderr}'");
-            return (process.ExitCode == 0, process.ExitCode == 0 ? null : (string.IsNullOrWhiteSpace(stderr) ? $"exit code {process.ExitCode}" : stderr));
+            var cleanError = ExtractPsError(stderr);
+            _log.Info($"PowerShell Add-Printer exit={process.ExitCode} error='{cleanError}'");
+            return (process.ExitCode == 0, process.ExitCode == 0 ? null : (string.IsNullOrWhiteSpace(cleanError) ? $"exit code {process.ExitCode}" : cleanError));
         }
         catch (Exception ex)
         {
