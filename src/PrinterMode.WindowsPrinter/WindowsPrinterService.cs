@@ -2173,7 +2173,12 @@ public class WindowsPrinterService : IWindowsPrinterService
             return text.Trim();
         }
 
-        return "Falha ao conectar — verifique se o compartilhamento está ativo no host.";
+        // Neither known CLIXML shape matched (e.g. it was only a progress/verbose record,
+        // not an error) — this is a generic helper used by every PowerShell call in this
+        // class (Add-Printer, port registration, driver registration, shared connections),
+        // so the fallback must not assume any one of those contexts. Returning a fixed
+        // "share/host" message here was misleading in every other call site.
+        return raw.Length > 300 ? raw[..300] : raw;
     }
 
     private static string CleanXmlEscapes(string text) =>
