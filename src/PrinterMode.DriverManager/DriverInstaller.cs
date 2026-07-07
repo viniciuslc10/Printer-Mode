@@ -960,6 +960,41 @@ public class DriverInstaller : IDriverInstaller
                         "O Windows pode ter rejeitado a criação silenciosamente. Tente reinstalar o driver manualmente.",
                         steps);
                 }
+
+                // Final port upgrade: confirmed by direct testing that the raw USBPRINT device-
+                // interface path (used as a last-resort port so the printer could be created at
+                // all) does NOT actually work for real print I/O — the printer exists but a test
+                // page fails. A real USB001-style port, by contrast, DOES print correctly. That
+                // port can appear in Win32_PrinterPort slightly AFTER our own detection ran (the
+                // same WMI-lag pattern seen throughout this session), so re-check now, after the
+                // printer/driver settle, and switch to it automatically if one has since appeared
+                // — this is exactly what manually changing the port in Properties > Ports does.
+                bool usingRawInterfacePath = request.ConnectionType == ConnectionType.USB &&
+                    portName.StartsWith(@"\\?\", StringComparison.OrdinalIgnoreCase);
+                if (usingRawInterfacePath)
+                {
+                    string? realUsbPort = null;
+                    for (int i = 0; i < 3 && realUsbPort == null; i++)
+                    {
+                        if (i > 0) await Task.Delay(2000, ct);
+                        realUsbPort = await _printerService.FindBestUsbPortAsync(ct);
+                    }
+                    if (realUsbPort != null)
+                    {
+                        _log.Info($"Real USB port '{realUsbPort}' found after printer creation — switching from raw interface path '{portName}'.");
+                        if (await _printerService.UpdatePrinterPortAsync(request.PrinterName, realUsbPort, ct))
+                        {
+                            portName = realUsbPort;
+                            steps.Add($"Porta atualizada para {realUsbPort} (porta USB padrão do Windows, testada e confiável para impressão).");
+                        }
+                    }
+                    else
+                    {
+                        _log.Warning("No standard USB port found to upgrade to — printer remains on the raw interface path port. " +
+                                     "If a test print fails, manually switch the port to USB001 (or the correct one) in printer Properties > Ports.");
+                        steps.Add("⚠ Porta em uso não é a USB padrão do Windows — se a impressão falhar, troque manualmente para USB001 em Propriedades → Portas.");
+                    }
+                }
             }
 
             // Step 4: Configure paper
