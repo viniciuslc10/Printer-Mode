@@ -1540,6 +1540,36 @@ public class WindowsPrinterService : IWindowsPrinterService
     {
         return await Task.Run(() =>
         {
+            // Get-PrinterPort (PrintManagement module) first. Confirmed in the field: on some
+            // machines Win32_PrinterPort itself throws "Classe inválida" (invalid class) —
+            // not a lag, the WMI class is simply broken/unregistered there — silently returning
+            // an empty list from the WMI path on every single call. Every caller here treats an
+            // empty list as "no ports exist at all", so a genuinely real, already-verified port
+            // (e.g. a printer auto-installed on USB001) gets wrongly discarded as unverified,
+            // which was traced as the actual root cause of a full port-resolution failure.
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = "-NoProfile -NonInteractive -Command \"(Get-PrinterPort).Name\"",
+                    UseShellExecute = false, CreateNoWindow = true,
+                    RedirectStandardOutput = true
+                };
+                using var proc = Process.Start(psi)!;
+                var stdout = proc.StandardOutput.ReadToEnd();
+                proc.WaitForExit(15_000);
+                var psPorts = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Where(l => l.Length > 0)
+                    .ToList();
+                if (psPorts.Count > 0)
+                    return (IReadOnlyList<string>)psPorts;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"GetAvailablePortsAsync (PowerShell) failed, falling back to WMI: {ex.Message}");
+            }
+
             var ports = new List<string>();
             try
             {

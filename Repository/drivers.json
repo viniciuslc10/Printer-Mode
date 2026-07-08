@@ -817,7 +817,7 @@
       "manufacturer": "Epson",
       "model": "TM-T20III",
       "vid": "04B8",
-      "pid": "0232",
+      "pid": "0E03",
       "driverFolder": "Epson\\TM-T20III",
       "infFile": "EPST20III.inf",
       "installerExe": "Epson_TM-T20III_v5.6.0.0.exe",
