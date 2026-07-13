@@ -2747,12 +2747,58 @@ public class WindowsPrinterService : IWindowsPrinterService
     {
         return await Task.Run(() =>
         {
+            // Add-PrinterPort (PowerShell) first: it's the only way to set LPR Byte Counting —
+            // the checkbox in Printer Properties → Ports → Configure Port ("Contagem de bytes
+            // do LPR ativada" / "LPR Byte Counting Enabled"). Win32_TCPIPPrinterPort (WMI) has
+            // no property for it at all. Without it, some print servers/printers truncate or
+            // corrupt larger LPR jobs sent from client PCs — confirmed needed on client
+            // machines connecting to a printer shared via this app's LPD server.
+            try
+            {
+                var script =
+                    $"Add-PrinterPort -Name '{EscapePs(portName)}' -LprHostAddress '{EscapePs(host)}' " +
+                    $"-LprQueueName '{EscapePs(queueName)}' -LprByteCountingEnabled -ErrorAction Stop";
+                var enc = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {enc}",
+                    UseShellExecute = false, CreateNoWindow = true,
+                    RedirectStandardOutput = true, RedirectStandardError = true
+                };
+                using var proc = Process.Start(psi)!;
+                var stderrTask = proc.StandardError.ReadToEndAsync();
+                proc.WaitForExit(20_000);
+                var stderr = stderrTask.GetAwaiter().GetResult();
+
+                if (proc.ExitCode == 0)
+                {
+                    _log.Info($"LPR port created (PowerShell, byte counting enabled): {portName} → {host}:515 queue='{queueName}'");
+                    return true;
+                }
+
+                // "already exists" is success, same reasoning as every other port-registration
+                // path in this codebase — Add-PrinterPort's own check is more reliable than WMI.
+                var err = ExtractPsError(stderr);
+                if (err.Contains("existe", StringComparison.OrdinalIgnoreCase) ||
+                    err.Contains("exist", StringComparison.OrdinalIgnoreCase))
+                {
+                    _log.Info($"LPR port '{portName}' already exists — reusing.");
+                    return true;
+                }
+                _log.Warning($"Add-PrinterPort (LPR) failed for '{portName}': {err}");
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"CreateLprPortAsync (PowerShell) failed: {ex.Message}");
+            }
+
+            // WMI fallback — cannot enable byte counting, but still creates a working port.
             try
             {
                 var scope = new ManagementScope(@"\\.\root\cimv2");
                 scope.Connect();
 
-                // Reuse an existing LPR port rather than failing on re-install
                 using var existing = new ManagementObjectSearcher(scope,
                     new ObjectQuery($"SELECT Name FROM Win32_TCPIPPrinterPort WHERE Name='{EscapeWmi(portName)}'"));
                 foreach (ManagementObject _ in existing.Get())
@@ -2773,7 +2819,7 @@ public class WindowsPrinterService : IWindowsPrinterService
                 port["SNMPEnabled"] = false;
 
                 port.Put();
-                _log.Info($"LPR port created: {portName} → {host}:515 queue='{queueName}'");
+                _log.Info($"LPR port created (WMI fallback, byte counting NOT set): {portName} → {host}:515 queue='{queueName}'");
                 return true;
             }
             catch (Exception ex)
