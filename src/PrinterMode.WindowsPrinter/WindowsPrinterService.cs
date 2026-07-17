@@ -2963,7 +2963,13 @@ public class WindowsPrinterService : IWindowsPrinterService
             using var writer = new StreamWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true)
                 { AutoFlush = true };
 
-            // Return shared printers: "shareName|displayName|driverName" per line
+            // Return shared printers: "shareName|displayName|driverName|rawPort" per line.
+            // rawPort: a RAW-protocol listener port (see EnsureRawShareListenerAsync below) —
+            // some networks (routers/switches with old CVE-based filtering) block TCP 515
+            // outright even with Windows Firewall fully disabled and no antivirus involved,
+            // confirmed in the field (ping succeeds, Test-NetConnection on 515 fails). RAW
+            // protocol has no fixed port requirement, so the client can fall back to this
+            // arbitrary port instead of the LPR port monitor's hardcoded 515.
             using var searcher = new ManagementObjectSearcher(
                 "SELECT Name, ShareName, DriverName FROM Win32_Printer WHERE Shared = True");
             foreach (ManagementObject p in searcher.Get())
@@ -2972,7 +2978,10 @@ public class WindowsPrinterService : IWindowsPrinterService
                 var name       = p["Name"]?.ToString();
                 var driverName = p["DriverName"]?.ToString();
                 if (!string.IsNullOrWhiteSpace(share))
-                    await writer.WriteLineAsync($"{share}|{name ?? share}|{driverName ?? ""}");
+                {
+                    var rawPort = await EnsureRawShareListenerAsync(name ?? share, CancellationToken.None);
+                    await writer.WriteLineAsync($"{share}|{name ?? share}|{driverName ?? ""}|{rawPort}");
+                }
             }
         }
         catch (Exception ex)
@@ -2982,6 +2991,109 @@ public class WindowsPrinterService : IWindowsPrinterService
         finally
         {
             client.Close();
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────────
+    // RAW-protocol share fallback (arbitrary port, starting at 9100)
+    // A LPR (port 515) alternative for networks that filter that specific port at the
+    // switch/router level — confirmed in the field: Windows Firewall fully disabled, no
+    // antivirus, yet Test-NetConnection to 515 still fails while ping succeeds instantly.
+    // RAW printing has no protocol handshake at all: the client just streams the print
+    // job's raw bytes over a plain TCP connection and closes it — same idea as the "9100"
+    // port real network printers use, except the port here is whatever's free, discovered
+    // by the client via the existing (confirmed working) discovery service on port 9876.
+    // ──────────────────────────────────────────────────────────────────────────────
+
+    private static readonly Dictionary<string, int> _rawSharePorts = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly object _rawSharePortsLock = new();
+    private const int RawSharePortBase = 9100;
+
+    public Task<int> EnsureRawShareListenerAsync(string printerName, CancellationToken ct = default)
+    {
+        lock (_rawSharePortsLock)
+        {
+            if (_rawSharePorts.TryGetValue(printerName, out var existingPort))
+                return Task.FromResult(existingPort);
+        }
+
+        int port;
+        lock (_rawSharePortsLock)
+        {
+            port = RawSharePortBase;
+            var used = new HashSet<int>(_rawSharePorts.Values);
+            while (used.Contains(port)) port++;
+            _rawSharePorts[printerName] = port;
+        }
+
+        StartRawShareListener(printerName, port);
+        return Task.FromResult(port);
+    }
+
+    private void StartRawShareListener(string printerName, int port)
+    {
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var del = new ProcessStartInfo("netsh",
+                    $"advfirewall firewall delete rule name=\"PrinterMode Raw {port}\"")
+                { UseShellExecute = false, CreateNoWindow = true };
+                using (var p = Process.Start(del)!) p.WaitForExit(5_000);
+                var add = new ProcessStartInfo("netsh",
+                    $"advfirewall firewall add rule name=\"PrinterMode Raw {port}\" " +
+                    $"dir=in action=allow protocol=tcp localport={port} profile=any")
+                { UseShellExecute = false, CreateNoWindow = true };
+                using (var p = Process.Start(add)!) p.WaitForExit(5_000);
+            }
+            catch { }
+        });
+
+        _ = Task.Run(async () =>
+        {
+            System.Net.Sockets.TcpListener? listener = null;
+            try
+            {
+                listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, port);
+                listener.Start();
+                _log.Info($"RAW share listener started for '{printerName}' on port {port}.");
+
+                while (true)
+                {
+                    var client = await listener.AcceptTcpClientAsync();
+                    _ = HandleRawShareClientAsync(client, printerName);
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"RAW share listener for '{printerName}' on port {port} failed: {ex.Message}");
+            }
+            finally
+            {
+                listener?.Stop();
+            }
+        });
+    }
+
+    private async Task HandleRawShareClientAsync(System.Net.Sockets.TcpClient client, string printerName)
+    {
+        try
+        {
+            using (client)
+            using (var ms = new MemoryStream())
+            {
+                await client.GetStream().CopyToAsync(ms);
+                var data = ms.ToArray();
+                if (data.Length > 0)
+                {
+                    bool ok = RawPrint.Send(printerName, data);
+                    _log.Info($"RAW share job: '{printerName}' {data.Length}B ok={ok}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Info($"RAW share client handler (non-fatal): {ex.Message}");
         }
     }
 

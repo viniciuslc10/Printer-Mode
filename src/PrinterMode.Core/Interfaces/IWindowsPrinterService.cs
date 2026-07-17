@@ -56,6 +56,7 @@ public interface IWindowsPrinterService
     Task<bool> TryEnableLpdRemotelyAsync(string host, CancellationToken ct = default);
     Task<bool> IsLpdAvailableAsync(string host, CancellationToken ct = default);
     Task<bool> SharePrinterAsync(string printerName, string shareName, CancellationToken ct = default);
+    Task<int> EnsureRawShareListenerAsync(string printerName, CancellationToken ct = default);
     void StartDiscoveryListener();
     void StartLpdServer();
     Task<IReadOnlyList<string>> GetRemoteSharedPrintersAsync(string host, CancellationToken ct = default);

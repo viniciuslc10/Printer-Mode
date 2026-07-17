@@ -1271,7 +1271,62 @@ public class DriverInstaller : IDriverInstaller
         }
         else
         {
-            _log.Info($"LPD not available on {host}:515. Trying SMB.");
+            _log.Info($"LPD not available on {host}:515. Trying RAW fallback.");
+        }
+
+        // ── Path 1.5: RAW fallback ────────────────────────────────────────────────
+        // Some networks block TCP 515 specifically at the switch/router level — confirmed
+        // in the field: Windows Firewall fully disabled, no antivirus, ping succeeds
+        // instantly, yet a direct TCP test on 515 still fails. Port 9876 (discovery) is
+        // already proven to work on the same network, so ask the server (via that already-
+        // working channel) which arbitrary port its RAW listener for this printer is on,
+        // and connect there instead — RAW printing has no protocol tied to a fixed port.
+        if (!lpdUp)
+        {
+            progress?.Report($"Tentando porta RAW alternativa em {host}...");
+            var discovered = await _printerService.GetRemoteSharedPrintersAsync(host, ct);
+            var match = discovered
+                .Select(l => l.Split('|'))
+                .FirstOrDefault(f => f.Length >= 4 && f[0].Equals(shareName, StringComparison.OrdinalIgnoreCase));
+
+            if (match != null && int.TryParse(match[3], out var rawPort))
+            {
+                var rawPortName = $"RAW_{host.Replace('.', '_')}_{shareName}";
+                bool rawPortCreated = await _printerService.CreateTcpIpPortAsync(rawPortName, host, rawPort, ct);
+                if (rawPortCreated)
+                {
+                    steps.Add($"Porta RAW criada: {rawPortName} ({host}:{rawPort})");
+
+                    var driverName = await ResolveDriverForSharedAsync(request, ct);
+                    var printerDisplayName = string.IsNullOrWhiteSpace(request.PrinterName) ? shareName : request.PrinterName;
+
+                    progress?.Report($"Adicionando impressora '{printerDisplayName}' (driver: {driverName})...");
+                    bool added = await _printerService.AddPrinterAsync(printerDisplayName, driverName, rawPortName, ct);
+
+                    if (added)
+                    {
+                        steps.Add($"Impressora criada via RAW: '{printerDisplayName}' driver='{driverName}'");
+                        if (request.SetAsDefault)
+                        {
+                            await _printerService.SetDefaultPrinterAsync(printerDisplayName, ct);
+                            steps.Add("Definida como impressora padrão.");
+                        }
+                        progress?.Report("Impressora instalada via RAW com sucesso!");
+                        return InstallResult.Ok(
+                            $"Impressora '{printerDisplayName}' instalada via RAW (porta {rawPort}) com sucesso!",
+                            printerDisplayName, steps);
+                    }
+                    _log.Warning($"RAW port created but AddPrinterAsync failed (driver='{driverName}'). Falling back to SMB.");
+                }
+                else
+                {
+                    _log.Warning("CreateTcpIpPortAsync (RAW) failed. Falling back to SMB.");
+                }
+            }
+            else
+            {
+                _log.Info($"Discovery on {host} didn't return a RAW port for share '{shareName}'. Trying SMB.");
+            }
         }
 
         // ── Path 2: SMB fallback ──────────────────────────────────────────────────
@@ -1301,6 +1356,7 @@ public class DriverInstaller : IDriverInstaller
         return InstallResult.Fail(
             $"Não foi possível conectar à impressora em '{host}'.",
             $"LPD (porta 515): {(lpdUp ? "porta aberta mas falhou ao criar porta LPR" : "não respondeu")}.\n" +
+            $"RAW (porta alternativa): não encontrada ou falhou.\n" +
             $"SMB: {errorDetail}\n\n" +
             $"Certifique-se que o PrinterMode está instalado e a impressora instalada no computador '{host}'. " +
             $"O LPD é ativado automaticamente durante a instalação.",
