@@ -2848,12 +2848,37 @@ public class WindowsPrinterService : IWindowsPrinterService
 
         try
         {
+            // Confirmed root cause of "instalei nos dois PCs, apontei o IP do servidor, deu erro
+            // de LPD" reports: the server's own LpdServer binds and works fine LOCALLY (this
+            // check above only probes loopback), but with no inbound firewall rule, Windows
+            // Defender Firewall silently drops the CLIENT's connection from across the network —
+            // IsLpdAvailableAsync on the client then reports LPD as unreachable. Port 9876
+            // (discovery) already opens its own rule the same way; port 515 never did.
+            OpenLpdFirewallRule();
             new LpdServer(_log).Start();
         }
         catch (Exception ex)
         {
             _log.Warning($"StartLpdServer failed: {ex.Message}");
         }
+    }
+
+    private static void OpenLpdFirewallRule()
+    {
+        try
+        {
+            var del = new ProcessStartInfo("netsh",
+                "advfirewall firewall delete rule name=\"PrinterMode LPD\"")
+            { UseShellExecute = false, CreateNoWindow = true };
+            using (var p = Process.Start(del)!) p.WaitForExit(5_000);
+
+            var add = new ProcessStartInfo("netsh",
+                "advfirewall firewall add rule name=\"PrinterMode LPD\" " +
+                "dir=in action=allow protocol=tcp localport=515 profile=any")
+            { UseShellExecute = false, CreateNoWindow = true };
+            using (var p = Process.Start(add)!) p.WaitForExit(5_000);
+        }
+        catch { }
     }
 
     private static bool IsPort515Bound()

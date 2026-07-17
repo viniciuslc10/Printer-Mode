@@ -14,6 +14,10 @@ public partial class MainWindow : Window
         DataContext = vm;
         Loaded += async (_, _) => await vm.LoadAsync();
 
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        if (version != null)
+            VersionText.Text = $"v{version.Major}.{version.Minor}.{version.Build}";
+
         // WindowStyle="None" + AllowsTransparency="True" windows overflow past the screen
         // edges (covering the taskbar) when maximized — a well-known WPF quirk since the
         // OS auto-fit logic that normally accounts for the taskbar is tied to the native

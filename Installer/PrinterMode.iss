@@ -6,7 +6,7 @@
 ; ============================================================
 
 #define AppName      "PrinterMode"
-#define AppVersion   "1.0.0"
+#define AppVersion   "1.0.1"
 #define AppPublisher "PrinterMode"
 #define AppURL       "https://github.com/viniciuslc10/printer-mode"
 #define AppExeName   "PrinterMode.exe"
@@ -71,6 +71,19 @@ Name: "{group}\Desinstalar {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}";       Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
+; Open inbound firewall rules for the LPD (515) and Discovery (9876) servers at install
+; time — guarantees printer sharing between PCs works even if the app is closed right
+; after install without being reopened. The app also (re)opens these itself at every
+; startup as a safety net, but doing it here too means it's not conditional on that.
+Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""PrinterMode LPD"""; \
+  Flags: runhidden; StatusMsg: "Configurando firewall..."
+Filename: "netsh"; Parameters: "advfirewall firewall add rule name=""PrinterMode LPD"" dir=in action=allow protocol=tcp localport=515 profile=any"; \
+  Flags: runhidden
+Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""PrinterMode Discovery"""; \
+  Flags: runhidden
+Filename: "netsh"; Parameters: "advfirewall firewall add rule name=""PrinterMode Discovery"" dir=in action=allow protocol=tcp localport=9876 profile=any"; \
+  Flags: runhidden
+
 Filename: "{app}\{#AppExeName}"; \
   Description: "Abrir {#AppName} agora"; \
   Flags: nowait postinstall skipifsilent runascurrentuser
