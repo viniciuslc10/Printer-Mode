@@ -288,22 +288,65 @@ internal static class RawPrint
     [DllImport("winspool.drv", SetLastError = true)]
     private static extern bool ClosePrinter(IntPtr h);
 
-    public static bool Send(string printerName, byte[] data)
+    public static bool Send(string printerName, byte[] data) => SendWithReason(printerName, data).ok;
+
+    public static (bool ok, string? error) SendWithReason(string printerName, byte[] data)
     {
-        if (!OpenPrinter(printerName, out var handle, IntPtr.Zero)) return false;
+        if (!TryOpenAndStartDoc(printerName, out var handle, out var openError))
+            return (false, openError);
         try
         {
-            var doc = new DOCINFO { pDocName = "LPD Job", pDataType = "RAW" };
-            if (StartDocPrinter(handle, 1, ref doc) <= 0) return false;
-            StartPagePrinter(handle);
-            WritePrinter(handle, data, data.Length, out _);
-            EndPagePrinter(handle);
-            EndDocPrinter(handle);
-            return true;
+            if (!WriteChunk(handle, data, data.Length, out var writeError))
+                return (false, writeError);
+            return (true, null);
         }
         finally
         {
-            ClosePrinter(handle);
+            EndDocAndClose(handle);
         }
+    }
+
+    // Streaming variants — used by the RAW share listener, which writes chunks to the
+    // printer as they arrive over the network instead of buffering a whole job first.
+    public static bool TryOpenAndStartDoc(string printerName, out IntPtr handle, out string? error)
+    {
+        if (!OpenPrinter(printerName, out handle, IntPtr.Zero))
+        {
+            error = $"OpenPrinter falhou (Win32 error {Marshal.GetLastWin32Error()})";
+            handle = IntPtr.Zero;
+            return false;
+        }
+
+        var doc = new DOCINFO { pDocName = "Shared Print Job", pDataType = "RAW" };
+        if (StartDocPrinter(handle, 1, ref doc) <= 0)
+        {
+            error = $"StartDocPrinter falhou (Win32 error {Marshal.GetLastWin32Error()})";
+            ClosePrinter(handle);
+            handle = IntPtr.Zero;
+            return false;
+        }
+
+        StartPagePrinter(handle);
+        error = null;
+        return true;
+    }
+
+    public static bool WriteChunk(IntPtr handle, byte[] buffer, int count, out string? error)
+    {
+        if (!WritePrinter(handle, buffer, count, out var written) || written != count)
+        {
+            error = $"WritePrinter falhou ({written}/{count} bytes, Win32 error {Marshal.GetLastWin32Error()})";
+            return false;
+        }
+        error = null;
+        return true;
+    }
+
+    public static void EndDocAndClose(IntPtr handle)
+    {
+        if (handle == IntPtr.Zero) return;
+        EndPagePrinter(handle);
+        EndDocPrinter(handle);
+        ClosePrinter(handle);
     }
 }

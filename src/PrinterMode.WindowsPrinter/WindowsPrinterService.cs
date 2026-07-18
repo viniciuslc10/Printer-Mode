@@ -3077,23 +3077,67 @@ public class WindowsPrinterService : IWindowsPrinterService
 
     private async Task HandleRawShareClientAsync(System.Net.Sockets.TcpClient client, string printerName)
     {
+        // Confirmed root cause of jobs vanishing from the client's queue without ever
+        // printing: buffering the whole job into memory and waiting for the TCP connection
+        // to cleanly close (previous implementation) — Windows' own RAW/9100 port monitor
+        // does not reliably close the connection right after sending, so that wait could
+        // never resolve, while the CLIENT's spooler already drops the job from its queue as
+        // soon as it's handed off to the socket. Stream each chunk straight to the printer
+        // via WritePrinter as it arrives, and treat a short read-inactivity gap (not a true
+        // EOF) as end-of-job — this is how real RAW/9100 printers behave: they act on data
+        // as it streams in, not on the sender closing the connection.
+        IntPtr handle = IntPtr.Zero;
+        int totalBytes = 0;
         try
         {
             using (client)
-            using (var ms = new MemoryStream())
             {
-                await client.GetStream().CopyToAsync(ms);
-                var data = ms.ToArray();
-                if (data.Length > 0)
+                var stream = client.GetStream();
+                var buffer = new byte[8192];
+                Task<int>? pendingRead = null;
+
+                while (true)
                 {
-                    bool ok = RawPrint.Send(printerName, data);
-                    _log.Info($"RAW share job: '{printerName}' {data.Length}B ok={ok}");
+                    pendingRead ??= stream.ReadAsync(buffer, 0, buffer.Length);
+                    var completed = await Task.WhenAny(pendingRead, Task.Delay(3000));
+
+                    if (completed != pendingRead)
+                    {
+                        if (totalBytes > 0) break; // inactivity after data received = job done
+                        continue;                  // connection just opened — keep waiting on it
+                    }
+
+                    int n = await pendingRead;
+                    pendingRead = null;
+                    if (n == 0) break; // real EOF
+
+                    if (handle == IntPtr.Zero &&
+                        !RawPrint.TryOpenAndStartDoc(printerName, out handle, out var openError))
+                    {
+                        _log.Warning($"RAW share job: could not open '{printerName}': {openError}");
+                        return;
+                    }
+
+                    if (!RawPrint.WriteChunk(handle, buffer, n, out var writeError))
+                    {
+                        _log.Warning($"RAW share job: write failed on '{printerName}' after {totalBytes}B: {writeError}");
+                        break;
+                    }
+                    totalBytes += n;
                 }
             }
         }
         catch (Exception ex)
         {
             _log.Info($"RAW share client handler (non-fatal): {ex.Message}");
+        }
+        finally
+        {
+            if (handle != IntPtr.Zero)
+            {
+                RawPrint.EndDocAndClose(handle);
+                _log.Info($"RAW share job: '{printerName}' {totalBytes}B sent to printer.");
+            }
         }
     }
 
