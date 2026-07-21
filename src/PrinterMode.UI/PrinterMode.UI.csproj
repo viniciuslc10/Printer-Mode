@@ -18,6 +18,15 @@
     <Description>Gerenciador de Impressoras Térmicas para Windows</Description>
   </PropertyGroup>
 
+  <!-- UseWindowsForms adds an implicit global "using System.Windows.Forms;", which collides
+       with WPF's "System.Windows"/"System.Windows.Controls" for shared names like Application
+       and UserControl in every file (not just the tray-icon code, which already fully qualifies
+       System.Windows.Forms.* and doesn't need this). Removing it fixes the ambiguity everywhere
+       while keeping the WinForms assembly reference (needed for NotifyIcon) intact. -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
