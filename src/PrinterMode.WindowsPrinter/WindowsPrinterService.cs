@@ -2753,6 +2753,30 @@ public class WindowsPrinterService : IWindowsPrinterService
             // no property for it at all. Without it, some print servers/printers truncate or
             // corrupt larger LPR jobs sent from client PCs — confirmed needed on client
             // machines connecting to a printer shared via this app's LPD server.
+            //
+            // Confirmed in the field: a port left over from BEFORE this fix existed (created
+            // with no queue name / no byte counting) was silently "reused as-is" here, since
+            // Add-PrinterPort's "already exists" error was treated as plain success — the user
+            // had to fill in the queue name and tick the checkbox by hand for every such port.
+            // There is no PowerShell cmdlet to update an existing LPR port's queue/byte-counting
+            // settings directly, so remove any stale port first (best-effort, harmless if it
+            // doesn't exist or isn't removable) and always create it fresh with the right values.
+            try
+            {
+                var removeScript = $"Remove-PrinterPort -Name '{EscapePs(portName)}' -ErrorAction SilentlyContinue";
+                var removeEnc = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(removeScript));
+                using (var removeProc = Process.Start(new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -EncodedCommand {removeEnc}",
+                    UseShellExecute = false, CreateNoWindow = true
+                })!)
+                {
+                    removeProc.WaitForExit(10_000);
+                }
+            }
+            catch { /* best effort — Add-PrinterPort below still runs regardless */ }
+
             try
             {
                 var script =
@@ -2777,13 +2801,16 @@ public class WindowsPrinterService : IWindowsPrinterService
                     return true;
                 }
 
-                // "already exists" is success, same reasoning as every other port-registration
-                // path in this codebase — Add-PrinterPort's own check is more reliable than WMI.
+                // Reaching "already exists" here means the Remove-PrinterPort above couldn't
+                // actually remove it (most likely still assigned to an existing printer) —
+                // accept it as success like every other port-registration path in this
+                // codebase, but note that queue name/byte counting were NOT necessarily
+                // refreshed in this specific case.
                 var err = ExtractPsError(stderr);
                 if (err.Contains("existe", StringComparison.OrdinalIgnoreCase) ||
                     err.Contains("exist", StringComparison.OrdinalIgnoreCase))
                 {
-                    _log.Info($"LPR port '{portName}' already exists — reusing.");
+                    _log.Info($"LPR port '{portName}' still exists after attempted removal (likely in use by a printer) — reusing as-is.");
                     return true;
                 }
                 _log.Warning($"Add-PrinterPort (LPR) failed for '{portName}': {err}");

@@ -11,7 +11,7 @@
     <AssemblyName>PrinterMode</AssemblyName>
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.0.4</Version>
+    <Version>1.0.5</Version>
     <Copyright>Copyright © 2024 PrinterMode</Copyright>
     <Company>PrinterMode</Company>
     <Product>PrinterMode</Product>
