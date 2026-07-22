@@ -1225,6 +1225,15 @@ public class DriverInstaller : IDriverInstaller
         if (sharedDriverInfo != null && string.IsNullOrWhiteSpace(request.Driver?.DriverName))
             request.Driver = sharedDriverInfo;
 
+        var printerDisplayName = string.IsNullOrWhiteSpace(request.PrinterName) ? shareName : request.PrinterName;
+
+        // Remove any existing local printer with this name unconditionally before
+        // (re)connecting — same reasoning as the main USB/Serial/Network install path:
+        // an existing printer here keeps its LPR port "in use", which stops
+        // CreateLprPortAsync from being able to remove and recreate a stale port (e.g. one
+        // created before the queue-name/byte-counting fix existed) with the correct settings.
+        await _printerService.DeletePrinterAsync(printerDisplayName, ct);
+
         // ── Path 1: LPD/LPR (primary) ─────────────────────────────────────────────
         // LPD (port 515) requires no authentication — works regardless of Windows
         // account differences between PCs. Our app enables LPD automatically on install.
@@ -1243,7 +1252,6 @@ public class DriverInstaller : IDriverInstaller
                 steps.Add($"Porta LPR criada: {lprPortName}");
 
                 var driverName = await ResolveDriverForSharedAsync(request, ct);
-                var printerDisplayName = string.IsNullOrWhiteSpace(request.PrinterName) ? shareName : request.PrinterName;
 
                 progress?.Report($"Adicionando impressora '{printerDisplayName}' (driver: {driverName})...");
                 bool added = await _printerService.AddPrinterAsync(printerDisplayName, driverName, lprPortName, ct);
@@ -1298,7 +1306,6 @@ public class DriverInstaller : IDriverInstaller
                     steps.Add($"Porta RAW criada: {rawPortName} ({host}:{rawPort})");
 
                     var driverName = await ResolveDriverForSharedAsync(request, ct);
-                    var printerDisplayName = string.IsNullOrWhiteSpace(request.PrinterName) ? shareName : request.PrinterName;
 
                     progress?.Report($"Adicionando impressora '{printerDisplayName}' (driver: {driverName})...");
                     bool added = await _printerService.AddPrinterAsync(printerDisplayName, driverName, rawPortName, ct);
