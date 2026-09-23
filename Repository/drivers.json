@@ -1088,8 +1088,8 @@
     },
     {
       "id": "pos58_generic",
-      "manufacturer": "POS-58",
-      "model": "POS-58 USB",
+      "manufacturer": "Genérica",
+      "model": "POS-58",
       "vid": "0483",
       "pid": "5720",
       "driverFolder": "POS58",
@@ -1132,8 +1132,8 @@
     },
     {
       "id": "pos80_generic",
-      "manufacturer": "POS-80",
-      "model": "POS-80 USB",
+      "manufacturer": "Genérica",
+      "model": "POS-80",
       "vid": "0483",
       "pid": "5750",
       "driverFolder": "POS80",
