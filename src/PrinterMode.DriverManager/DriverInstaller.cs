@@ -96,93 +96,7 @@ public class DriverInstaller : IDriverInstaller
             // When the catalog ships a real (non-placeholder) INF for this model, register it
             // directly instead of relying on the installer EXE + DriverStore/ProgramFiles search
             // to happen to find it. This result takes priority over any name guessed later.
-            string? repoRegisteredDriverName = null;
-            var repoInfPath = ResolveRealInfPath(request.Driver);
-            if (repoInfPath != null)
-            {
-                progress?.Report("Registrando driver de impressão oficial...");
-
-                // Some catalog entries ship a self-signed OEM certificate (e.g. Elgin i7/i9,
-                // Bematech MP4200 — confirmed "CN=Printer", not chained to a public root).
-                // Importing it first (idempotent — importing an already-trusted cert is a
-                // harmless no-op) makes the package's already-valid catalog trusted, so the
-                // normal pnputil/Add-PrinterDriver calls below succeed like any signed driver —
-                // no unsigned-driver override needed for this family.
-                if (!string.IsNullOrEmpty(request.Driver.DriverCertFile))
-                {
-                    var certPath = Path.Combine(Path.GetDirectoryName(repoInfPath)!, request.Driver.DriverCertFile);
-                    if (await _printerService.TryTrustCertificateAsync(certPath, ct))
-                        _log.Info($"Trusted OEM certificate '{certPath}'.");
-                }
-
-                // Stage via pnputil FIRST: Add-PrinterDriver on an unsigned OEM package (this
-                // one has no .cat file) commonly fails unless the INF was already staged into
-                // the DriverStore via pnputil /add-driver /install. Do this unconditionally,
-                // then attempt the real Spooler registration.
-                var (pnpOk, pnpOutput) = await InstallViaPnpUtilWithOutputAsync(repoInfPath, ct);
-
-                var (registeredName, registerError) = await _printerService.TryRegisterPrintDriverFromInfWithReasonAsync(
-                    repoInfPath, request.Driver.AllDriverNames().ToList(), ct);
-                repoRegisteredDriverName = registeredName;
-
-                // Confirmed root cause (real Windows text, not a guess): this specific package
-                // has no digital signature at all, and pnputil/Add-PrinterDriver refuse that
-                // headlessly with no silent override at all. Tried the classic printui.dll "/ia"
-                // install-from-INF flow first (goes through the interactive Add Printer wizard
-                // path) — confirmed in the field it returns instantly without ever showing a
-                // dialog on current Windows, so it cannot be relied on. AddPrinterDriverEx
-                // (winspool.drv), called directly with APD_INSTALL_WARNED_DRIVER, is the actual
-                // documented Win32 mechanism for this: it installs an unsigned driver headlessly,
-                // asserting the same consent a human would give by clicking "Install this driver
-                // software anyway" — this app already has that consent (running elevated,
-                // launched by the user). Only trigger it when the failure actually looks like a
-                // missing-signature problem, and only when the catalog declares the data/
-                // dependent files this driver needs.
-                bool looksUnsigned = !pnpOk &&
-                    (pnpOutput.Contains("assinatura", StringComparison.OrdinalIgnoreCase) ||
-                     pnpOutput.Contains("signature", StringComparison.OrdinalIgnoreCase) ||
-                     pnpOutput.Contains("signed", StringComparison.OrdinalIgnoreCase));
-
-                if (repoRegisteredDriverName == null && looksUnsigned &&
-                    !string.IsNullOrEmpty(request.Driver.DriverDataFile))
-                {
-                    var driverFileDir = Path.GetDirectoryName(repoInfPath)!;
-                    var dataFilePath = Path.Combine(driverFileDir, request.Driver.DriverDataFile);
-                    var dependentPaths = request.Driver.DriverDependentFiles
-                        .Select(f => Path.Combine(driverFileDir, f)).ToList();
-
-                    steps.Add("⚠ Driver sem assinatura digital — registrando com consentimento já concedido (não requer nenhuma tela nem clique)...");
-                    _log.Info($"Unsigned driver detected ('{pnpOutput.Trim()}') — registering via AddPrinterDriverEx/APD_INSTALL_WARNED_DRIVER.");
-                    progress?.Report("Registrando driver não assinado...");
-
-                    var (win32Ok, win32Error) = await _printerService.TryRegisterUnsignedPrintDriverAsync(
-                        request.Driver.DriverName, dataFilePath, dependentPaths, ct);
-                    if (win32Ok)
-                    {
-                        repoRegisteredDriverName = request.Driver.DriverName;
-                        _log.Info($"AddPrinterDriverEx succeeded for '{request.Driver.DriverName}'.");
-                    }
-                    else
-                    {
-                        registerError = win32Error ?? registerError;
-                        _log.Warning($"AddPrinterDriverEx failed for '{request.Driver.DriverName}': {win32Error}");
-                    }
-                }
-
-                if (repoRegisteredDriverName != null)
-                {
-                    steps.Add($"Driver de impressão registrado: {repoRegisteredDriverName}");
-                    _log.Info($"Driver registered directly from repository INF '{repoInfPath}': '{repoRegisteredDriverName}'");
-                }
-                else
-                {
-                    // Surfaced to the user (not just the log) — this is the real Windows/PowerShell
-                    // error, not a guess, so if it fails again we know exactly why instead of
-                    // silently falling back to Generic / Text Only.
-                    steps.Add($"⚠ Driver oficial não registrado ({registerError ?? "motivo desconhecido"}) — usando driver genérico como último recurso.");
-                    _log.Warning($"Could not register driver directly from '{repoInfPath}': {registerError}");
-                }
-            }
+            var repoRegisteredDriverName = await TryRegisterRealDriverAsync(request.Driver, steps, progress, ct);
 
             if (request.SkipDriverInstall)
             {
@@ -1221,7 +1135,7 @@ public class DriverInstaller : IDriverInstaller
         // Install the correct driver locally before connecting.
         // TryInstallSharedDriverAsync finds the driver using multiple strategies and
         // returns the matched DriverInfo so ResolveDriverForSharedAsync can use it.
-        var sharedDriverInfo = await TryInstallSharedDriverAsync(request, progress, ct);
+        var sharedDriverInfo = await TryInstallSharedDriverAsync(request, steps, progress, ct);
         if (sharedDriverInfo != null && string.IsNullOrWhiteSpace(request.Driver?.DriverName))
             request.Driver = sharedDriverInfo;
 
@@ -1405,7 +1319,7 @@ public class DriverInstaller : IDriverInstaller
     // runs its silent installer if the driver is not yet installed, and returns the
     // DriverInfo so the caller can pass it to ResolveDriverForSharedAsync.
     private async Task<DriverInfo?> TryInstallSharedDriverAsync(
-        InstallRequest request, IProgress<string>? progress, CancellationToken ct)
+        InstallRequest request, List<string> steps, IProgress<string>? progress, CancellationToken ct)
     {
         var driverName  = request.SharedDriverName;
         var displayName = request.SharedDisplayName;
@@ -1463,6 +1377,16 @@ public class DriverInstaller : IDriverInstaller
             _log.Info($"Driver '{match.DisplayName}' already installed locally.");
             return match;
         }
+
+        // Try registering the real driver shipped in the Repository directly first — this is
+        // the same mechanism the direct USB/Serial/Network install path uses, and is more
+        // reliable than the vendor's silent installer below, which often never calls
+        // Add-PrinterDriver itself (confirmed on Bematech MP4200 and Elgin i9: fixed for direct
+        // install, but still fell back to Generic/Text Only when installed as a shared printer,
+        // because this path never called it before).
+        var registeredDriverName = await TryRegisterRealDriverAsync(match, steps, progress, ct);
+        if (registeredDriverName != null)
+            return match;
 
         if (!match.HasInstaller || !_repository.DriverFilesExist(match))
         {
@@ -1660,6 +1584,106 @@ public class DriverInstaller : IDriverInstaller
             return byClass;
         }
         catch { return []; }
+    }
+
+    // Registers the real print driver shipped in the Repository directly (pnputil staging,
+    // OEM certificate trust, Add-PrinterDriver, and the AddPrinterDriverEx/unsigned fallback)
+    // instead of relying on the vendor's silent installer EXE to have registered it — confirmed
+    // repeatedly that many vendor installers never call Add-PrinterDriver themselves at all.
+    // Used by BOTH the direct USB/Serial/Network install path AND the shared-printer connect
+    // path (TryInstallSharedDriverAsync) — this used to only run for direct installs, which is
+    // why Bematech MP4200 and Elgin i9 (both fixed for direct install) still fell back to
+    // Generic/Text Only specifically when installed as a SHARED printer on a client PC.
+    private async Task<string?> TryRegisterRealDriverAsync(
+        DriverInfo driver, List<string> steps, IProgress<string>? progress, CancellationToken ct)
+    {
+        var repoInfPath = ResolveRealInfPath(driver);
+        if (repoInfPath == null) return null;
+
+        progress?.Report("Registrando driver de impressão oficial...");
+
+        // Some catalog entries ship a self-signed OEM certificate (e.g. Elgin i7/i9,
+        // Bematech MP4200 — confirmed "CN=Printer", not chained to a public root).
+        // Importing it first (idempotent — importing an already-trusted cert is a
+        // harmless no-op) makes the package's already-valid catalog trusted, so the
+        // normal pnputil/Add-PrinterDriver calls below succeed like any signed driver —
+        // no unsigned-driver override needed for this family.
+        if (!string.IsNullOrEmpty(driver.DriverCertFile))
+        {
+            var certPath = Path.Combine(Path.GetDirectoryName(repoInfPath)!, driver.DriverCertFile);
+            if (await _printerService.TryTrustCertificateAsync(certPath, ct))
+                _log.Info($"Trusted OEM certificate '{certPath}'.");
+        }
+
+        // Stage via pnputil FIRST: Add-PrinterDriver on an unsigned OEM package (this
+        // one has no .cat file) commonly fails unless the INF was already staged into
+        // the DriverStore via pnputil /add-driver /install. Do this unconditionally,
+        // then attempt the real Spooler registration.
+        var (pnpOk, pnpOutput) = await InstallViaPnpUtilWithOutputAsync(repoInfPath, ct);
+
+        var (registeredName, registerError) = await _printerService.TryRegisterPrintDriverFromInfWithReasonAsync(
+            repoInfPath, driver.AllDriverNames().ToList(), ct);
+        var repoRegisteredDriverName = registeredName;
+
+        // Confirmed root cause (real Windows text, not a guess): this specific package
+        // has no digital signature at all, and pnputil/Add-PrinterDriver refuse that
+        // headlessly with no silent override at all. Tried the classic printui.dll "/ia"
+        // install-from-INF flow first (goes through the interactive Add Printer wizard
+        // path) — confirmed in the field it returns instantly without ever showing a
+        // dialog on current Windows, so it cannot be relied on. AddPrinterDriverEx
+        // (winspool.drv), called directly with APD_INSTALL_WARNED_DRIVER, is the actual
+        // documented Win32 mechanism for this: it installs an unsigned driver headlessly,
+        // asserting the same consent a human would give by clicking "Install this driver
+        // software anyway" — this app already has that consent (running elevated,
+        // launched by the user). Only trigger it when the failure actually looks like a
+        // missing-signature problem, and only when the catalog declares the data/
+        // dependent files this driver needs.
+        bool looksUnsigned = !pnpOk &&
+            (pnpOutput.Contains("assinatura", StringComparison.OrdinalIgnoreCase) ||
+             pnpOutput.Contains("signature", StringComparison.OrdinalIgnoreCase) ||
+             pnpOutput.Contains("signed", StringComparison.OrdinalIgnoreCase));
+
+        if (repoRegisteredDriverName == null && looksUnsigned &&
+            !string.IsNullOrEmpty(driver.DriverDataFile))
+        {
+            var driverFileDir = Path.GetDirectoryName(repoInfPath)!;
+            var dataFilePath = Path.Combine(driverFileDir, driver.DriverDataFile);
+            var dependentPaths = driver.DriverDependentFiles
+                .Select(f => Path.Combine(driverFileDir, f)).ToList();
+
+            steps.Add("⚠ Driver sem assinatura digital — registrando com consentimento já concedido (não requer nenhuma tela nem clique)...");
+            _log.Info($"Unsigned driver detected ('{pnpOutput.Trim()}') — registering via AddPrinterDriverEx/APD_INSTALL_WARNED_DRIVER.");
+            progress?.Report("Registrando driver não assinado...");
+
+            var (win32Ok, win32Error) = await _printerService.TryRegisterUnsignedPrintDriverAsync(
+                driver.DriverName, dataFilePath, dependentPaths, ct);
+            if (win32Ok)
+            {
+                repoRegisteredDriverName = driver.DriverName;
+                _log.Info($"AddPrinterDriverEx succeeded for '{driver.DriverName}'.");
+            }
+            else
+            {
+                registerError = win32Error ?? registerError;
+                _log.Warning($"AddPrinterDriverEx failed for '{driver.DriverName}': {win32Error}");
+            }
+        }
+
+        if (repoRegisteredDriverName != null)
+        {
+            steps.Add($"Driver de impressão registrado: {repoRegisteredDriverName}");
+            _log.Info($"Driver registered directly from repository INF '{repoInfPath}': '{repoRegisteredDriverName}'");
+        }
+        else
+        {
+            // Surfaced to the user (not just the log) — this is the real Windows/PowerShell
+            // error, not a guess, so if it fails again we know exactly why instead of
+            // silently falling back to Generic / Text Only.
+            steps.Add($"⚠ Driver oficial não registrado ({registerError ?? "motivo desconhecido"}) — usando driver genérico como último recurso.");
+            _log.Warning($"Could not register driver directly from '{repoInfPath}': {registerError}");
+        }
+
+        return repoRegisteredDriverName;
     }
 
     // Picks the architecture-appropriate INF shipped in the Repository for this driver, if the
