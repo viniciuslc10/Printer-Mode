@@ -1802,17 +1802,24 @@ public class DriverInstaller : IDriverInstaller
             if (exact != null) return exact;
         }
 
-        // 2. Any installed driver whose name contains the model string
-        var byModel = installedDrivers.FirstOrDefault(d =>
-            d.Contains(driver.Model, StringComparison.OrdinalIgnoreCase));
-        if (byModel != null) return byModel;
+        // 2. Any installed driver whose name contains the model string — guarded to a
+        // minimum length. Confirmed in the field: Elgin's model strings are "i7"/"i8"/"i9",
+        // and an unguarded Contains() check here confidently matched one sibling model's
+        // driver (already installed from an earlier test) onto a completely different model
+        // being installed — reporting a wrong driver as "confirmed" is worse than admitting
+        // no match and falling back to Generic/Text Only, since the user has no reason to
+        // suspect it's wrong.
+        if (driver.Model.Length >= 4)
+        {
+            var byModel = installedDrivers.FirstOrDefault(d =>
+                d.Contains(driver.Model, StringComparison.OrdinalIgnoreCase));
+            if (byModel != null) return byModel;
+        }
 
-        // 3. Any installed driver whose name contains the manufacturer string
-        var byManufacturer = installedDrivers.FirstOrDefault(d =>
-            d.Contains(driver.Manufacturer, StringComparison.OrdinalIgnoreCase));
-        if (byManufacturer != null) return byManufacturer;
-
-        // Not found — caller decides what to do
+        // Matching by manufacturer alone used to be step 3 here — removed. A shared brand
+        // name says nothing about which specific model's driver is installed (confirmed:
+        // this is exactly how an Elgin i8 install ended up bound to the already-installed
+        // Elgin i7's driver).
         return null;
     }
 

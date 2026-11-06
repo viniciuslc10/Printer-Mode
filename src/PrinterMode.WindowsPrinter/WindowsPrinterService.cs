@@ -244,14 +244,24 @@ public class WindowsPrinterService : IWindowsPrinterService
         // give by clicking "Install this driver software anyway". It changes no system-wide
         // signing/security policy; it only accepts this one driver package.
         //
-        // pDriverPath/pConfigFile/pHelpFile reference the SYSTEM's own UNIDRV.DLL/UNIDRVUI.DLL/
-        // UNIDRV.HLP (already present — confirmed by "Microsoft enhanced Point and Print
-        // compatibility driver" already using them) rather than the vendor's bundled copies, to
-        // avoid touching Microsoft-signed shared components.
+        // pDriverPath/pConfigFile/pHelpFile reference UNIDRV.DLL/UNIDRVUI.DLL/UNIDRV.HLP as bare
+        // filenames, on the assumption Windows resolves them from its own driver store since a
+        // built-in driver ("Microsoft enhanced Point and Print compatibility driver") already
+        // uses them. Confirmed wrong in the field (Elgin i8): AddPrinterDriverEx failed with
+        // Win32 error 2 (file not found) for exactly this reason. The vendor package ships its
+        // own copies of these three files alongside the OEM data file — use full paths to
+        // those instead of guessing Windows will find bare names on its own.
         return await Task.Run(() =>
         {
             if (!File.Exists(dataFilePath))
                 return (false, (string?)$"Arquivo de dados do driver não encontrado: {dataFilePath}");
+
+            var driverDir = Path.GetDirectoryName(dataFilePath)!;
+            string ResolveSharedFile(string fileName)
+            {
+                var bundled = Path.Combine(driverDir, fileName);
+                return File.Exists(bundled) ? bundled : fileName;
+            }
 
             var handles = new List<IntPtr>();
             var infoPtr = IntPtr.Zero;
@@ -283,10 +293,10 @@ public class WindowsPrinterService : IWindowsPrinterService
                     cVersion = 3,
                     pName = Alloc(driverName),
                     pEnvironment = Alloc("Windows x64"),
-                    pDriverPath = Alloc("UNIDRV.DLL"),
+                    pDriverPath = Alloc(ResolveSharedFile("UNIDRV.DLL")),
                     pDataFile = Alloc(dataFilePath),
-                    pConfigFile = Alloc("UNIDRVUI.DLL"),
-                    pHelpFile = Alloc("UNIDRV.HLP"),
+                    pConfigFile = Alloc(ResolveSharedFile("UNIDRVUI.DLL")),
+                    pHelpFile = Alloc(ResolveSharedFile("UNIDRV.HLP")),
                     pDependentFiles = AllocMultiSz(dependentFilePaths),
                     pMonitorName = IntPtr.Zero,
                     pDefaultDataType = Alloc("RAW")
@@ -2140,10 +2150,10 @@ public class WindowsPrinterService : IWindowsPrinterService
                 using var searcher = new ManagementObjectSearcher(
                     "SELECT Name, DriverName, PortName FROM Win32_Printer");
 
-                var mfgLow = manufacturerHint.ToLowerInvariant();
                 var mdlLow = modelHint.Replace("-", "").Replace(" ", "").ToLowerInvariant();
-
-                (string? DriverName, string? PortName) fallback = (null, null);
+                // Guard against very short model strings (e.g. Elgin's "i7"/"i8"/"i9") matching
+                // as a substring of something unrelated.
+                bool modelUsable = mdlLow.Length >= 4;
 
                 foreach (ManagementObject obj in searcher.Get())
                 {
@@ -2156,31 +2166,18 @@ public class WindowsPrinterService : IWindowsPrinterService
                     var nameLow   = name.ToLowerInvariant().Replace("-", "").Replace(" ", "");
                     var driverLow = driverName.ToLowerInvariant().Replace("-", "").Replace(" ", "");
 
-                    // Primary: name or driver matches manufacturer/model keywords
-                    if (nameLow.Contains(mfgLow) || nameLow.Contains(mdlLow) ||
-                        driverLow.Contains(mfgLow) || driverLow.Contains(mdlLow))
+                    // Require a MODEL match, not manufacturer alone — manufacturer-only
+                    // matching has the exact same sibling-model problem as the "any printer"
+                    // fallback it replaced: two different models from the same brand (e.g.
+                    // Elgin i7 vs i8) share the manufacturer string, so matching on that alone
+                    // would just as confidently grab the wrong sibling's driver whenever one is
+                    // already installed from an earlier test. Skipped entirely (no match at
+                    // all) when the model string is too short/generic to be a reliable signal.
+                    if (modelUsable && (nameLow.Contains(mdlLow) || driverLow.Contains(mdlLow)))
                     {
                         _log.Info($"FindAutoInfo: matched '{name}' driver='{driverName}' port='{portName}'");
                         return (driverName, portName);
                     }
-
-                    // Fallback: any non-system printer — keep first candidate
-                    if (fallback.DriverName == null &&
-                        !driverName.Contains("Microsoft",  StringComparison.OrdinalIgnoreCase) &&
-                        !driverName.Contains("OneNote",    StringComparison.OrdinalIgnoreCase) &&
-                        !driverName.Contains("Fax",        StringComparison.OrdinalIgnoreCase) &&
-                        !driverName.Contains("XPS",        StringComparison.OrdinalIgnoreCase) &&
-                        !driverName.Contains("PDF",        StringComparison.OrdinalIgnoreCase))
-                    {
-                        fallback = (driverName, portName);
-                    }
-                }
-
-                if (fallback.DriverName != null)
-                {
-                    var fbPort = fallback.PortName;
-                    _log.Info($"FindAutoInfo: fallback driver='{fallback.DriverName}' port='{fbPort ?? "none"}'");
-                    return (fallback.DriverName, fbPort);
                 }
             }
             catch (Exception ex)
