@@ -98,6 +98,20 @@ public class DriverInstaller : IDriverInstaller
             // to happen to find it. This result takes priority over any name guessed later.
             var repoRegisteredDriverName = await TryRegisterRealDriverAsync(request.Driver, steps, progress, ct);
 
+            // Skip the vendor's own EXE installer entirely once our own direct registration
+            // already succeeded — running it afterward is not just redundant (it never
+            // actually registers the print driver itself, which is why this mechanism exists
+            // in the first place), it can also pop a native, blocking confirmation dialog
+            // ("Remover drivers da Elgin? Sim/Não") for packages that share the OEM's custom
+            // pre-install tool (confirmed in the field for the Elgin/Bematech MP4200 family) —
+            // exactly the kind of manual step this app must never require.
+            if (repoRegisteredDriverName != null && !request.SkipDriverInstall)
+            {
+                steps.Add("Instalador do fabricante dispensado — driver já registrado diretamente.");
+                _log.Info("Skipping vendor installer EXE — direct driver registration already succeeded.");
+                request.SkipDriverInstall = true;
+            }
+
             if (request.SkipDriverInstall)
             {
                 driverInstalled = true;
