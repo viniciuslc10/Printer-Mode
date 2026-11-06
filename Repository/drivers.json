@@ -396,6 +396,98 @@
       ]
     },
     {
+      "id": "elgin_i7_plus",
+      "manufacturer": "Elgin",
+      "model": "i7 Plus",
+      "driverFolder": "Elgin\\i7Plus",
+      "infFile": "PrinterDriver\\POSPrinterDriver_x64.inf",
+      "driverDataFile": "POS80C.GPD",
+      "driverDependentFiles": ["POS80.DLL", "STDNAMES.GPD"],
+      "installerExe": "Elgin_i7Plus_Driver_v7.17.exe",
+      "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
+      "installerType": "innosetup",
+      "driverName": "Elgin i7 Plus",
+      "windowsDriverNames": [
+        "Elgin i7 Plus",
+        "ELGIN i7 Plus",
+        "Elgin i7Plus"
+      ],
+      "version": "7.17",
+      "notes": "Térmica 80mm. VID/PID ainda não confirmados em hardware real — o pacote do fabricante (POS Printer Driver V7.17) não traz nenhum ID de hardware para este modelo (driver sem assinatura, instalado por nome via AddPrinterDriverEx, igual ao Elgin i8). Selecione manualmente no catálogo até confirmarmos o VID/PID real com o dispositivo conectado.",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        {
+          "name": "Thermal 80mm",
+          "widthMm": 80.0,
+          "printableWidthMm": 72.0,
+          "isAutoLength": true
+        }
+      ],
+      "defaultSerial": null,
+      "supportedPorts": [
+        "USB",
+        "TCP/IP"
+      ]
+    },
+    {
+      "id": "elgin_i9_plus",
+      "manufacturer": "Elgin",
+      "model": "i9 Plus",
+      "driverFolder": "Elgin\\i9Plus",
+      "infFile": "PrinterDriver\\ELGIN.inf",
+      "driverCertFile": "OEM.cer",
+      "installerExe": "Elgin_i9Plus_Driver_v1.7.6.exe",
+      "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
+      "installerType": "innosetup",
+      "driverName": "ELGIN i9(USB)",
+      "windowsDriverNames": [
+        "ELGIN i9(USB)",
+        "Elgin i9 Plus",
+        "ELGIN i9 Plus",
+        "Elgin i9Plus"
+      ],
+      "version": "1.7.6",
+      "notes": "Térmica 80mm, 250mm/s. O instalador enviado para a 'i9 Plus' (v1.7.6) é o mesmo pacote multi-modelo da Elgin que cobre i7(USB)/i9(USB)/Bematech MP-4200 — não traz um ID de hardware específico para 'i9 Plus', então internamente ele registra o mesmo driver Windows 'ELGIN i9(USB)' já usado pelo i9 comum. Selecione manualmente no catálogo até confirmarmos se o hardware real da i9 Plus se identifica com um ID diferente.",
+      "defaultPaper": {
+        "name": "Thermal 80mm",
+        "widthMm": 80.0,
+        "printableWidthMm": 72.0,
+        "isAutoLength": true,
+        "marginTopMm": 0.0,
+        "marginBottomMm": 0.0,
+        "marginLeftMm": 4.0,
+        "marginRightMm": 4.0
+      },
+      "supportedPapers": [
+        {
+          "name": "Thermal 80mm",
+          "widthMm": 80.0,
+          "printableWidthMm": 72.0,
+          "isAutoLength": true
+        }
+      ],
+      "defaultSerial": {
+        "baudRate": 115200,
+        "dataBits": 8,
+        "parity": "None",
+        "stopBits": "One",
+        "flowControl": "None"
+      },
+      "supportedPorts": [
+        "USB",
+        "COM"
+      ]
+    },
+    {
       "id": "elgin_i5",
       "manufacturer": "Elgin",
       "model": "i5",
