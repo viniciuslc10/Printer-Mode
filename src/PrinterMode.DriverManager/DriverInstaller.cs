@@ -1701,8 +1701,12 @@ public class DriverInstaller : IDriverInstaller
     }
 
     // Picks the architecture-appropriate INF shipped in the Repository for this driver, if the
-    // catalog declares one (placeholder/template INFs are skipped by DriverFilesExist/callers
-    // treating a missing real driver as "no repo INF" — here we just check the file exists).
+    // catalog declares one. Confirmed on the Bematech MP-100S install: checking only File.Exists
+    // let a placeholder/template INF (header "TEMPLATE DE REFERÊNCIA — NÃO É O DRIVER REAL",
+    // referencing a CopyFiles entry that doesn't actually exist in the Repository) through as if
+    // it were real, wasting a doomed pnputil/Add-PrinterDriver attempt before falling back to the
+    // vendor EXE. Reject any INF carrying that marker so these 20-ish still-unwired models go
+    // straight to the vendor installer instead.
     private string? ResolveRealInfPath(DriverInfo driver)
     {
         var infFile = !Environment.Is64BitOperatingSystem && !string.IsNullOrEmpty(driver.InfFileX86)
@@ -1711,7 +1715,18 @@ public class DriverInstaller : IDriverInstaller
         if (string.IsNullOrEmpty(infFile)) return null;
 
         var path = Path.Combine(_repository.ResolveDriverPath(driver), infFile);
-        return File.Exists(path) ? path : null;
+        if (!File.Exists(path)) return null;
+
+        try
+        {
+            var head = File.ReadAllText(path);
+            if (head.Contains("TEMPLATE DE REFERÊNCIA", StringComparison.OrdinalIgnoreCase) ||
+                head.Contains("NÃO É O DRIVER REAL", StringComparison.OrdinalIgnoreCase))
+                return null;
+        }
+        catch { /* unreadable INF — let the normal pnputil attempt surface the real error */ }
+
+        return path;
     }
 
     private IReadOnlyList<string> FindPrintDriverInfInProgramFiles(DriverInfo driver)
