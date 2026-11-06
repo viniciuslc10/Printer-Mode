@@ -1,0 +1,116 @@
+;
+;	Bematech MP-4000 TH Printer Installation File
+;
+;	 List of supported printers, manufacturers
+;
+
+[Version]
+Signature="$Windows NT$"
+Provider=%BM%
+ClassGUID={4D36E979-E325-11CE-BFC1-08002BE10318}
+Class=Printer
+
+[ClassInstall32.NT]
+AddReg=printer_class_addreg
+
+[printer_class_addreg]
+HKR,,,,%PrinterClassName%
+HKR,,Icon,,"-4"
+HKR,,Installer32,,"ntprint.dll,ClassInstall32"
+HKR,,NoDisplayClass,,1
+HKR,,EnumPropPages32,,"printui.dll,PrinterPropPageProvider"
+
+;
+; Manufacturer section.
+;
+; This section lists all of the manufacturers
+; that we will display in the Dialog box
+;
+
+[Manufacturer]
+"Bematech"
+
+;
+; Model Specifications Section
+;
+
+[Bematech]
+"MP-4200 TH" = mp4200th.gpd
+"MP-4000 TH" = mp4000th.gpd
+"MP-2500 TH" = mp2500th.gpd
+"MP-100S TH" = mp100Sth.gpd
+;
+; Installer section(s) referenced above.
+;
+[mp4200th.gpd]
+CopyFiles=@BematechMP4K.dll,@mp4200th.gpd,@BEMATECHUNI.DLL,@BEMATECHUI.DLL,@BEMATECH.INI,BEMATECHUNI,BEMATECHUI
+DataSection=UNIDRV_DATA
+DataFile=mp4200th.gpd
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM
+;AddReg=mp4200th.AddReg  
+
+[mp100Sth.gpd]
+CopyFiles=@BematechMP4K.dll,@mp100Sth.gpd,@BEMATECHUNI.DLL,@BEMATECHUI.DLL,@BEMATECH.INI,BEMATECHUNI,BEMATECHUI
+DataSection=UNIDRV_DATA
+DataFile=mp100Sth.gpd
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM
+;AddReg=mp100Sth.AddReg 
+
+[mp4000th.gpd]
+CopyFiles=@BematechMP4K.dll,@mp4000th.gpd,@BEMATECHUNI.DLL,@BEMATECHUI.DLL,@BEMATECH.INI,BEMATECHUNI,BEMATECHUI
+DataSection=UNIDRV_DATA
+DataFile=mp4000th.gpd
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM
+;AddReg=mp4000th.AddReg  
+
+[mp2500th.gpd]
+CopyFiles=@BematechMP4K.dll,@mp2500th.gpd,@BEMATECHUNI.DLL,@BEMATECHUI.DLL,@BEMATECH.INI,BEMATECHUNI,BEMATECHUI
+DataSection=UNIDRV_DATA
+DataFile=mp2500th.gpd
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM
+;AddReg=mp2500th.AddReg  
+
+
+[DestinationDirs]
+DefaultDestDir=66000
+
+[SourceDisksNames.x86]
+1 = %disk1%
+
+[SourceDisksFiles]
+BematechMP4K.dll = 1
+BematechUni.DLL = 1
+BematechUI.DLL = 1
+mp4200th.gpd = 1
+mp4000th.gpd = 1
+mp2500th.gpd = 1
+mp100Sth.gpd = 1
+
+[BEMATECHUNI]
+BematechUni.dll
+
+[BEMATECHUI]
+BematechUI.dll
+
+[mp4200th.AddReg]                                                 ; AddReg section
+HKLM,SYSTEM\CurrentControlSet\Control\Print\Printers\MP-4200 TH\PrinterDriverData,"BEMA_PRINTER_MODEL",0x00000000,"MP-4200 TH"
+
+[mp100Sth.AddReg]                                                 ; AddReg section
+HKLM,SYSTEM\CurrentControlSet\Control\Print\Printers\MP-100S TH\PrinterDriverData,"BEMA_PRINTER_MODEL",0x00000000,"MP-100S TH"
+
+[mp4000th.AddReg]                                                 ; AddReg section
+HKLM,SYSTEM\CurrentControlSet\Control\Print\Printers\MP-4000 TH\PrinterDriverData,"BEMA_PRINTER_MODEL",0x00000000,"MP-4000 TH"
+
+[mp2500th.AddReg]                                                 ; AddReg section
+HKLM,SYSTEM\CurrentControlSet\Control\Print\Printers\MP-2500 TH\PrinterDriverData,"BEMA_PRINTER_MODEL",0x00000000,"MP-2500 TH"
+
+
+[Strings]
+PrinterClassName="Printers"
+BM="Bematech"
+disk1="Bematech Printer Driver Setup Disk"
+

@@ -203,7 +203,13 @@
       "vid": "0FE6",
       "pid": "8100",
       "driverFolder": "Bematech\\MP100S",
-      "infFile": "MP100S.inf",
+      "infFile": "PrinterDriver\\Bematech.inf",
+      "driverDataFile": "mp100Sth.gpd",
+      "driverDependentFiles": [
+        "BematechMP4K.dll",
+        "Stdnames.gpd",
+        "TTFSUB.GPD"
+      ],
       "installerExe": "Bematech_Spooler_x64_v6.0.1.0.exe",
       "installerArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
       "installerType": "innosetup",

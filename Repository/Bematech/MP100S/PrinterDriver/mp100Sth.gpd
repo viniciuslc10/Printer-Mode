@@ -1,0 +1,921 @@
+*% Copyright 2015 Bematech International
+*% version 1.0
+*% History:
+*%   02-jul-2015: [Marcelo Pires Adur] Created, based on MP4200TH's file
+*%
+*% Attention: There's some problem with odd resource ids that makes rendering plug-in not working. Please use even ids.
+*%
+*% TODO: Make it works with MP-4000 TH reserved commands (on setting paper width).
+*%
+
+
+*GPDSpecVersion: "1.1"
+*Include: "StdNames.gpd"
+*Include: "ttfsub.gpd"
+*GPDFileVersion: "1.1"
+*GPDFileName: "MP100STH.GPD"
+*ModelName: "Bematech MP-100S TH Printer"
+*MasterUnits: PAIR(203, 203)
+*ResourceDLL: "BematechMP4K.dll"
+*PrinterType: SERIAL
+
+*Feature: Orientation
+{
+    *rcNameID: =ORIENTATION_DISPLAY
+    *DefaultOption: PORTRAIT
+
+    *Option: PORTRAIT
+    {
+        *rcNameID: =PORTRAIT_DISPLAY
+    }
+
+    *Option: LANDSCAPE_CC270
+    {
+        *rcNameID: =LANDSCAPE_DISPLAY
+    }
+}
+
+*Feature: InputBin
+{
+    *rcNameID: =PAPER_SOURCE_DISPLAY
+    *DefaultOption: AUTO
+
+    *Option: AUTO
+    {
+        *rcNameID: =AUTO_DISPLAY
+    }
+}
+
+*Feature: Resolution
+{
+    *rcNameID: =RESOLUTION_DISPLAY
+    *DefaultOption: OptionNormal
+    *Option: OptionNormal
+    {
+        *rcNameID: 600
+		*%*Name: "203 x 203 DPI "
+        *DPI: PAIR(203, 203)
+        *TextDPI: PAIR(203, 203)
+        *PinsPerLogPass: 24
+        *PinsPerPhysPass: 24
+        *SpotDiameter: 100
+
+        *Command: CmdSendBlockData
+        {
+            *CallbackID: 0
+            *Params: LIST(NumOfDataBytes)
+        }
+    }
+}
+
+
+*Feature: PaperSize
+{
+    *rcNameID: =PAPER_SIZE_DISPLAY
+    *DefaultOption: LargeOption80
+
+    *Option: Option80
+    {
+        *rcNameID: 880
+        *OptionID: 880
+        *MinLeftMargin: 0
+        *PageDimensions: PAIR(588, 1200)
+        *PrintableArea: PAIR(588, 1200)
+        *PrintableOrigin: PAIR(0, 0)
+        *CursorOrigin: PAIR(0, 0)
+
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: ""
+        }
+    }
+
+
+    *Option: Option48
+    {
+        *rcNameID: 850
+        *OptionID: 850
+        *MinLeftMargin: 0
+        *PageDimensions: PAIR(384, 1200)
+        *PrintableArea: PAIR(384, 1200)
+        *PrintableOrigin: PAIR(0, 0)
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: ""
+        }
+    }
+    *Option: LargeOption48
+    {
+        *rcNameID: 854
+        *OptionID: 854
+        *MinLeftMargin: 0
+        *PageDimensions: PAIR(384, 2448)
+        *PrintableArea: PAIR(384, 2448)
+        *PrintableOrigin: PAIR(0, 0)
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: ""
+        }
+    }
+
+    *Option: LargeOption80
+    {
+        *rcNameID: 884
+        *OptionID: 884
+        *MinLeftMargin: 0
+        *PageDimensions: PAIR(588, 2448)
+        *PrintableArea: PAIR(588, 2448)
+        *PrintableOrigin: PAIR(0, 0)
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: ""
+        }
+    }
+
+    *Option: CUSTOMSIZE
+    {
+       *rcNameID: =USER_DEFINED_SIZE_DISPLAY
+       *MinSize: PAIR(1, 1)
+       *MaxSize: PAIR(588, 32000)
+       *MaxPrintableWidth: 588
+       *MinLeftMargin: 0
+       *CenterPrintable?: TRUE
+       *CustCursorOriginX: %d{0}
+       *CustCursorOriginY: %d{0}
+       *CustPrintableOriginX: %d{0}
+       *CustPrintableOriginY: %d{0}
+       *CustPrintableSizeX: %d{PhysPaperWidth}
+       *CustPrintableSizeY: %d{PhysPaperLength}
+
+       *Command: CmdSelect
+       {
+          *Order: DOC_SETUP.2
+          *Cmd: ""
+       }
+    }
+}
+
+
+*Feature: Halftone
+{
+    *rcNameID: =HALFTONING_DISPLAY
+    *DefaultOption: HT_PATSIZE_SUPERCELL_M
+
+    *Option: HT_PATSIZE_AUTO
+    {
+        *rcNameID: =HT_AUTO_SELECT_DISPLAY
+    }
+
+    *Option: HT_PATSIZE_SUPERCELL_M
+    {
+        *rcNameID: =HT_SUPERCELL_DISPLAY
+    }
+
+    *Option: HT_PATSIZE_6x6_M
+    {
+        *rcNameID: =HT_DITHER6X6_DISPLAY
+    }
+
+    *Option: HT_PATSIZE_8x8_M
+    {
+        *rcNameID: =HT_DITHER8X8_DISPLAY
+    }
+}
+
+
+*Feature: PaperCut
+{
+    *Name: "Paper Cut"
+    *FeatureType: PRINTER_PROPERTY
+    *DefaultOption: PartialCut
+
+    *Option: PartialCut
+    {
+        *Name: "Cut at Doc End"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.6
+            *Cmd: "<0a><0a><0a><0a><0a><1D><56><01>"
+
+        }
+    }
+
+    *Option: PagePartialCut
+    {
+        *Name: "Cut at Page End"
+
+        *Command: CmdSelect
+        {
+            *Order: PAGE_FINISH.3
+            *CallbackID : 111
+        }
+    }
+
+    *Option: NoCut
+    {
+        *Name: "No cut"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.3
+            *Cmd: ""
+        }
+    }
+}
+
+
+*Feature: CashDrawer
+{
+    *Name: "Open Cash Drawer (Pin #2)"
+    *FeatureType: PRINTER_PROPERTY
+    *DefaultOption: OpenDrawerEnd
+
+    *Option: OpenDrawerStart
+    {
+        *Name: "Before Start"
+
+        *Command: CmdSelect
+        {
+           *Order: DOC_SETUP.3
+           *Cmd: "<1B><70><00><33><33>"
+        }
+    }
+
+    *Option: OpenDrawerEnd
+    {
+        *Name: "After End"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.2
+           *Cmd: "<1B><70><00><33><33>"
+        }
+    }
+
+    *Option: NoDrawer
+    {
+        *Name: "Never"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.2
+            *Cmd: ""
+        }
+    }
+}
+
+*Feature: CashDrawer2
+{
+    *Name: "Open Second Cash Drawer (Pin #5)"
+    *FeatureType: PRINTER_PROPERTY
+    *DefaultOption: NoDrawer2
+
+    *Option: OpenDrawer2Start
+    {
+        *Name: "Before Start"
+
+        *Command: CmdSelect
+        {
+           *Order: DOC_SETUP.3
+           *Cmd: "<1B><70><01><33><33>"
+        }
+    }
+
+    *Option: OpenDrawer2End
+    {
+        *Name: "After End"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.5
+           *Cmd: "<1B><70><01><33><33>"
+        }
+    }
+
+    *Option: NoDrawer2
+    {
+        *Name: "Never"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.2
+            *Cmd: ""
+        }
+    }
+}
+
+
+*Feature: BuzzerOn
+{
+    *Name: "Buzzer On Time"
+    *FeatureType: PRINTER_PROPERTY
+    *DefaultOption: BuzzerOn100
+
+    *Option: BuzzerOn100
+    {
+        *Name: "100 ms"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.3
+	*CallbackID : 106
+        }
+    }
+}
+
+*Feature: BuzzerOff
+{
+    *Name: "Buzzer Off Time"
+    *FeatureType: PRINTER_PROPERTY
+    *DefaultOption: BuzzerOff100
+
+    *Option: BuzzerOff100
+    {
+        *Name: "100 ms"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.3
+			*CallbackID : 107
+        }
+    }
+}
+
+*Feature: BuzzerRepeat
+{
+    *Name: "Buzzer Repeat"
+    *FeatureType: PRINTER_PROPERTY
+    *DefaultOption: BuzzerRepeat1
+
+    *Option: BuzzerRepeat1
+    {
+        *Name: "1x"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.3
+			*CallbackID : 108
+        }
+    }
+}
+
+*Feature: Buzzer
+{
+    *Name: "Buzzer Activate"
+    *FeatureType: PRINTER_PROPERTY
+    *DefaultOption: BuzzerNever
+
+    *Option: BuzzerNever
+    {
+        *Name: "Never"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.3
+            *Cmd: ""
+        }
+    }
+}
+
+
+*Feature: LogoHeader
+{
+    *Name: "Print Header Logo"
+    *FeatureType: PRINTER_PROPERTY
+    *DefaultOption: LogoHeaderNever
+
+    *Option: LogoHeaderNever
+    {
+        *Name: "None"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+            *Cmd: ""
+        }
+    }
+
+    *Option: LogoOne
+    {
+        *Name: "Logo 1"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+            *Cmd: "<1C><70><01><30><1b>a<00>"
+        }
+	}
+    *Option: LogoTwo
+    {
+        *Name: "Logo 2"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+            *Cmd: "<1C><70><02><30><1b>a<00>"
+        }
+	}
+    *Option: LogoThree
+    {
+        *Name: "Logo 3"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+            *Cmd: "<1C><70><03><30><1b>a<00>"
+        }
+	}
+    *Option: LogoFour
+    {
+        *Name: "Logo 4"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+            *Cmd: "<1C><70><04><30><1b>a<00>"
+        }
+	}
+    *Option: LogoFive
+    {
+        *Name: "Logo 5"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+            *Cmd: "<1C><70><05><30><1b>a<00>"
+        }
+	}
+    *Option: LogoSix
+    {
+        *Name: "Logo 6"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+            *Cmd: "<1C><70><06><30><1b>a<00>"
+        }
+	}
+    *Option: LogoSeven
+    {
+        *Name: "Logo 7"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+            *Cmd: "<1C><70><07><30><1b>a<00>"
+        }
+	}
+    *Option: FileOne
+    {
+        *Name: "File 1"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+			*CallbackID : 114
+        }
+	}
+    *Option: FileTwo
+    {
+        *Name: "File 2"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+			*CallbackID : 114
+        }
+	}
+    *Option: FileThree
+    {
+        *Name: "File 3"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+			*CallbackID : 114
+        }
+	}
+    *Option: FileFour
+    {
+        *Name: "File 4"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+			*CallbackID : 114
+        }
+	}
+    *Option: FileFive
+    {
+        *Name: "File 5"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+			*CallbackID : 114
+        }
+	}
+    *Option: FileSix
+    {
+        *Name: "File 6"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+			*CallbackID : 114
+        }
+	}
+    *Option: FileSeven
+    {
+        *Name: "File 7"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+			*CallbackID : 114
+        }
+	}
+
+}
+*Feature: LogoHeaderAlign
+{
+    *Name: "Header Logo Alignment"
+    *FeatureType: PRINTER_PROPERTY
+    *DefaultOption: LeftAlignLogoHeader
+
+    *Option: LeftAlignLogoHeader
+    {
+        *Name: "Left"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.4
+            *Cmd: ""
+        }
+    }
+    *Option: CenterAlignLogoHeader
+    {
+        *Name: "Center"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.4
+            *Cmd: "<1b>a<01>"
+        }
+    }
+    *Option: RightAlignLogoHeader
+    {
+        *Name: "Right"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.4
+            *Cmd: "<1b>a<02>"
+        }
+    }
+
+}
+*Feature: LogoFooter
+{
+    *Name: "Print Footer Logo"
+    *FeatureType: PRINTER_PROPERTY
+    *DefaultOption: LogoFooterNever
+
+    *Option: LogoFooterNever
+    {
+        *Name: "None"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.5
+            *Cmd: ""
+        }
+    }
+
+    *Option: LogoOne
+    {
+        *Name: "Logo 1"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.5
+            *Cmd: "<0a><1C><70><01><30><1b>a<00>"
+        }
+	}
+    *Option: LogoTwo
+    {
+        *Name: "Logo 2"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.5
+            *Cmd: "<0a><1C><70><02><30><1b>a<00>"
+        }
+	}
+    *Option: LogoThree
+    {
+        *Name: "Logo 3"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.5
+            *Cmd: "<0a><1C><70><03><30><1b>a<00>"
+        }
+	}
+    *Option: LogoFour
+    {
+        *Name: "Logo 4"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.5
+            *Cmd: "<0a><1C><70><04><30><1b>a<00>"
+        }
+	}
+    *Option: LogoFive
+    {
+        *Name: "Logo 5"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.5
+            *Cmd: "<0a><1C><70><05><30><1b>a<00>"
+        }
+	}
+    *Option: LogoSix
+    {
+        *Name: "Logo 6"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.5
+            *Cmd: "<0a><1C><70><06><30><1b>a<00>"
+        }
+	}
+    *Option: LogoSeven
+    {
+        *Name: "Logo 7"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.5
+            *Cmd: "<0a><1C><70><07><30><1b>a<00>"
+        }
+	}
+
+    *Option: FileOne
+    {
+        *Name: "File 1"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.5
+			*CallbackID : 115
+        }
+	}
+    *Option: FileTwo
+    {
+        *Name: "File 2"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.5
+			*CallbackID : 115
+        }
+	}
+    *Option: FileThree
+    {
+        *Name: "File 3"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.5
+			*CallbackID : 115
+        }
+	}
+    *Option: FileFour
+    {
+        *Name: "File 4"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.5
+			*CallbackID : 115
+        }
+	}
+    *Option: FileFive
+    {
+        *Name: "File 5"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.5
+			*CallbackID : 115
+        }
+	}
+    *Option: FileSix
+    {
+        *Name: "File 6"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.5
+			*CallbackID : 115
+        }
+	}
+    *Option: FileSeven
+    {
+        *Name: "File 7"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.5
+			*CallbackID : 115
+        }
+	}
+
+
+}
+
+*Feature: LogoFooterAlign
+{
+    *Name: "Footer Logo Alignment"
+    *FeatureType: PRINTER_PROPERTY
+    *DefaultOption: LeftAlignLogoFooter
+
+    *Option: LeftAlignLogoFooter
+    {
+        *Name: "Left"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.4
+            *Cmd: ""
+        }
+    }
+    *Option: CenterAlignLogoFooter
+    {
+        *Name: "Center"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.4
+            *Cmd: "<1b>a<01>"
+        }
+    }
+    *Option: RightAlignLogoFooter
+    {
+        *Name: "Right"
+
+        *Command: CmdSelect
+        {
+            *Order: DOC_FINISH.4
+            *Cmd: "<1b>a<02>"
+        }
+    }
+}
+
+*Feature: TrimPage
+{
+    *Name: "Remove Empty Lines"
+    *FeatureType: PRINTER_PROPERTY
+    *DefaultOption: EndOfDoc
+
+    *Option: EndOfDoc
+    {
+        *Name: "End Of Doc"
+
+    }
+
+    *Option: EndOfPage
+    {
+        *Name: "End Of Page"
+
+    }
+
+}
+
+*Command: CmdStartJob
+{
+    *Order: JOB_SETUP.1
+    *Cmd: ""
+}
+
+*Command: CmdStartDoc
+{
+    *Order: DOC_SETUP.1
+    *CallbackID : 4
+}
+
+*Command: CmdStartPage
+{
+    *Order: PAGE_SETUP.1
+*%select code page 850
+  *Cmd: "<1B><52><0c>"
+
+
+}
+
+*Command: CmdEndPage
+{
+    *Order: PAGE_FINISH.4
+    *CallbackID : 2
+}
+
+*Command: CmdEndDoc
+{
+    *Order: DOC_FINISH .1
+    *CallbackID : 5
+}
+
+*Command: CmdEndJob
+{
+    *Order: JOB_FINISH.1
+    *Cmd: ""
+}
+*RotateCoordinate?: FALSE
+*RotateRaster?: FALSE
+*RotateFont?: FALSE
+
+*CursorXAfterCR: AT_PRINTABLE_X_ORIGIN
+*XMoveUnit: 203
+*YMoveUnit: 203
+
+
+*XMoveThreshold: 0
+
+*%*Command: CmdXMoveRelRight  { 			*CallbackID : 3 	*Params: LIST(DestXRel)   }
+
+ *Command: CmdXMoveAbsolute
+{
+	*CallbackID : 6
+	*Params: LIST(DestX)
+}
+
+
+
+
+*Command: CmdCR { *Cmd : "<0D>" }
+*Command: CmdLF { *Cmd : "<0A>" }
+*Command: CmdFF { *Cmd : "<00>" }
+
+
+*switch: Orientation
+{
+    *case: PORTRAIT
+    {
+        *TextCaps: LIST(TC_OP_CHARACTER,TC_UA_ABLE,TC_EA_DOUBLE,TC_IA_ABLE,TC_RA_ABLE)
+    }
+    *case: LANDSCAPE_CC270
+    {
+        *TextCaps: LIST(TC_RA_ABLE)
+    }
+}
+
+*switch: Orientation
+{
+    *case: PORTRAIT
+    {
+        *DeviceFonts: LIST(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30)
+    }
+    *case: LANDSCAPE_CC270
+    {
+        *DeviceFonts: LIST()
+    }
+}
+*TTFSEnabled?: TRUE
+
+
+*EjectPageWithFF?: TRUE
+*OutputDataFormat: V_BYTE
+*OptimizeLeftBound?: FALSE
+*CursorXAfterSendBlockData: AT_GRXDATA_ORIGIN
+*CursorYAfterSendBlockData: NO_MOVE
+*RasterSendAllData?: FALSE
+
+*StripBlanks: LIST(TRAILING)
+
+*DefaultFont: 1
+*%*DefaultCTT: 1
+*Command: CmdBoldOn { *CallbackID: 116 }
+*Command: CmdBoldOff { *CallbackID: 117 }
+*Command: CmdUnderlineOn { *CallbackID: 118 }
+*Command: CmdUnderlineOff { *CallbackID: 119 }
+
+*Command: CmdItalicOn { *CallbackID: 120 }
+*Command: CmdItalicOff { *CallbackID: 121 }
+*UseSpaceForXMove?:FALSE
+
+
+
+
+
