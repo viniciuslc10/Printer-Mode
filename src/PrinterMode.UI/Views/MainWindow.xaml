@@ -169,7 +169,7 @@
                     <TextBlock Text="2" Foreground="White" FontSize="12" FontWeight="Bold"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                   </Border>
-                  <TextBlock Text="Como a impressora está conectada?" FontSize="14" FontWeight="SemiBold"
+                  <TextBlock Text="Conexão da impressora" FontSize="14" FontWeight="SemiBold"
                              Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
                 </StackPanel>
                 <Button HorizontalAlignment="Right" VerticalAlignment="Center"
@@ -186,27 +186,67 @@
 
               <!-- ══ Modo automático (padrão): sem escolher USB/COM/IP — o app detecta sozinho ══ -->
               <StackPanel Visibility="{Binding UseAutoDetect, Converter={StaticResource BoolVis}}">
-                <Border CornerRadius="8" Background="#0A2563EB" BorderBrush="#252563EB"
-                        BorderThickness="1" Padding="12,11">
+
+                <!-- Estado ocioso: ainda não clicou em Instalar -->
+                <Border CornerRadius="10" Background="#0C2563EB" BorderBrush="#2E2563EB"
+                        BorderThickness="1" Padding="14,13"
+                        Visibility="{Binding ShowIdleExplainer, Converter={StaticResource BoolVis}}">
+                  <StackPanel Orientation="Horizontal">
+                    <Border Width="34" Height="34" CornerRadius="17" Background="#1A2563EB"
+                            Margin="0,0,12,0" VerticalAlignment="Top">
+                      <TextBlock Text="⚡" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel>
+                      <TextBlock Text="Detecção automática ativada" FontSize="13" FontWeight="SemiBold"
+                                 Foreground="{StaticResource TextPrimaryBrush}"/>
+                      <TextBlock Text="Ao clicar em Instalar, o PrinterMode procura sozinho — USB, serial, rede ou impressora compartilhada."
+                                 FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+
+                <!-- Estado procurando -->
+                <Border CornerRadius="10" Background="#0C2563EB" BorderBrush="#2E2563EB"
+                        BorderThickness="1" Padding="14,13"
+                        Visibility="{Binding IsDetecting, Converter={StaticResource BoolVis}}">
+                  <StackPanel Orientation="Horizontal">
+                    <Border Width="34" Height="34" CornerRadius="17" Background="#1A2563EB"
+                            Margin="0,0,12,0" VerticalAlignment="Top">
+                      <TextBlock Text="⏳" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel>
+                      <TextBlock Text="Procurando sua impressora..." FontSize="13" FontWeight="SemiBold"
+                                 Foreground="{StaticResource TextPrimaryBrush}"/>
+                      <TextBlock Text="Verificando USB, portas seriais e a rede local. Leva só alguns segundos."
+                                 FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+
+                <!-- Estado: mais de uma opção encontrada -->
+                <Border CornerRadius="10" Background="#0C2563EB" BorderBrush="#2E2563EB"
+                        BorderThickness="1" Padding="14,13"
+                        Visibility="{Binding ShowTargetPicker, Converter={StaticResource BoolVis}}">
                   <StackPanel>
                     <StackPanel Orientation="Horizontal">
-                      <TextBlock Text="⏳" FontSize="13" Margin="0,0,8,0"
-                                 Visibility="{Binding IsDetecting, Converter={StaticResource BoolVis}}"/>
-                      <TextBlock Text="✓" FontSize="13" Margin="0,0,8,0" Foreground="{StaticResource SuccessBrush}"
-                                 Visibility="{Binding ShowTargetPicker, Converter={StaticResource InvertVis}}"/>
-                      <TextBlock Text="Detecção automática de USB, serial, rede ou compartilhamento."
-                                 FontSize="12" FontWeight="SemiBold"
-                                 Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap"/>
+                      <Border Width="34" Height="34" CornerRadius="17" Background="#1A2563EB"
+                              Margin="0,0,12,0" VerticalAlignment="Center">
+                        <TextBlock Text="🔀" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                      </Border>
+                      <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Encontramos mais de uma opção" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <TextBlock Text="Selecione abaixo e clique em Instalar para confirmar."
+                                   FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                      </StackPanel>
                     </StackPanel>
 
-                    <!-- Lista de candidatos quando há mais de uma opção -->
                     <ListBox ItemsSource="{Binding DetectedTargets}"
                              SelectedItem="{Binding SelectedTarget}"
-                             Margin="0,10,0,0" BorderThickness="0" Background="Transparent"
-                             Visibility="{Binding ShowTargetPicker, Converter={StaticResource BoolVis}}">
+                             Margin="0,12,0,0" BorderThickness="0" Background="Transparent">
                       <ListBox.ItemTemplate>
                         <DataTemplate>
-                          <Border CornerRadius="8" Background="#10FFFFFF" Padding="10,8" Margin="0,0,0,6">
+                          <Border CornerRadius="8" Background="#14FFFFFF" Padding="11,9" Margin="0,0,0,6">
                             <StackPanel>
                               <TextBlock Text="{Binding Title}" FontSize="12.5" FontWeight="SemiBold"
                                          Foreground="{StaticResource TextPrimaryBrush}"/>
@@ -217,14 +257,32 @@
                         </DataTemplate>
                       </ListBox.ItemTemplate>
                     </ListBox>
-
-                    <Button Command="{Binding UseManualConnectionCommand}"
-                            Style="{StaticResource SecondaryButton}"
-                            HorizontalAlignment="Left" Margin="0,10,0,0"
-                            Height="26" Padding="10,0" FontSize="11"
-                            Content="Selecionar manualmente"/>
                   </StackPanel>
                 </Border>
+
+                <!-- Estado: nada encontrado -->
+                <Border CornerRadius="10" Background="#0CE0A23F" BorderBrush="#2EE0A23F"
+                        BorderThickness="1" Padding="14,13"
+                        Visibility="{Binding ShowNoTargetsFound, Converter={StaticResource BoolVis}}">
+                  <StackPanel Orientation="Horizontal">
+                    <Border Width="34" Height="34" CornerRadius="17" Background="#1AE0A23F"
+                            Margin="0,0,12,0" VerticalAlignment="Top">
+                      <TextBlock Text="⚠" FontSize="15" Foreground="#E0A23F" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel>
+                      <TextBlock Text="Não encontramos automaticamente" FontSize="13" FontWeight="SemiBold"
+                                 Foreground="{StaticResource TextPrimaryBrush}"/>
+                      <TextBlock Text="Verifique se a impressora está ligada e conectada, ou clique em Instalar novamente para tentar de novo."
+                                 FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+
+                <Button Command="{Binding UseManualConnectionCommand}"
+                        Style="{StaticResource SecondaryButton}"
+                        HorizontalAlignment="Left" Margin="0,10,0,0"
+                        Height="27" Padding="10,0" FontSize="11.5"
+                        Content="Selecionar manualmente"/>
               </StackPanel>
 
               <!-- ══ Modo manual: fluxo original (USB/Rede/Serial/Compartilhada escolhidos à mão) ══ -->

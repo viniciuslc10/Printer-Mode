@@ -119,13 +119,25 @@ public partial class SimpleViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanInstall))]
     [NotifyPropertyChangedFor(nameof(ShowManualConnection))]
+    [NotifyPropertyChangedFor(nameof(ShowNoTargetsFound))]
+    [NotifyPropertyChangedFor(nameof(ShowIdleExplainer))]
     [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
     private bool _useAutoDetect = true;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanInstall))]
+    [NotifyPropertyChangedFor(nameof(ShowNoTargetsFound))]
+    [NotifyPropertyChangedFor(nameof(ShowIdleExplainer))]
     [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
     private bool _isDetecting;
+
+    // Distinguishes "haven't searched yet" (idle — show the explainer) from "searched and
+    // found nothing" (show the not-found state) — both have IsDetecting=false and
+    // DetectedTargets.Count==0, so a flag is the only way to tell them apart in the view.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowNoTargetsFound))]
+    [NotifyPropertyChangedFor(nameof(ShowIdleExplainer))]
+    private bool _hasSearchedOnce;
 
     public ObservableCollection<InstallTarget> DetectedTargets { get; } = [];
 
@@ -135,6 +147,8 @@ public partial class SimpleViewModel : ObservableObject
     private InstallTarget? _selectedTarget;
 
     public bool ShowTargetPicker => UseAutoDetect && DetectedTargets.Count > 1;
+    public bool ShowNoTargetsFound => UseAutoDetect && HasSearchedOnce && !IsDetecting && DetectedTargets.Count == 0;
+    public bool ShowIdleExplainer => UseAutoDetect && !HasSearchedOnce && !IsDetecting;
     public bool ShowManualConnection => !UseAutoDetect;
 
     public bool CanInstall => !IsInstalling && !IsDetecting && (
@@ -148,13 +162,25 @@ public partial class SimpleViewModel : ObservableObject
     public bool ShowSerialFields => ConnectionSerial;
     public bool ShowSharedFields => ConnectionShared;
 
+    // Raises every property the automatic-detection panel's visibility/content depends on,
+    // in one place — called whenever DetectedTargets, HasSearchedOnce or the mode flags
+    // change through a path that doesn't already trigger them via [ObservableProperty].
+    private void NotifyDetectionStateChanged()
+    {
+        OnPropertyChanged(nameof(ShowTargetPicker));
+        OnPropertyChanged(nameof(ShowNoTargetsFound));
+        OnPropertyChanged(nameof(ShowIdleExplainer));
+        OnPropertyChanged(nameof(CanInstall));
+        InstallCommand.NotifyCanExecuteChanged();
+    }
+
     [RelayCommand]
     private void UseManualConnection()
     {
         UseAutoDetect = false;
         DetectedTargets.Clear();
         SelectedTarget = null;
-        OnPropertyChanged(nameof(ShowTargetPicker));
+        NotifyDetectionStateChanged();
         StatusText = "Selecione como a impressora está conectada abaixo.";
     }
 
@@ -162,9 +188,10 @@ public partial class SimpleViewModel : ObservableObject
     private void UseAutomaticConnection()
     {
         UseAutoDetect = true;
+        HasSearchedOnce = false;
         DetectedTargets.Clear();
         SelectedTarget = null;
-        OnPropertyChanged(nameof(ShowTargetPicker));
+        NotifyDetectionStateChanged();
         StatusText = SelectedModel != null
             ? $"Modelo: {SelectedModel.DisplayName}. Clique em Instalar para continuar."
             : "Selecione o fabricante e modelo para continuar.";
@@ -243,7 +270,8 @@ public partial class SimpleViewModel : ObservableObject
         // A new model invalidates any targets detected for the previous one.
         DetectedTargets.Clear();
         SelectedTarget = null;
-        OnPropertyChanged(nameof(ShowTargetPicker));
+        HasSearchedOnce = false;
+        NotifyDetectionStateChanged();
 
         if (value == null)
         {
@@ -377,7 +405,8 @@ public partial class SimpleViewModel : ObservableObject
                 {
                     DetectedTargets.Clear();
                     SelectedTarget = null;
-                    OnPropertyChanged(nameof(ShowTargetPicker));
+                    HasSearchedOnce = false;
+                    NotifyDetectionStateChanged();
                 }
             }
         }
@@ -401,10 +430,11 @@ public partial class SimpleViewModel : ObservableObject
     private async Task RunAutoDetectAsync(CancellationToken ct)
     {
         IsDetecting = true;
+        HasSearchedOnce = true;
         DetectedTargets.Clear();
         SelectedTarget = null;
         StatusText = "Procurando a impressora automaticamente (USB, serial, rede, compartilhada)...";
-        OnPropertyChanged(nameof(CanInstall));
+        NotifyDetectionStateChanged();
 
         try
         {
@@ -435,7 +465,7 @@ public partial class SimpleViewModel : ObservableObject
         {
             IsDetecting = false;
             OnPropertyChanged(nameof(CanInstall));
-            OnPropertyChanged(nameof(ShowTargetPicker));
+            NotifyDetectionStateChanged();
         }
     }
 
