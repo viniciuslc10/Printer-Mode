@@ -3,6 +3,12 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- Declared explicitly (plural, per the .NET SDK's self-contained-publish contract) so
+         a plain "dotnet build" always restores the win-x64 asset graph too — without this,
+         running "dotnet build" (no RID) before "dotnet publish -r win-x64" (what build.bat
+         does) fails with NETSDK1047 ("doesn't have a target for 'net8.0-windows/win-x64'"),
+         because the cached project.assets.json from the plain build never had that RID in it. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
@@ -11,7 +17,7 @@
     <AssemblyName>PrinterMode</AssemblyName>
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.1.1</Version>
+    <Version>1.1.2</Version>
     <Copyright>Copyright © 2024 PrinterMode</Copyright>
     <Company>PrinterMode</Company>
     <Product>PrinterMode</Product>
