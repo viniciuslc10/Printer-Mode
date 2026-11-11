@@ -122,78 +122,57 @@
           <Border Style="{StaticResource Card}" Padding="20,18" Margin="0,0,0,12">
             <StackPanel>
 
-              <!-- ── Seção: Marca/Modelo ── -->
-              <TextBlock Text="SELECIONE SUA IMPRESSORA" FontSize="11" FontWeight="SemiBold"
-                         Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,10"
-                         Typography.Capitals="AllSmallCaps"/>
-
-              <Grid Margin="0,0,0,8">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="10"/>
-                  <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0">
-                  <TextBlock Text="Fabricante" FontSize="11"
-                             Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
-                  <ComboBox ItemsSource="{Binding Manufacturers}"
-                            SelectedItem="{Binding SelectedManufacturer}"/>
-                </StackPanel>
-                <StackPanel Grid.Column="2">
-                  <TextBlock Text="Modelo" FontSize="11"
-                             Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
-                  <ComboBox ItemsSource="{Binding Models}"
-                            SelectedItem="{Binding SelectedModel}"
-                            IsEnabled="{Binding HasManufacturer}">
-                    <ComboBox.ItemTemplate>
-                      <DataTemplate>
-                        <TextBlock Text="{Binding Model}" FontSize="13"/>
-                      </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                  </ComboBox>
-                </StackPanel>
-              </Grid>
-
-              <!-- Divisor fino entre seções (no lugar das bordas de card aninhadas) -->
-              <Border Height="1" Background="{StaticResource BorderBrush2}" Margin="0,18,0,18"/>
-
-              <!-- ── Seção: Conexão (detecção automática) ── -->
-              <Grid Margin="0,0,0,10">
-                <TextBlock Text="CONEXÃO DA IMPRESSORA" FontSize="11" FontWeight="SemiBold"
-                           Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center"
+              <!-- ══ PASSO 1: só marca/modelo (mockup) ══ -->
+              <StackPanel Visibility="{Binding ShowSelectStep, Converter={StaticResource BoolVis}}">
+                <TextBlock Text="PASSO 1 DE 1" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,14"
                            Typography.Capitals="AllSmallCaps"/>
-                <Button HorizontalAlignment="Right" VerticalAlignment="Center"
-                        Command="{Binding RefreshPortsCommand}"
-                        Style="{StaticResource SecondaryButton}"
-                        Height="26" Padding="10,0" FontSize="11"
-                        Visibility="{Binding ShowManualConnection, Converter={StaticResource BoolVis}}">
-                  <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="↺" FontSize="13" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                    <TextBlock Text="Atualizar" VerticalAlignment="Center"/>
-                  </StackPanel>
-                </Button>
-              </Grid>
 
-              <!-- ══ Modo automático (padrão): sem escolher USB/COM/IP — o app detecta sozinho ══ -->
-              <StackPanel Visibility="{Binding UseAutoDetect, Converter={StaticResource BoolVis}}">
-
-                <!-- Estado ocioso: ainda não clicou em Instalar -->
-                <Border CornerRadius="10" Background="#0C3FCF8E" BorderBrush="#2E3FCF8E"
-                        BorderThickness="1" Padding="14,13"
-                        Visibility="{Binding ShowIdleExplainer, Converter={StaticResource BoolVis}}">
-                  <StackPanel Orientation="Horizontal">
-                    <Border Width="34" Height="34" CornerRadius="17" Background="#1A3FCF8E"
-                            Margin="0,0,12,0" VerticalAlignment="Top">
-                      <TextBlock Text="⚡" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
-                    <StackPanel>
-                      <TextBlock Text="Detecção automática ativada" FontSize="13" FontWeight="SemiBold"
-                                 Foreground="{StaticResource TextPrimaryBrush}"/>
-                      <TextBlock Text="Ao clicar em Instalar, o PrinterMode procura sozinho — USB, serial, rede ou impressora compartilhada."
-                                 FontSize="11.5" Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" Margin="0,3,0,0"/>
-                    </StackPanel>
+                <Grid Margin="0,0,0,4">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="*"/>
+                  </Grid.ColumnDefinitions>
+                  <StackPanel Grid.Column="0">
+                    <TextBlock Text="Fabricante" FontSize="11"
+                               Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
+                    <ComboBox ItemsSource="{Binding Manufacturers}"
+                              SelectedItem="{Binding SelectedManufacturer}"/>
                   </StackPanel>
-                </Border>
+                  <StackPanel Grid.Column="2">
+                    <TextBlock Text="Modelo" FontSize="11"
+                               Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
+                    <ComboBox ItemsSource="{Binding Models}"
+                              SelectedItem="{Binding SelectedModel}"
+                              IsEnabled="{Binding HasManufacturer}">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                          <TextBlock Text="{Binding Model}" FontSize="13"/>
+                        </DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                  </StackPanel>
+                </Grid>
+              </StackPanel>
+
+              <!-- ══ PASSO 2: conexão + configurações + confirmação ══ -->
+              <StackPanel Visibility="{Binding ShowDetailStep, Converter={StaticResource BoolVis}}">
+
+                <Grid Margin="0,0,0,14">
+                  <TextBlock Text="{Binding SelectedModel.DisplayName}" FontSize="13" FontWeight="SemiBold"
+                             Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                  <Button HorizontalAlignment="Right" VerticalAlignment="Center"
+                          Command="{Binding BackToSelectCommand}"
+                          Style="{StaticResource SecondaryButton}"
+                          Height="26" Padding="10,0" FontSize="11"
+                          Content="← Trocar impressora"/>
+                </Grid>
+
+                <TextBlock Text="CONEXÃO DA IMPRESSORA" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,10"
+                           Typography.Capitals="AllSmallCaps"
+                           Visibility="{Binding ShowManualConnection, Converter={StaticResource BoolVis}}"/>
 
                 <!-- Estado procurando -->
                 <Border CornerRadius="10" Background="#0C3FCF8E" BorderBrush="#2E3FCF8E"
@@ -272,8 +251,8 @@
                         Style="{StaticResource SecondaryButton}"
                         HorizontalAlignment="Left" Margin="0,10,0,0"
                         Height="27" Padding="10,0" FontSize="11.5"
+                        Visibility="{Binding ShowManualConnection, Converter={StaticResource InvertVis}}"
                         Content="Selecionar manualmente"/>
-              </StackPanel>
 
               <!-- ══ Modo manual: fluxo original (USB/Rede/Serial/Compartilhada escolhidos à mão) ══ -->
               <StackPanel Visibility="{Binding ShowManualConnection, Converter={StaticResource BoolVis}}">
@@ -594,6 +573,8 @@
                              Margin="0,2,0,0"/>
                 </StackPanel>
               </CheckBox>
+              </StackPanel>
+
             </StackPanel>
           </Border>
 

@@ -121,6 +121,8 @@ public partial class SimpleViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowManualConnection))]
     [NotifyPropertyChangedFor(nameof(ShowNoTargetsFound))]
     [NotifyPropertyChangedFor(nameof(ShowIdleExplainer))]
+    [NotifyPropertyChangedFor(nameof(ShowSelectStep))]
+    [NotifyPropertyChangedFor(nameof(ShowDetailStep))]
     [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
     private bool _useAutoDetect = true;
 
@@ -128,6 +130,8 @@ public partial class SimpleViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanInstall))]
     [NotifyPropertyChangedFor(nameof(ShowNoTargetsFound))]
     [NotifyPropertyChangedFor(nameof(ShowIdleExplainer))]
+    [NotifyPropertyChangedFor(nameof(ShowSelectStep))]
+    [NotifyPropertyChangedFor(nameof(ShowDetailStep))]
     [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
     private bool _isDetecting;
 
@@ -137,6 +141,8 @@ public partial class SimpleViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowNoTargetsFound))]
     [NotifyPropertyChangedFor(nameof(ShowIdleExplainer))]
+    [NotifyPropertyChangedFor(nameof(ShowSelectStep))]
+    [NotifyPropertyChangedFor(nameof(ShowDetailStep))]
     private bool _hasSearchedOnce;
 
     public ObservableCollection<InstallTarget> DetectedTargets { get; } = [];
@@ -150,6 +156,14 @@ public partial class SimpleViewModel : ObservableObject
     public bool ShowNoTargetsFound => UseAutoDetect && HasSearchedOnce && !IsDetecting && DetectedTargets.Count == 0;
     public bool ShowIdleExplainer => UseAutoDetect && !HasSearchedOnce && !IsDetecting;
     public bool ShowManualConnection => !UseAutoDetect;
+
+    // The mockup's "one screen at a time" flow: Step 1 is just marca/modelo + Instalar;
+    // clicking Instalar replaces the whole screen with Step 2 (connection detection result
+    // + the printer-name/paper/default settings + the real Instalar/Confirmar button) —
+    // instead of showing every section at once. Switching to manual mode also counts as
+    // moving past Step 1 (UseAutoDetect=false already makes ShowIdleExplainer false).
+    public bool ShowSelectStep => ShowIdleExplainer;
+    public bool ShowDetailStep => !ShowSelectStep;
 
     public bool CanInstall => !IsInstalling && !IsDetecting && (
         UseAutoDetect
@@ -170,8 +184,27 @@ public partial class SimpleViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowTargetPicker));
         OnPropertyChanged(nameof(ShowNoTargetsFound));
         OnPropertyChanged(nameof(ShowIdleExplainer));
+        OnPropertyChanged(nameof(ShowSelectStep));
+        OnPropertyChanged(nameof(ShowDetailStep));
         OnPropertyChanged(nameof(CanInstall));
         InstallCommand.NotifyCanExecuteChanged();
+    }
+
+    // "← Trocar impressora": returns to Step 1 without losing the marca/modelo already
+    // picked (handy if the user just wants to re-run detection, not re-select from scratch).
+    [RelayCommand]
+    private void BackToSelect()
+    {
+        UseAutoDetect = true;
+        HasSearchedOnce = false;
+        DetectedTargets.Clear();
+        SelectedTarget = null;
+        ShowSuccess = false;
+        ShowError = false;
+        NotifyDetectionStateChanged();
+        StatusText = SelectedModel != null
+            ? $"Modelo: {SelectedModel.DisplayName}. Clique em Instalar para continuar."
+            : "Selecione o fabricante e modelo para continuar.";
     }
 
     [RelayCommand]
