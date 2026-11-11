@@ -100,82 +100,54 @@
       <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16,14,16,20">
         <StackPanel>
 
-          <!-- ══ Card 1: Selecione sua impressora ══ -->
-          <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,10">
+          <!-- ══ Painel único: Instalar impressora (estilo do mockup — um card contínuo) ══ -->
+          <Border Style="{StaticResource Card}" Padding="20,18" Margin="0,0,0,12">
             <StackPanel>
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
-                <Border Width="24" Height="24" CornerRadius="12" Background="#1F7A52"
-                        Margin="0,0,10,0" VerticalAlignment="Center">
-                  <TextBlock Text="1" Foreground="White" FontSize="12" FontWeight="Bold"
-                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Border>
-                <TextBlock Text="Selecione sua impressora" FontSize="14" FontWeight="SemiBold"
-                           Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
-              </StackPanel>
 
-              <Grid>
+              <!-- ── Seção: Marca/Modelo ── -->
+              <TextBlock Text="SELECIONE SUA IMPRESSORA" FontSize="11" FontWeight="SemiBold"
+                         Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,10"
+                         Typography.Capitals="AllSmallCaps"/>
+
+              <Grid Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="12"/>
-                  <ColumnDefinition Width="132"/>
+                  <ColumnDefinition Width="10"/>
+                  <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-
-                <Grid Grid.Column="0">
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="10"/>
-                    <ColumnDefinition Width="*"/>
-                  </Grid.ColumnDefinitions>
-                  <StackPanel Grid.Column="0">
-                    <TextBlock Text="Fabricante" FontSize="11"
-                               Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
-                    <ComboBox ItemsSource="{Binding Manufacturers}"
-                              SelectedItem="{Binding SelectedManufacturer}"/>
-                  </StackPanel>
-                  <StackPanel Grid.Column="2">
-                    <TextBlock Text="Modelo" FontSize="11"
-                               Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
-                    <ComboBox ItemsSource="{Binding Models}"
-                              SelectedItem="{Binding SelectedModel}"
-                              IsEnabled="{Binding HasManufacturer}">
-                      <ComboBox.ItemTemplate>
-                        <DataTemplate>
-                          <TextBlock Text="{Binding Model}" FontSize="13"/>
-                        </DataTemplate>
-                      </ComboBox.ItemTemplate>
-                    </ComboBox>
-                  </StackPanel>
-                </Grid>
-
-                <Border Grid.Column="2" Style="{StaticResource InfoHint}">
-                  <StackPanel>
-                    <TextBlock Text="ℹ" FontSize="14" Foreground="#4DCF9E"/>
-                    <TextBlock Text="Selecione o fabricante e o modelo da sua impressora."
-                               FontSize="11" Foreground="{StaticResource TextMutedBrush}"
-                               TextWrapping="Wrap" Margin="0,5,0,0"/>
-                  </StackPanel>
-                </Border>
-              </Grid>
-            </StackPanel>
-          </Border>
-
-          <!-- ══ Card 2: Conexão ══ -->
-          <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,10">
-            <StackPanel>
-              <Grid Margin="0,0,0,14">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                  <Border Width="24" Height="24" CornerRadius="12" Background="#1F7A52"
-                          Margin="0,0,10,0">
-                    <TextBlock Text="2" Foreground="White" FontSize="12" FontWeight="Bold"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                  </Border>
-                  <TextBlock Text="Conexão da impressora" FontSize="14" FontWeight="SemiBold"
-                             Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="0">
+                  <TextBlock Text="Fabricante" FontSize="11"
+                             Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
+                  <ComboBox ItemsSource="{Binding Manufacturers}"
+                            SelectedItem="{Binding SelectedManufacturer}"/>
                 </StackPanel>
+                <StackPanel Grid.Column="2">
+                  <TextBlock Text="Modelo" FontSize="11"
+                             Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
+                  <ComboBox ItemsSource="{Binding Models}"
+                            SelectedItem="{Binding SelectedModel}"
+                            IsEnabled="{Binding HasManufacturer}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding Model}" FontSize="13"/>
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+              </Grid>
+
+              <!-- Divisor fino entre seções (no lugar das bordas de card aninhadas) -->
+              <Border Height="1" Background="{StaticResource BorderBrush2}" Margin="0,18,0,18"/>
+
+              <!-- ── Seção: Conexão (detecção automática) ── -->
+              <Grid Margin="0,0,0,10">
+                <TextBlock Text="CONEXÃO DA IMPRESSORA" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center"
+                           Typography.Capitals="AllSmallCaps"/>
                 <Button HorizontalAlignment="Right" VerticalAlignment="Center"
                         Command="{Binding RefreshPortsCommand}"
                         Style="{StaticResource SecondaryButton}"
-                        Height="28" Padding="10,0" FontSize="11"
+                        Height="26" Padding="10,0" FontSize="11"
                         Visibility="{Binding ShowManualConnection, Converter={StaticResource BoolVis}}">
                   <StackPanel Orientation="Horizontal">
                     <TextBlock Text="↺" FontSize="13" Margin="0,0,5,0" VerticalAlignment="Center"/>
@@ -546,21 +518,13 @@
               </StackPanel>
               </StackPanel>
 
-            </StackPanel>
-          </Border>
+              <!-- Divisor fino entre seções -->
+              <Border Height="1" Background="{StaticResource BorderBrush2}" Margin="0,18,0,18"/>
 
-          <!-- ══ Card 3: Configurações ══ -->
-          <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,12">
-            <StackPanel>
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
-                <Border Width="24" Height="24" CornerRadius="12" Background="#1F7A52"
-                        Margin="0,0,10,0" VerticalAlignment="Center">
-                  <TextBlock Text="3" Foreground="White" FontSize="12" FontWeight="Bold"
-                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Border>
-                <TextBlock Text="Configurações da impressora" FontSize="14" FontWeight="SemiBold"
-                           Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
-              </StackPanel>
+              <!-- ── Seção: Configurações ── -->
+              <TextBlock Text="CONFIGURAÇÕES DA IMPRESSORA" FontSize="11" FontWeight="SemiBold"
+                         Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,10"
+                         Typography.Capitals="AllSmallCaps"/>
 
               <Grid Margin="0,0,0,14">
                 <Grid.ColumnDefinitions>
