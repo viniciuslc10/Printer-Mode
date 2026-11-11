@@ -13,6 +13,7 @@ public partial class SimpleViewModel : ObservableObject
     private readonly IDriverRepository _repository;
     private readonly IDriverInstaller _installer;
     private readonly IWindowsPrinterService _printerService;
+    private readonly IAutoDetectService _autoDetect;
     private readonly ILogService _log;
 
     public ObservableCollection<string> Manufacturers { get; } = [];
@@ -109,22 +110,75 @@ public partial class SimpleViewModel : ObservableObject
     [ObservableProperty] private bool _showSuccess;
     [ObservableProperty] private bool _showError;
 
-    public bool CanInstall => !IsInstalling && (
-        ConnectionShared
-            ? !string.IsNullOrWhiteSpace(SharedHost) && !string.IsNullOrWhiteSpace(SharedPrinterName)
-            : SelectedModel != null && !string.IsNullOrWhiteSpace(PrinterName));
+    // ── Detecção automática de porta/conexão ────────────────────────────────────────────
+    // Padrão: o usuário só escolhe marca/modelo e clica em Instalar — o app descobre
+    // sozinho se a impressora está em USB, Serial, compartilhada na rede ou com IP próprio.
+    // "Selecionar manualmente" alterna para o fluxo manual de sempre (Card 2 original),
+    // que continua existindo exatamente como antes para quando a detecção não encontra nada
+    // ou erra (ambiguidade real, rede que a varredura não alcança, etc.).
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanInstall))]
+    [NotifyPropertyChangedFor(nameof(ShowManualConnection))]
+    [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
+    private bool _useAutoDetect = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanInstall))]
+    [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
+    private bool _isDetecting;
+
+    public ObservableCollection<InstallTarget> DetectedTargets { get; } = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanInstall))]
+    [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
+    private InstallTarget? _selectedTarget;
+
+    public bool ShowTargetPicker => UseAutoDetect && DetectedTargets.Count > 1;
+    public bool ShowManualConnection => !UseAutoDetect;
+
+    public bool CanInstall => !IsInstalling && !IsDetecting && (
+        UseAutoDetect
+            ? SelectedModel != null && !string.IsNullOrWhiteSpace(PrinterName) &&
+              (DetectedTargets.Count <= 1 || SelectedTarget != null)
+            : ConnectionShared
+                ? !string.IsNullOrWhiteSpace(SharedHost) && !string.IsNullOrWhiteSpace(SharedPrinterName)
+                : SelectedModel != null && !string.IsNullOrWhiteSpace(PrinterName));
     public bool ShowNetworkFields => ConnectionNetwork;
     public bool ShowSerialFields => ConnectionSerial;
     public bool ShowSharedFields => ConnectionShared;
+
+    [RelayCommand]
+    private void UseManualConnection()
+    {
+        UseAutoDetect = false;
+        DetectedTargets.Clear();
+        SelectedTarget = null;
+        OnPropertyChanged(nameof(ShowTargetPicker));
+        StatusText = "Selecione como a impressora está conectada abaixo.";
+    }
+
+    [RelayCommand]
+    private void UseAutomaticConnection()
+    {
+        UseAutoDetect = true;
+        DetectedTargets.Clear();
+        SelectedTarget = null;
+        OnPropertyChanged(nameof(ShowTargetPicker));
+        StatusText = SelectedModel != null
+            ? $"Modelo: {SelectedModel.DisplayName}. Clique em Instalar para continuar."
+            : "Selecione o fabricante e modelo para continuar.";
+    }
     // USB installs on the standard USB001 port automatically — no manual choice needed.
     // The selector only appears if the system already has real USB printer ports listed.
     public bool ShowUsbPortSelector => ConnectionUsb && HasUsbPorts;
 
-    public SimpleViewModel(IDriverRepository repository, IDriverInstaller installer, IWindowsPrinterService printerService, ILogService log)
+    public SimpleViewModel(IDriverRepository repository, IDriverInstaller installer, IWindowsPrinterService printerService, IAutoDetectService autoDetect, ILogService log)
     {
         _repository = repository;
         _installer = installer;
         _printerService = printerService;
+        _autoDetect = autoDetect;
         _log = log;
     }
 
@@ -186,6 +240,11 @@ public partial class SimpleViewModel : ObservableObject
         ShowSuccess = false;
         ShowError = false;
 
+        // A new model invalidates any targets detected for the previous one.
+        DetectedTargets.Clear();
+        SelectedTarget = null;
+        OnPropertyChanged(nameof(ShowTargetPicker));
+
         if (value == null)
         {
             PrinterName = string.Empty;
@@ -203,6 +262,12 @@ public partial class SimpleViewModel : ObservableObject
         StatusText = $"Modelo: {value.DisplayName}. Clique em Instalar para continuar.";
     }
 
+    partial void OnSelectedTargetChanged(InstallTarget? value)
+    {
+        if (value == null) return;
+        StatusText = $"Selecionado: {value.Title} — {value.Subtitle}. Clique em Instalar para confirmar.";
+    }
+
     partial void OnConnectionSharedChanged(bool value)
     {
         if (value)
@@ -214,6 +279,32 @@ public partial class SimpleViewModel : ObservableObject
     [RelayCommand(IncludeCancelCommand = true, CanExecute = nameof(CanInstall))]
     private async Task InstallAsync(CancellationToken ct)
     {
+        // Auto mode, nothing picked yet: detect first instead of installing. A single
+        // confident match falls straight through to the install below in this same click;
+        // zero or multiple candidates stop here (status text/picker already updated) and
+        // the user either picks one from the list and clicks Instalar again, or switches
+        // to "Selecionar manualmente".
+        if (UseAutoDetect && SelectedTarget == null)
+        {
+            if (DetectedTargets.Count == 0)
+            {
+                await RunAutoDetectAsync(ct);
+                if (DetectedTargets.Count == 1)
+                    SelectedTarget = DetectedTargets[0];
+                else
+                {
+                    OnPropertyChanged(nameof(CanInstall));
+                    InstallCommand.NotifyCanExecuteChanged();
+                    return;
+                }
+            }
+            else
+            {
+                StatusText = "Selecione uma das opções encontradas acima antes de continuar.";
+                return;
+            }
+        }
+
         IsInstalling = true;
         ShowSuccess = false;
         ShowError = false;
@@ -224,30 +315,37 @@ public partial class SimpleViewModel : ObservableObject
             var driver = SelectedModel ?? new DriverInfo();
             var paper = SelectedPaper ?? (SelectedModel?.DefaultPaper ?? new PaperConfig { Name = "Padrão", WidthMm = 80 });
 
-            var connType = ConnectionNetwork ? ConnectionType.Network
+            var target = UseAutoDetect ? SelectedTarget : null;
+
+            var connType = target != null ? target.ConnectionType
+                         : ConnectionNetwork ? ConnectionType.Network
                          : ConnectionSerial ? ConnectionType.Serial
                          : ConnectionShared ? ConnectionType.Shared
                          : ConnectionType.USB;
 
             // For shared printers, use the share name as the printer name (model not required)
-            var printerNameForRequest = ConnectionShared
-                ? SharedPrinterName.Trim()
-                : PrinterName;
+            var printerNameForRequest = target?.ConnectionType == ConnectionType.Shared
+                ? (target!.SharedPrinterName ?? PrinterName).Trim()
+                : ConnectionShared
+                    ? SharedPrinterName.Trim()
+                    : PrinterName;
 
             var request = new InstallRequest
             {
                 Driver = driver,
                 PrinterName = printerNameForRequest,
                 ConnectionType = connType,
-                IpAddress = ConnectionNetwork ? IpAddress : null,
-                NetworkPort = ConnectionNetwork ? NetworkPort : 9100,
-                SharedHost = ConnectionShared ? SharedHost : null,
-                SharedPrinterName = ConnectionShared ? SharedPrinterName : null,
-                SharedDriverName = ConnectionShared ? _discoveredDriverName : null,
-                SharedDisplayName = ConnectionShared ? _discoveredDisplayName : null,
-                // For USB, a non-empty selected port means "use exactly this port"; the
-                // "Automático" entry has an empty PortName → null → app auto-detects.
-                PortName = ConnectionSerial ? SelectedComPort?.PortName
+                IpAddress = target?.IpAddress ?? (ConnectionNetwork ? IpAddress : null),
+                NetworkPort = target?.IpAddress != null ? target.NetworkPort : (ConnectionNetwork ? NetworkPort : 9100),
+                SharedHost = target?.SharedHost ?? (ConnectionShared ? SharedHost : null),
+                SharedPrinterName = target?.SharedPrinterName ?? (ConnectionShared ? SharedPrinterName : null),
+                SharedDriverName = target?.SharedDriverName ?? (ConnectionShared ? _discoveredDriverName : null),
+                SharedDisplayName = target?.SharedDisplayName ?? (ConnectionShared ? _discoveredDisplayName : null),
+                // For USB, a non-empty selected port means "use exactly this port"; an empty
+                // PortName (manual "Automático" entry, or no auto-detected port) → null →
+                // the installer resolves/creates the USB port itself.
+                PortName = target != null ? target.PortName
+                         : ConnectionSerial ? SelectedComPort?.PortName
                          : ConnectionUsb && !string.IsNullOrEmpty(SelectedUsbPort?.PortName) ? SelectedUsbPort!.PortName
                          : null,
                 Paper = paper,
@@ -273,6 +371,14 @@ public partial class SimpleViewModel : ObservableObject
                 StatusText = string.IsNullOrWhiteSpace(result.ErrorDetails)
                     ? result.Message
                     : $"{result.Message}\n{result.ErrorDetails}";
+                // The detected target didn't pan out — drop it so the next click re-detects
+                // instead of silently retrying the same (apparently wrong) candidate forever.
+                if (target != null)
+                {
+                    DetectedTargets.Clear();
+                    SelectedTarget = null;
+                    OnPropertyChanged(nameof(ShowTargetPicker));
+                }
             }
         }
         catch (OperationCanceledException)
@@ -289,6 +395,47 @@ public partial class SimpleViewModel : ObservableObject
         {
             IsInstalling = false;
             OnPropertyChanged(nameof(CanInstall));
+        }
+    }
+
+    private async Task RunAutoDetectAsync(CancellationToken ct)
+    {
+        IsDetecting = true;
+        DetectedTargets.Clear();
+        SelectedTarget = null;
+        StatusText = "Procurando a impressora automaticamente (USB, serial, rede, compartilhada)...";
+        OnPropertyChanged(nameof(CanInstall));
+
+        try
+        {
+            var driver = SelectedModel;
+            if (driver == null) return;
+
+            var found = await _autoDetect.DetectAsync(driver, ct);
+            foreach (var t in found)
+                DetectedTargets.Add(t);
+
+            StatusText = DetectedTargets.Count switch
+            {
+                0 => "Não encontramos essa impressora automaticamente. Clique em 'Selecionar manualmente' abaixo para configurar a conexão você mesmo.",
+                1 => $"Encontramos: {DetectedTargets[0].Title} — {DetectedTargets[0].Subtitle}. Instalando...",
+                _ => "Encontramos mais de uma opção — selecione qual abaixo e clique em Instalar."
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "Busca cancelada.";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Erro ao detectar automaticamente: {ex.Message}";
+            _log.Error("Auto-detect error", ex);
+        }
+        finally
+        {
+            IsDetecting = false;
+            OnPropertyChanged(nameof(CanInstall));
+            OnPropertyChanged(nameof(ShowTargetPicker));
         }
     }
 

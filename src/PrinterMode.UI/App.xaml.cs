@@ -149,6 +149,7 @@ public partial class App : Application
         services.AddSingleton<IWindowsPrinterService, WindowsPrinterService>();
         services.AddSingleton<IPrinterDetector, PrinterDetectorService>();
         services.AddSingleton<IDriverInstaller, DriverInstaller>();
+        services.AddSingleton<IAutoDetectService, AutoDetectService>();
         services.AddTransient<SimpleViewModel>();
     }
 }

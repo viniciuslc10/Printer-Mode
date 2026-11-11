@@ -37,6 +37,7 @@ public interface IWindowsPrinterService
     Task<IReadOnlyList<string>> GetPrintMonitorsAsync(CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetPortsForMonitorAsync(string monitorName, CancellationToken ct = default);
     Task<DetectedUsbDevice?> ResolvePrinterUsbDeviceAsync(IReadOnlyList<string> nameHints, string? catalogVid, string? catalogPid, CancellationToken ct = default);
+    Task<IReadOnlyList<(DetectedUsbDevice Device, int Score)>> ScoreUsbDevicesAsync(IReadOnlyList<string> nameHints, string? catalogVid, string? catalogPid, CancellationToken ct = default);
     Task<string> ListConnectedUsbDevicesAsync(CancellationToken ct = default);
     Task TriggerPnpScanAsync(CancellationToken ct = default);
     Task ReEnumerateUsbPrinterDevicesAsync(CancellationToken ct = default);

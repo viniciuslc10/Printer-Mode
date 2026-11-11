@@ -982,10 +982,44 @@ public class WindowsPrinterService : IWindowsPrinterService
         // each device by name hints, class, an existing COM port, and the catalog VID as a
         // soft signal — then returns the best. If the winner is a composite parent with no
         // port, its child's COM port (same VID/PID) is attached.
+        var scored = await ScoreUsbDevicesAsync(nameHints, catalogVid, catalogPid, ct);
+        if (scored.Count == 0)
+        {
+            _log.Warning("ResolvePrinterUsbDevice: no printer-like USB device found among connected devices.");
+            return null;
+        }
+
+        var (bestDevice, bestScore) = scored[0];
+        var devices = EnumerateUsbDevices(ct);
+        var chosen = bestDevice;
+        // If the winner has no port but a sibling with the same VID/PID does, adopt it.
+        if (chosen.Port == null && chosen.Vid != null)
+        {
+            var sibling = devices.FirstOrDefault(d =>
+                d.Port != null && d.Vid == chosen.Vid &&
+                (chosen.Pid == null || d.Pid == chosen.Pid));
+            if (sibling != null)
+                chosen = chosen with { Port = sibling.Port };
+        }
+
+        _log.Info($"ResolvePrinterUsbDevice: best='{chosen.FriendlyName}' score={bestScore} " +
+                  $"vid={chosen.Vid} pid={chosen.Pid} port={chosen.Port} class={chosen.DeviceClass} " +
+                  $"status={chosen.Status} id={chosen.InstanceId}");
+        return chosen;
+    }
+
+    // Scores every connected USB device against the given name hints (manufacturer/model/
+    // driver aliases) and catalog VID, same heuristic as ResolvePrinterUsbDeviceAsync but
+    // returning every candidate with score > 0 (descending), not just the winner. Used by
+    // the auto-detect flow to tell a single confident match from genuine ambiguity (two
+    // printer-like devices connected at once) instead of silently picking one.
+    public async Task<IReadOnlyList<(DetectedUsbDevice Device, int Score)>> ScoreUsbDevicesAsync(
+        IReadOnlyList<string> nameHints, string? catalogVid, string? catalogPid, CancellationToken ct = default)
+    {
         return await Task.Run(() =>
         {
             var devices = EnumerateUsbDevices(ct);
-            if (devices.Count == 0) return null;
+            if (devices.Count == 0) return new List<(DetectedUsbDevice, int)>();
 
             string[] exclude =
             {
@@ -1006,8 +1040,7 @@ public class WindowsPrinterService : IWindowsPrinterService
                 .Distinct()
                 .ToList();
 
-            DetectedUsbDevice? best = null;
-            int bestScore = 0;
+            var results = new List<(DetectedUsbDevice Device, int Score)>();
             foreach (var d in devices)
             {
                 // Match against BOTH the driver friendly name AND the USB bus-reported name,
@@ -1032,30 +1065,10 @@ public class WindowsPrinterService : IWindowsPrinterService
                      d.Status.Equals("Unknown", StringComparison.OrdinalIgnoreCase));
                 if (undrivenUsb) score += 25;
 
-                if (score > bestScore) { bestScore = score; best = d; }
+                if (score > 0) results.Add((d, score));
             }
 
-            if (best == null || bestScore <= 0)
-            {
-                _log.Warning("ResolvePrinterUsbDevice: no printer-like USB device found among connected devices.");
-                return null;
-            }
-
-            var chosen = best;
-            // If the winner has no port but a sibling with the same VID/PID does, adopt it.
-            if (chosen.Port == null && chosen.Vid != null)
-            {
-                var sibling = devices.FirstOrDefault(d =>
-                    d.Port != null && d.Vid == chosen.Vid &&
-                    (chosen.Pid == null || d.Pid == chosen.Pid));
-                if (sibling != null)
-                    chosen = chosen with { Port = sibling.Port };
-            }
-
-            _log.Info($"ResolvePrinterUsbDevice: best='{chosen.FriendlyName}' score={bestScore} " +
-                      $"vid={chosen.Vid} pid={chosen.Pid} port={chosen.Port} class={chosen.DeviceClass} " +
-                      $"status={chosen.Status} id={chosen.InstanceId}");
-            return chosen;
+            return results.OrderByDescending(r => r.Score).ToList();
         }, ct);
     }
 

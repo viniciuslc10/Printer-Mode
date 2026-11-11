@@ -175,13 +175,65 @@
                 <Button HorizontalAlignment="Right" VerticalAlignment="Center"
                         Command="{Binding RefreshPortsCommand}"
                         Style="{StaticResource SecondaryButton}"
-                        Height="28" Padding="10,0" FontSize="11">
+                        Height="28" Padding="10,0" FontSize="11"
+                        Visibility="{Binding ShowManualConnection, Converter={StaticResource BoolVis}}">
                   <StackPanel Orientation="Horizontal">
                     <TextBlock Text="↺" FontSize="13" Margin="0,0,5,0" VerticalAlignment="Center"/>
                     <TextBlock Text="Atualizar" VerticalAlignment="Center"/>
                   </StackPanel>
                 </Button>
               </Grid>
+
+              <!-- ══ Modo automático (padrão): sem escolher USB/COM/IP — o app detecta sozinho ══ -->
+              <StackPanel Visibility="{Binding UseAutoDetect, Converter={StaticResource BoolVis}}">
+                <Border CornerRadius="8" Background="#0A2563EB" BorderBrush="#252563EB"
+                        BorderThickness="1" Padding="12,11">
+                  <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock Text="⏳" FontSize="13" Margin="0,0,8,0"
+                                 Visibility="{Binding IsDetecting, Converter={StaticResource BoolVis}}"/>
+                      <TextBlock Text="✓" FontSize="13" Margin="0,0,8,0" Foreground="{StaticResource SuccessBrush}"
+                                 Visibility="{Binding ShowTargetPicker, Converter={StaticResource InvertVis}}"/>
+                      <TextBlock Text="Detecção automática de USB, serial, rede ou compartilhamento."
+                                 FontSize="12" FontWeight="SemiBold"
+                                 Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap"/>
+                    </StackPanel>
+
+                    <!-- Lista de candidatos quando há mais de uma opção -->
+                    <ListBox ItemsSource="{Binding DetectedTargets}"
+                             SelectedItem="{Binding SelectedTarget}"
+                             Margin="0,10,0,0" BorderThickness="0" Background="Transparent"
+                             Visibility="{Binding ShowTargetPicker, Converter={StaticResource BoolVis}}">
+                      <ListBox.ItemTemplate>
+                        <DataTemplate>
+                          <Border CornerRadius="8" Background="#10FFFFFF" Padding="10,8" Margin="0,0,0,6">
+                            <StackPanel>
+                              <TextBlock Text="{Binding Title}" FontSize="12.5" FontWeight="SemiBold"
+                                         Foreground="{StaticResource TextPrimaryBrush}"/>
+                              <TextBlock Text="{Binding Subtitle}" FontSize="11"
+                                         Foreground="{StaticResource TextMutedBrush}"/>
+                            </StackPanel>
+                          </Border>
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <Button Command="{Binding UseManualConnectionCommand}"
+                            Style="{StaticResource SecondaryButton}"
+                            HorizontalAlignment="Left" Margin="0,10,0,0"
+                            Height="26" Padding="10,0" FontSize="11"
+                            Content="Selecionar manualmente"/>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+
+              <!-- ══ Modo manual: fluxo original (USB/Rede/Serial/Compartilhada escolhidos à mão) ══ -->
+              <StackPanel Visibility="{Binding ShowManualConnection, Converter={StaticResource BoolVis}}">
+              <Button Command="{Binding UseAutomaticConnectionCommand}"
+                      Style="{StaticResource SecondaryButton}"
+                      HorizontalAlignment="Left" Margin="0,0,0,10"
+                      Height="26" Padding="10,0" FontSize="11"
+                      Content="← Voltar para detecção automática"/>
 
               <!-- 4 cards de tipo de conexão -->
               <Grid>
@@ -433,6 +485,7 @@
                            Margin="0,4,0,0" TextWrapping="Wrap"
                            Visibility="{Binding HasSharedPrinters, Converter={StaticResource InvertVis}}"
                            Text="Clique em 'Buscar' para encontrar automaticamente, ou insira o nome do compartilhamento."/>
+              </StackPanel>
               </StackPanel>
 
             </StackPanel>
