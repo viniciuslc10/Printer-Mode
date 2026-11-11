@@ -6,7 +6,7 @@
 ; ============================================================
 
 #define AppName      "PrinterMode"
-#define AppVersion   "1.4.0"
+#define AppVersion   "1.4.1"
 #define AppPublisher "PrinterMode"
 #define AppURL       "https://github.com/viniciuslc10/printer-mode"
 #define AppExeName   "PrinterMode.exe"
@@ -98,6 +98,17 @@ Filename: "{app}\{#AppExeName}"; \
   Flags: nowait postinstall skipifsilent runascurrentuser
 
 [UninstallRun]
+; Confirmed root cause of the leftover folder: PrinterMode keeps running in the
+; background after its window is closed (tray icon, ShutdownMode.OnExplicitShutdown —
+; needed so printer sharing keeps working) — so when Control Panel's uninstall runs,
+; PrinterMode.exe is usually still alive and holds an open handle on itself, which blocks
+; Windows from deleting it (and therefore the whole {app} folder) even with
+; [UninstallDelete] below. [UninstallRun] entries execute in order, BEFORE any files are
+; removed, so killing the process (and anything it spawned, /T) here first guarantees the
+; exe is unlocked by the time deletion happens.
+Filename: "taskkill"; Parameters: "/F /IM {#AppExeName} /T"; \
+  Flags: runhidden; RunOnceId: "KillPrinterModeProcess"
+
 ; Mirror [Run]'s firewall rules: remove them on uninstall so no stale allow-rule for an
 ; app that's gone stays open on the machine.
 Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""PrinterMode LPD"""; \
