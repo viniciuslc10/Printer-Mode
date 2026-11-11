@@ -6,7 +6,7 @@
 ; ============================================================
 
 #define AppName      "PrinterMode"
-#define AppVersion   "1.3.0"
+#define AppVersion   "1.3.1"
 #define AppPublisher "PrinterMode"
 #define AppURL       "https://github.com/viniciuslc10/printer-mode"
 #define AppExeName   "PrinterMode.exe"
