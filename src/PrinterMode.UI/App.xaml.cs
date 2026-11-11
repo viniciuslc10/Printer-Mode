@@ -1,4 +1,5 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Win32;
@@ -31,9 +32,27 @@ public partial class App : Application
     private MainWindow? _mainWindow;
     private bool _reallyExit;
 
+    // Kept referenced for the whole process lifetime so it's never garbage-collected —
+    // releasing it early would let a second launch acquire it and start a second instance.
+    private static Mutex? _singleInstanceMutex;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // Confirmed root cause of "two windows open" in the field: nothing stopped a second
+        // launch (desktop icon clicked again, Start Menu, the --minimized autostart racing a
+        // manual open) from spinning up a whole second process — its own window AND its own
+        // LPD/RAW/discovery listeners competing for the same ports as the first instance.
+        // The window hiding instead of closing (ShutdownMode.OnExplicitShutdown, below) makes
+        // this easy to trigger by accident: the app looks "closed" but is still running.
+        _singleInstanceMutex = new Mutex(true, "Global\\PrinterMode_SingleInstance_B6F1E2A4", out var createdNew);
+        if (!createdNew)
+        {
+            BringExistingInstanceToFront();
+            Shutdown();
+            return;
+        }
 
         var services = new ServiceCollection();
         ConfigureServices(services);
@@ -125,6 +144,38 @@ public partial class App : Application
         if (_mainWindow.WindowState == WindowState.Minimized)
             _mainWindow.WindowState = WindowState.Normal;
         _mainWindow.Activate();
+    }
+
+    // Brings the already-running instance's window to front (even if it was hidden by the
+    // "close = hide to tray" behavior) instead of this second launch creating its own.
+    // FindWindow matches by exact title regardless of visibility, so a hidden MainWindow is
+    // still found; ShowWindow/SetForegroundWindow then un-hides and focuses it.
+    private static void BringExistingInstanceToFront()
+    {
+        try
+        {
+            var hwnd = NativeMethods.FindWindow(null, "PrinterMode");
+            if (hwnd != IntPtr.Zero)
+            {
+                NativeMethods.ShowWindow(hwnd, NativeMethods.SW_RESTORE);
+                NativeMethods.SetForegroundWindow(hwnd);
+            }
+        }
+        catch { /* best-effort — worst case the user just sees nothing happen */ }
+    }
+
+    private static class NativeMethods
+    {
+        public const int SW_RESTORE = 9;
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        public static extern IntPtr FindWindow(string? lpClassName, string lpWindowName);
+
+        [DllImport("user32.dll")]
+        public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll")]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
     }
 
     private static void RegisterWindowsStartup()
