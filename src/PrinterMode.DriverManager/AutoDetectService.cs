@@ -97,11 +97,13 @@ public class AutoDetectService : IAutoDetectService
             results.Add(new InstallTarget
             {
                 Title = "Local — conectada neste PC",
-                Subtitle = isSerialLike
-                    ? $"Serial, porta {displayPort}"
-                    : displayPort != null ? $"USB, porta {displayPort}" : "USB",
+                Subtitle = isSerialLike ? $"Serial, porta {displayPort}" : "USB",
                 ConnectionType = isSerialLike ? ConnectionType.Serial : ConnectionType.USB,
-                PortName = isSerialLike ? displayPort : device.Port
+                // USB always installs on the port the spooler itself resolves/creates
+                // (same "Automático" convention the manual flow already uses) — never a
+                // guessed port name. Only Serial gets an explicit PortName, because that's
+                // a real, already-bound COM port the device is sitting on.
+                PortName = isSerialLike ? displayPort : null
             });
 
             // One local candidate is enough signal — a second "Ports" sibling for the same
