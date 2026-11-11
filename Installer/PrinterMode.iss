@@ -6,7 +6,7 @@
 ; ============================================================
 
 #define AppName      "PrinterMode"
-#define AppVersion   "1.3.1"
+#define AppVersion   "1.3.2"
 #define AppPublisher "PrinterMode"
 #define AppURL       "https://github.com/viniciuslc10/printer-mode"
 #define AppExeName   "PrinterMode.exe"
@@ -65,6 +65,15 @@ Source: "..\Scripts\*"; DestDir: "{app}\Scripts"; \
 [Dirs]
 Name: "{app}\Logs"
 
+[Registry]
+; The app writes this Run key itself at every startup (WindowsPrinterService/App.xaml.cs
+; RegisterWindowsStartup) so it keeps sharing printers in the background after login —
+; it is never installed through [Files]/[Icons], so Inno's normal uninstall tracking never
+; sees it. uninsdeletevalue removes it explicitly on uninstall; without this, a leftover
+; "PrinterMode" entry would still try to launch the (now missing) exe at every login.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "PrinterMode"; \
+  Flags: uninsdeletevalue
+
 [Icons]
 Name: "{group}\{#AppName}";             Filename: "{app}\{#AppExeName}"
 Name: "{group}\Desinstalar {#AppName}"; Filename: "{uninstallexe}"
@@ -88,5 +97,18 @@ Filename: "{app}\{#AppExeName}"; \
   Description: "Abrir {#AppName} agora"; \
   Flags: nowait postinstall skipifsilent runascurrentuser
 
+[UninstallRun]
+; Mirror [Run]'s firewall rules: remove them on uninstall so no stale allow-rule for an
+; app that's gone stays open on the machine.
+Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""PrinterMode LPD"""; \
+  Flags: runhidden; RunOnceId: "RemoveLpdFirewallRule"
+Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""PrinterMode Discovery"""; \
+  Flags: runhidden; RunOnceId: "RemoveDiscoveryFirewallRule"
+
 [UninstallDelete]
-Type: filesandordirs; Name: "{app}\Logs"
+; The app also writes files the installer never put there at install time (logs, drivers
+; it staged/extracted at runtime, cached repository state) — those aren't in Inno's
+; uninstall file list, so without this the whole {app} folder would survive, non-empty,
+; under Program Files after "uninstalling". Deleting the entire tree guarantees a clean
+; removal regardless of what the app wrote into it while it ran.
+Type: filesandordirs; Name: "{app}"
