@@ -31,7 +31,11 @@ public partial class MainWindow : Window
             }
             else
             {
-                MaxHeight = double.PositiveInfinity;
+                // Restore the XAML MaxHeight (not Infinity) — the window uses
+                // SizeToContent="Height" to stay compact, and an unbounded MaxHeight here
+                // would survive for the rest of the session after any maximize/restore
+                // cycle, defeating that on a tall Step 2 (many detected targets, etc.).
+                MaxHeight = 760;
                 MaxWidth = double.PositiveInfinity;
             }
         };
