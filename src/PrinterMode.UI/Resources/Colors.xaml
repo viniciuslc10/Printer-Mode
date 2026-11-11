@@ -1,20 +1,20 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-  <!-- Dark Theme Palette -->
-  <Color x:Key="BgDark">#FF1A1A2E</Color>
-  <Color x:Key="BgMedium">#FF16213E</Color>
-  <Color x:Key="BgLight">#FF0F3460</Color>
-  <Color x:Key="Accent">#FFE94560</Color>
-  <Color x:Key="AccentHover">#FFC73652</Color>
-  <Color x:Key="TextPrimary">#FFF0F0F0</Color>
-  <Color x:Key="TextSecondary">#FFB0B0C0</Color>
-  <Color x:Key="TextMuted">#FF707080</Color>
-  <Color x:Key="Success">#FF4CAF50</Color>
-  <Color x:Key="Warning">#FFFFC107</Color>
-  <Color x:Key="Error">#FFF44336</Color>
-  <Color x:Key="CardBg">#FF1E2A45</Color>
-  <Color x:Key="BorderColor">#FF2A3A5A</Color>
+  <!-- Dark Theme Palette (matches the approved mockup: dark navy + green accent) -->
+  <Color x:Key="BgDark">#FF0E1116</Color>
+  <Color x:Key="BgMedium">#FF1D222C</Color>
+  <Color x:Key="BgLight">#FF10141B</Color>
+  <Color x:Key="Accent">#FF3FCF8E</Color>
+  <Color x:Key="AccentHover">#FF35B87D</Color>
+  <Color x:Key="TextPrimary">#FFE7EAF0</Color>
+  <Color x:Key="TextSecondary">#FFA8B0C0</Color>
+  <Color x:Key="TextMuted">#FF7D8698</Color>
+  <Color x:Key="Success">#FF3FCF8E</Color>
+  <Color x:Key="Warning">#FFE0A23F</Color>
+  <Color x:Key="Error">#FFE0605C</Color>
+  <Color x:Key="CardBg">#FF171B23</Color>
+  <Color x:Key="BorderColor">#FF2C3340</Color>
 
   <!-- Brushes -->
   <SolidColorBrush x:Key="BgDarkBrush" Color="{StaticResource BgDark}"/>

@@ -4,7 +4,7 @@
   <!-- Base Button -->
   <Style x:Key="PrimaryButton" TargetType="Button">
     <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
-    <Setter Property="Foreground" Value="White"/>
+    <Setter Property="Foreground" Value="#FF0B1410"/>
     <Setter Property="FontSize" Value="13"/>
     <Setter Property="FontWeight" Value="SemiBold"/>
     <Setter Property="Padding" Value="20,10"/>
@@ -40,7 +40,7 @@
     <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
     <Style.Triggers>
       <Trigger Property="IsMouseOver" Value="True">
-        <Setter Property="Background" Value="#FF1A4070"/>
+        <Setter Property="Background" Value="#FF232A36"/>
       </Trigger>
     </Style.Triggers>
   </Style>
@@ -83,12 +83,12 @@
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
-              <Setter Property="Background" Value="#FF1A4070"/>
+              <Setter Property="Background" Value="#FF232A36"/>
               <Setter Property="Foreground" Value="White"/>
             </Trigger>
             <Trigger Property="IsSelected" Value="True">
               <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
-              <Setter Property="Foreground" Value="White"/>
+              <Setter Property="Foreground" Value="#FF0B1410"/>
             </Trigger>
             <MultiTrigger>
               <MultiTrigger.Conditions>
@@ -96,7 +96,7 @@
                 <Condition Property="IsMouseOver" Value="True"/>
               </MultiTrigger.Conditions>
               <Setter Property="Background" Value="{StaticResource AccentHoverBrush}"/>
-              <Setter Property="Foreground" Value="White"/>
+              <Setter Property="Foreground" Value="#FF0B1410"/>
             </MultiTrigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -257,7 +257,7 @@
                     <Setter Property="Background" Value="#22FFFFFF"/>
                   </Trigger>
                   <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#330F3460"/>
+                    <Setter Property="Background" Value="#333FCF8E"/>
                   </Trigger>
                 </ControlTemplate.Triggers>
               </ControlTemplate>
@@ -307,7 +307,7 @@
             </Trigger>
             <Trigger Property="IsPressed" Value="True">
               <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
-              <Setter Property="Foreground" Value="White"/>
+              <Setter Property="Foreground" Value="#FF0B1410"/>
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
