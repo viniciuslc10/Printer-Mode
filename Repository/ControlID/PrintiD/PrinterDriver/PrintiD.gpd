@@ -1,0 +1,2258 @@
+*GPDSpecVersion: "1.0"
+*Include: "StdNames.gpd"
+*GPDFileVersion: "1.02"
+*GPDFileName: "PrintiD.GPD"
+*ModelName: "Print iD"
+*MasterUnits: PAIR(36946, 36946)
+*ResourceDLL: "ControlidRes.dll"
+*PrinterType: SERIAL
+
+*%******************ORIENTATION******************
+*Feature: Orientation
+{
+	*rcNameID: =ORIENTATION_DISPLAY
+	*DefaultOption: PORTRAIT
+	*Option: PORTRAIT
+	{
+		*rcNameID: =PORTRAIT_DISPLAY
+		*Command: CmdSelect
+		{
+			*Order: DOC_SETUP.60
+			*Cmd: =ORIENT_PORTRAIT_CMD
+			*CallbackID: 259
+		}
+	}
+	*Option: LANDSCAPE_CC270
+	{
+		*rcNameID: =LANDSCAPE_DISPLAY
+		*Command: CmdSelect
+		{
+			*Order: DOC_SETUP.60
+			*Cmd: =ORIENT_PORTRAIT_CMD
+			*CallbackID: 260
+		}
+	}
+}
+
+*%******************************************************************************************
+*%                  Drawer
+*% 261 - No cash drawer -- default
+*% 262 - #1 before print
+*% 263 - #2 before print
+*% 264 - #1 + #2 before print
+*% 265 - #1 after print
+*% 266 - #2 after print
+*% 267 - #1 + #2 after print
+*%******************************************************************************************
+*Feature: CashDrawer
+{
+	*Name: "Cash drawer"
+	*FeatureType: DOC_PROPERTY
+	*DefaultOption: Option1
+	*Option: Option1
+	{
+		*rcNameID: 261
+		*OptionID: 261
+		*Command: CmdSelect
+		{
+			*Order: DOC_SETUP.1
+			*CallbackID: 261
+		}
+	}
+	*Option: Option2
+	{
+		*rcNameID: 262
+		*OptionID: 262
+		*Command: CmdSelect
+		{
+			*Order: DOC_SETUP.1
+			*CallbackID: 262
+		}
+	}
+	*Option: Option3
+	{
+		*rcNameID: 263
+		*OptionID: 263
+		*Command: CmdSelect
+		{
+			*Order: DOC_SETUP.1
+			*CallbackID: 263
+		}
+	}
+	*Option: Option4
+	{
+		*rcNameID: 264
+		*OptionID: 264
+		*Command: CmdSelect
+		{
+			*Order: DOC_SETUP.1
+			*CallbackID: 264
+		}
+	}
+	*Option: Option5
+	{
+		*rcNameID: 265
+		*OptionID: 265
+		*Command: CmdSelect
+		{
+			*Order: DOC_FINISH.1
+			*CallbackID: 265
+		}
+	}
+	*Option: Option6
+	{
+		*rcNameID: 266
+		*OptionID: 266
+		*Command: CmdSelect
+		{
+			*Order: DOC_FINISH.1
+			*CallbackID: 266
+		}
+	}
+	*Option: Option7
+	{
+		*rcNameID: 267
+		*OptionID: 267
+		*Command: CmdSelect
+		{
+			*Order: DOC_FINISH.1
+			*CallbackID: 267
+		}
+	}
+}
+
+*%******************************************************************************************
+*%                  PaperCut
+*% 271 - No Cut
+*% 272 - Full cut after each page
+*% 273 - Partial cut after each page
+*% 274 - Full cut after each job
+*% 275 - Partial cut after each job -- Default
+*%******************************************************************************************
+*Feature: PaperCut
+{
+	*Name: "Paper cut"
+	*FeatureType: DOC_PROPERTY
+	*DefaultOption: Option5
+	*Option: Option1
+	{
+		*rcNameID: 274
+		*OptionID: 274
+		*Command: CmdSelect
+		{
+			*Order: DOC_FINISH.1
+			*CallbackID: 274
+		}
+	}
+	*Option: Option2
+	{
+		*rcNameID: 272
+		*OptionID: 272
+		*Command: CmdSelect
+		{
+			*Order: PAGE_FINISH.1
+			*CallbackID: 272
+		}
+	}
+	*Option: Option3
+	{
+		*rcNameID: 273
+		*OptionID: 273
+		*Command: CmdSelect
+		{
+			*Order: PAGE_FINISH.1
+			*CallbackID: 273
+		}
+	}
+	*Option: Option4
+	{
+		*rcNameID: 271
+		*OptionID: 271
+		*Command: CmdSelect
+		{
+			*Order: PAGE_FINISH.1
+			*CallbackID: 271
+		}
+	}
+	*Option: Option5
+	{
+		*rcNameID: 275
+		*OptionID: 275
+		*Command: CmdSelect
+		{
+			*Order: DOC_FINISH.1
+			*CallbackID: 275
+		}
+	}	
+}
+
+*%******************************************************************************************
+*%                  Logo key 1
+*%
+*%******************************************************************************************
+*Feature: LogoKey1
+{
+	*Name: "Logo Key 1"
+	*FeatureType: DOC_PROPERTY
+	*DefaultOption: Option32
+	*Option: Option32
+	{
+		*Name: "32"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 800
+		}
+	}
+	*Option: Option33
+	{
+		*Name: "33"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 801
+		}
+	}
+	*Option: Option34
+	{
+		*Name: "34"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 802
+		}
+	}
+	*Option: Option35
+	{
+		*Name: "35"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 803
+		}
+	}
+	*Option: Option36
+	{
+		*Name: "36"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 804
+		}
+	}
+	*Option: Option37
+	{
+		*Name: "37"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 805
+		}
+	}
+	*Option: Option38
+	{
+		*Name: "38"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 806
+		}
+	}
+	*Option: Option39
+	{
+		*Name: "39"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 807
+		}
+	}
+	*Option: Option40
+	{
+		*Name: "40"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 808
+		}
+	}
+	*Option: Option41
+	{
+		*Name: "41"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 809
+		}
+	}
+	*Option: Option42
+	{
+		*Name: "42"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 810
+		}
+	}
+	*Option: Option43
+	{
+		*Name: "43"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 811
+		}
+	}
+	*Option: Option44
+	{
+		*Name: "44"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 812
+		}
+	}
+	*Option: Option45
+	{
+		*Name: "45"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 813
+		}
+	}
+	*Option: Option46
+	{
+		*Name: "46"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 814
+		}
+	}
+	*Option: Option47
+	{
+		*Name: "47"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 815
+		}
+	}
+	*Option: Option48
+	{
+		*Name: "48"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 816
+		}
+	}
+	*Option: Option49
+	{
+		*Name: "49"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 817
+		}
+	}
+	*Option: Option50
+	{
+		*Name: "50"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 818
+		}
+	}
+	*Option: Option51
+	{
+		*Name: "51"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 819
+		}
+	}
+	*Option: Option52
+	{
+		*Name: "52"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 820
+		}
+	}
+	*Option: Option53
+	{
+		*Name: "53"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 821
+		}
+	}
+	*Option: Option54
+	{
+		*Name: "54"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 822
+		}
+	}
+	*Option: Option55
+	{
+		*Name: "55"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 823
+		}
+	}
+	*Option: Option56
+	{
+		*Name: "56"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 824
+		}
+	}
+	*Option: Option57
+	{
+		*Name: "57"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 825
+		}
+	}
+	*Option: Option58
+	{
+		*Name: "58"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 826
+		}
+	}
+	*Option: Option59
+	{
+		*Name: "59"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 827
+		}
+	}
+	*Option: Option60
+	{
+		*Name: "60"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 828
+		}
+	}
+	*Option: Option61
+	{
+		*Name: "61"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 829
+		}
+	}
+	*Option: Option62
+	{
+		*Name: "62"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 830
+		}
+	}
+	*Option: Option63
+	{
+		*Name: "63"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 831
+		}
+	}
+	*Option: Option64
+	{
+		*Name: "64"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 832
+		}
+	}
+	*Option: Option65
+	{
+		*Name: "65"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 833
+		}
+	}
+	*Option: Option66
+	{
+		*Name: "66"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 834
+		}
+	}
+	*Option: Option67
+	{
+		*Name: "67"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 835
+		}
+	}
+	*Option: Option68
+	{
+		*Name: "68"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 836
+		}
+	}
+	*Option: Option69
+	{
+		*Name: "69"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 837
+		}
+	}
+	*Option: Option70
+	{
+		*Name: "70"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 838
+		}
+	}
+	*Option: Option71
+	{
+		*Name: "71"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 839
+		}
+	}
+	*Option: Option72
+	{
+		*Name: "72"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 840
+		}
+	}
+	*Option: Option73
+	{
+		*Name: "73"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 841
+		}
+	}
+	*Option: Option74
+	{
+		*Name: "74"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 842
+		}
+	}
+	*Option: Option75
+	{
+		*Name: "75"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 843
+		}
+	}
+	*Option: Option76
+	{
+		*Name: "76"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 844
+		}
+	}
+	*Option: Option77
+	{
+		*Name: "77"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 845
+		}
+	}
+	*Option: Option78
+	{
+		*Name: "78"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 846
+		}
+	}
+	*Option: Option79
+	{
+		*Name: "79"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 847
+		}
+	}
+	*Option: Option80
+	{
+		*Name: "80"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 848
+		}
+	}
+	*Option: Option81
+	{
+		*Name: "81"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 849
+		}
+	}
+	*Option: Option82
+	{
+		*Name: "82"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 850
+		}
+	}
+	*Option: Option83
+	{
+		*Name: "83"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 851
+		}
+	}
+	*Option: Option84
+	{
+		*Name: "84"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 852
+		}
+	}
+	*Option: Option85
+	{
+		*Name: "85"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 853
+		}
+	}
+	*Option: Option86
+	{
+		*Name: "86"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 854
+		}
+	}
+	*Option: Option87
+	{
+		*Name: "87"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 855
+		}
+	}
+	*Option: Option88
+	{
+		*Name: "88"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 856
+		}
+	}
+	*Option: Option89
+	{
+		*Name: "89"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 857
+		}
+	}
+	*Option: Option90
+	{
+		*Name: "90"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 858
+		}
+	}
+	*Option: Option91
+	{
+		*Name: "91"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 859
+		}
+	}
+	*Option: Option92
+	{
+		*Name: "92"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 860
+		}
+	}
+	*Option: Option93
+	{
+		*Name: "93"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 861
+		}
+	}
+	*Option: Option94
+	{
+		*Name: "94"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 862
+		}
+	}
+	*Option: Option95
+	{
+		*Name: "95"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 863
+		}
+	}
+	*Option: Option96
+	{
+		*Name: "96"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 864
+		}
+	}
+	*Option: Option97
+	{
+		*Name: "97"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 865
+		}
+	}
+	*Option: Option98
+	{
+		*Name: "98"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 866
+		}
+	}
+	*Option: Option99
+	{
+		*Name: "99"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 867
+		}
+	}
+	*Option: Option100
+	{
+		*Name: "100"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 868
+		}
+	}
+	*Option: Option101
+	{
+		*Name: "101"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 869
+		}
+	}
+	*Option: Option102
+	{
+		*Name: "102"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 870
+		}
+	}
+	*Option: Option103
+	{
+		*Name: "103"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 871
+		}
+	}
+	*Option: Option104
+	{
+		*Name: "104"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 872
+		}
+	}
+	*Option: Option105
+	{
+		*Name: "105"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 873
+		}
+	}
+	*Option: Option106
+	{
+		*Name: "106"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 874
+		}
+	}
+	*Option: Option107
+	{
+		*Name: "107"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 875
+		}
+	}
+	*Option: Option108
+	{
+		*Name: "108"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 876
+		}
+	}
+	*Option: Option109
+	{
+		*Name: "109"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 877
+		}
+	}
+	*Option: Option110
+	{
+		*Name: "110"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 878
+		}
+	}
+	*Option: Option111
+	{
+		*Name: "111"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 879
+		}
+	}
+	*Option: Option112
+	{
+		*Name: "112"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 880
+		}
+	}
+	*Option: Option113
+	{
+		*Name: "113"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 881
+		}
+	}
+	*Option: Option114
+	{
+		*Name: "114"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 882
+		}
+	}
+	*Option: Option115
+	{
+		*Name: "115"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 883
+		}
+	}
+	*Option: Option116
+	{
+		*Name: "116"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 884
+		}
+	}
+	*Option: Option117
+	{
+		*Name: "117"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 885
+		}
+	}
+	*Option: Option118
+	{
+		*Name: "118"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 886
+		}
+	}
+	*Option: Option119
+	{
+		*Name: "119"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 887
+		}
+	}
+	*Option: Option120
+	{
+		*Name: "120"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 888
+		}
+	}
+	*Option: Option121
+	{
+		*Name: "121"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 889
+		}
+	}
+	*Option: Option122
+	{
+		*Name: "122"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 890
+		}
+	}
+	*Option: Option123
+	{
+		*Name: "123"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 891
+		}
+	}
+	*Option: Option124
+	{
+		*Name: "124"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 892
+		}
+	}
+	*Option: Option125
+	{
+		*Name: "125"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 893
+		}
+	}
+	*Option: Option126
+	{
+		*Name: "126"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 894
+		}
+	}
+}
+
+*%******************************************************************************************
+*%                  Logo key 2
+*%
+*%******************************************************************************************
+*Feature: LogoKey2
+{
+	*Name: "Logo Key 2"
+	*FeatureType: DOC_PROPERTY
+	*DefaultOption: Option32
+	*Option: Option32
+	{
+		*Name: "32"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 900
+		}
+	}
+	*Option: Option33
+	{
+		*Name: "33"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 901
+		}
+	}
+	*Option: Option34
+	{
+		*Name: "34"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 902
+		}
+	}
+	*Option: Option35
+	{
+		*Name: "35"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 903
+		}
+	}
+	*Option: Option36
+	{
+		*Name: "36"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 904
+		}
+	}
+	*Option: Option37
+	{
+		*Name: "37"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 905
+		}
+	}
+	*Option: Option38
+	{
+		*Name: "38"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 906
+		}
+	}
+	*Option: Option39
+	{
+		*Name: "39"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 907
+		}
+	}
+	*Option: Option40
+	{
+		*Name: "40"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 908
+		}
+	}
+	*Option: Option41
+	{
+		*Name: "41"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 909
+		}
+	}
+	*Option: Option42
+	{
+		*Name: "42"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 910
+		}
+	}
+	*Option: Option43
+	{
+		*Name: "43"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 911
+		}
+	}
+	*Option: Option44
+	{
+		*Name: "44"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 912
+		}
+	}
+	*Option: Option45
+	{
+		*Name: "45"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 913
+		}
+	}
+	*Option: Option46
+	{
+		*Name: "46"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 914
+		}
+	}
+	*Option: Option47
+	{
+		*Name: "47"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 915
+		}
+	}
+	*Option: Option48
+	{
+		*Name: "48"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 916
+		}
+	}
+	*Option: Option49
+	{
+		*Name: "49"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 917
+		}
+	}
+	*Option: Option50
+	{
+		*Name: "50"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 918
+		}
+	}
+	*Option: Option51
+	{
+		*Name: "51"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 919
+		}
+	}
+	*Option: Option52
+	{
+		*Name: "52"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 920
+		}
+	}
+	*Option: Option53
+	{
+		*Name: "53"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 921
+		}
+	}
+	*Option: Option54
+	{
+		*Name: "54"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 922
+		}
+	}
+	*Option: Option55
+	{
+		*Name: "55"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 923
+		}
+	}
+	*Option: Option56
+	{
+		*Name: "56"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 924
+		}
+	}
+	*Option: Option57
+	{
+		*Name: "57"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 925
+		}
+	}
+	*Option: Option58
+	{
+		*Name: "58"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 926
+		}
+	}
+	*Option: Option59
+	{
+		*Name: "59"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 927
+		}
+	}
+	*Option: Option60
+	{
+		*Name: "60"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 928
+		}
+	}
+	*Option: Option61
+	{
+		*Name: "61"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 929
+		}
+	}
+	*Option: Option62
+	{
+		*Name: "62"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 930
+		}
+	}
+	*Option: Option63
+	{
+		*Name: "63"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 931
+		}
+	}
+	*Option: Option64
+	{
+		*Name: "64"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 932
+		}
+	}
+	*Option: Option65
+	{
+		*Name: "65"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 933
+		}
+	}
+	*Option: Option66
+	{
+		*Name: "66"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 934
+		}
+	}
+	*Option: Option67
+	{
+		*Name: "67"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 935
+		}
+	}
+	*Option: Option68
+	{
+		*Name: "68"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 936
+		}
+	}
+	*Option: Option69
+	{
+		*Name: "69"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 937
+		}
+	}
+	*Option: Option70
+	{
+		*Name: "70"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 938
+		}
+	}
+	*Option: Option71
+	{
+		*Name: "71"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 939
+		}
+	}
+	*Option: Option72
+	{
+		*Name: "72"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 940
+		}
+	}
+	*Option: Option73
+	{
+		*Name: "73"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 941
+		}
+	}
+	*Option: Option74
+	{
+		*Name: "74"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 942
+		}
+	}
+	*Option: Option75
+	{
+		*Name: "75"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 943
+		}
+	}
+	*Option: Option76
+	{
+		*Name: "76"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 944
+		}
+	}
+	*Option: Option77
+	{
+		*Name: "77"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 945
+		}
+	}
+	*Option: Option78
+	{
+		*Name: "78"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 946
+		}
+	}
+	*Option: Option79
+	{
+		*Name: "79"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 947
+		}
+	}
+	*Option: Option80
+	{
+		*Name: "80"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 948
+		}
+	}
+	*Option: Option81
+	{
+		*Name: "81"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 949
+		}
+	}
+	*Option: Option82
+	{
+		*Name: "82"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 950
+		}
+	}
+	*Option: Option83
+	{
+		*Name: "83"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 951
+		}
+	}
+	*Option: Option84
+	{
+		*Name: "84"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 952
+		}
+	}
+	*Option: Option85
+	{
+		*Name: "85"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 953
+		}
+	}
+	*Option: Option86
+	{
+		*Name: "86"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 954
+		}
+	}
+	*Option: Option87
+	{
+		*Name: "87"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 955
+		}
+	}
+	*Option: Option88
+	{
+		*Name: "88"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 956
+		}
+	}
+	*Option: Option89
+	{
+		*Name: "89"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 957
+		}
+	}
+	*Option: Option90
+	{
+		*Name: "90"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 958
+		}
+	}
+	*Option: Option91
+	{
+		*Name: "91"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 959
+		}
+	}
+	*Option: Option92
+	{
+		*Name: "92"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 960
+		}
+	}
+	*Option: Option93
+	{
+		*Name: "93"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 961
+		}
+	}
+	*Option: Option94
+	{
+		*Name: "94"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 962
+		}
+	}
+	*Option: Option95
+	{
+		*Name: "95"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 963
+		}
+	}
+	*Option: Option96
+	{
+		*Name: "96"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 964
+		}
+	}
+	*Option: Option97
+	{
+		*Name: "97"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 965
+		}
+	}
+	*Option: Option98
+	{
+		*Name: "98"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 966
+		}
+	}
+	*Option: Option99
+	{
+		*Name: "99"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 967
+		}
+	}
+	*Option: Option100
+	{
+		*Name: "100"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 968
+		}
+	}
+	*Option: Option101
+	{
+		*Name: "101"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 969
+		}
+	}
+	*Option: Option102
+	{
+		*Name: "102"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 970
+		}
+	}
+	*Option: Option103
+	{
+		*Name: "103"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 971
+		}
+	}
+	*Option: Option104
+	{
+		*Name: "104"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 972
+		}
+	}
+	*Option: Option105
+	{
+		*Name: "105"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 973
+		}
+	}
+	*Option: Option106
+	{
+		*Name: "106"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 974
+		}
+	}
+	*Option: Option107
+	{
+		*Name: "107"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 975
+		}
+	}
+	*Option: Option108
+	{
+		*Name: "108"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 976
+		}
+	}
+	*Option: Option109
+	{
+		*Name: "109"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 977
+		}
+	}
+	*Option: Option110
+	{
+		*Name: "110"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 978
+		}
+	}
+	*Option: Option111
+	{
+		*Name: "111"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 979
+		}
+	}
+	*Option: Option112
+	{
+		*Name: "112"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 980
+		}
+	}
+	*Option: Option113
+	{
+		*Name: "113"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 981
+		}
+	}
+	*Option: Option114
+	{
+		*Name: "114"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 982
+		}
+	}
+	*Option: Option115
+	{
+		*Name: "115"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 983
+		}
+	}
+	*Option: Option116
+	{
+		*Name: "116"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 984
+		}
+	}
+	*Option: Option117
+	{
+		*Name: "117"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 985
+		}
+	}
+	*Option: Option118
+	{
+		*Name: "118"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 986
+		}
+	}
+	*Option: Option119
+	{
+		*Name: "119"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 987
+		}
+	}
+	*Option: Option120
+	{
+		*Name: "120"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 988
+		}
+	}
+	*Option: Option121
+	{
+		*Name: "121"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 989
+		}
+	}
+	*Option: Option122
+	{
+		*Name: "122"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 990
+		}
+	}
+	*Option: Option123
+	{
+		*Name: "123"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 991
+		}
+	}
+	*Option: Option124
+	{
+		*Name: "124"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 992
+		}
+	}
+	*Option: Option125
+	{
+		*Name: "125"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 993
+		}
+	}
+	*Option: Option126
+	{
+		*Name: "126"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.1
+			*CallbackID: 994
+		}
+	}
+}
+
+*%******************************************************************************************
+*%                  Logo printing options
+*% 284 - Print logo
+*%******************************************************************************************
+*Feature: Logo
+{
+	*Name: "Logo"
+	*FeatureType: DOC_PROPERTY
+	*DefaultOption: Option1
+	*Option: Option1
+	{
+		*Name: "Do not print logo"
+		*Command: CmdSelect
+		{
+			*Order: DOC_SETUP.1
+			*CallbackID: 284
+		}
+	}
+	*Option: Option2
+	{
+		*Name: "Print logo at the beginning of the job"
+		*Command: CmdSelect
+		{
+			*Order: JOB_SETUP.2
+			*CallbackID: 285
+		}
+	} 
+	*Option: Option3
+	{
+		*Name: "Print logo at the end of the job"
+		*Command: CmdSelect
+		{
+			*Order: DOC_FINISH.1
+			*CallbackID: 285
+		}
+	}
+	*Option: Option4
+	{
+		*Name: "Print logo at the beginning of each page"
+		*Command: CmdSelect
+		{
+			*Order: PAGE_SETUP.1
+			*CallbackID: 285
+		}
+	} 
+	*Option: Option5
+	{
+		*Name: "Print logo at the end of each page"
+		*Command: CmdSelect
+		{
+			*Order: PAGE_FINISH.1
+			*CallbackID: 285
+		}
+	}  
+}
+
+
+*%******************************************************************************************
+*%                  Beep
+*% 281 - No beep
+*% 282 - Beginning of document
+*% 283 - End of document
+*%******************************************************************************************
+*Feature: Beep
+{
+	*Name: "Beep"
+	*FeatureType: DOC_PROPERTY
+	*DefaultOption: Option4
+	*Option: Option1
+	{
+		*rcNameID: 281
+		*Command: CmdSelect
+		{
+			*Order: DOC_SETUP.1
+			*CallbackID: 281
+		}
+	}
+	*Option: Option2
+	{
+		*rcNameID: 282
+		*Command: CmdSelect
+		{
+			*Order: DOC_SETUP.1
+			*CallbackID: 282
+		}
+	}
+	*Option: Option3
+	{
+		*rcNameID: 283
+		*Command: CmdSelect
+		{
+			*Order: DOC_FINISH.2
+			*CallbackID: 283
+		}
+	}
+}
+
+*%******************************************************************************************
+*%           Color Mode and Halftoning - Planes and DevBPP=0 (Imageprocessing handled)
+*%******************************************************************************************
+*Feature: ColorMode
+{
+	*rcNameID: =COLOR_PRINTING_MODE_DISPLAY
+	*DefaultOption: 1bpp
+	
+	*Option: 1bpp
+	{
+		*rcNameID: =MONO_DISPLAY
+		*Color?: FALSE
+		*DevNumOfPlanes: 0
+		*DevBPP: 0
+		*DrvBPP: 1
+		*IPCallbackID: 1
+	}
+}
+*Feature: Halftone
+{
+	*Name: "Halftone"
+	*DefaultOption: HTDefault
+	*Option: HTDefault
+	{
+		*Name: "HTDefault"
+		*HTPatternSize: PAIR(8,8)
+		*HTNumPatterns: 1
+		*HTCallbackID: 1
+	}
+}
+
+*%********************PAPER SOURCE******************
+*Feature: InputBin
+{
+	*rcNameID: =PAPER_SOURCE_DISPLAY
+}
+
+*%****************** PAPER SIZE ******************
+*Feature: PaperSize
+{
+	*rcNameID: =PAPER_SIZE_DISPLAY
+	*DefaultOption: Option72S
+	*Option: Option58S
+	{
+		*Name: "Normal 58mm Small"
+		*PageDimensions: PAIR(75712, 305396)
+		*PrintableArea: PAIR(75712, 305396)
+		*PrintableOrigin: PAIR(0, 0)
+		*Command: CmdSelect
+		{
+			*Order: PAGE_SETUP.9
+			*Cmd: ""
+		}
+	}
+	*Option: Option58L
+	{
+		*Name: "Normal 58mm Large"
+		*PageDimensions: PAIR(75712, 5824000)
+		*PrintableArea: PAIR(75712, 5824000)
+		*PrintableOrigin: PAIR(0, 0)
+		*Command: CmdSelect
+		{
+			*Order: PAGE_SETUP.9
+			*Cmd: ""
+		}
+	}
+	*Option: Option72S
+	{
+		*Name: "Normal 72mm Small"
+		*PageDimensions: PAIR(104832, 305396)
+		*PrintableArea: PAIR(104832, 305396)
+		*PrintableOrigin: PAIR(0, 0)
+		*Command: CmdSelect
+		{
+			*Order: PAGE_SETUP.9
+			*Cmd: ""
+		}
+	}
+	*Option: Option72L
+	{
+		*Name: "Normal 72mm Large"
+		*PageDimensions: PAIR(104832, 5824000)
+		*PrintableArea: PAIR(104832, 5824000)
+		*PrintableOrigin: PAIR(0, 0)
+		*Command: CmdSelect
+		{
+			*Order: PAGE_SETUP.9
+			*Cmd: ""
+		}
+	}
+	*Option: Option80S
+	{
+		*Name: "Scaled 80mm Small"
+		*PageDimensions: PAIR(116928, 305396)
+		*PrintableArea: PAIR(116928, 305396)
+		*PrintableOrigin: PAIR(0, 0)
+		*Command: CmdSelect
+		{
+			*Order: PAGE_SETUP.9
+			*Cmd: ""
+		}
+	}
+	*Option: Option80L
+	{
+		*Name: "Scaled 80mm Large"
+		*PageDimensions: PAIR(116928, 5824000)
+		*PrintableArea: PAIR(116928, 5824000)
+		*PrintableOrigin: PAIR(0, 0)
+		*Command: CmdSelect
+		{
+			*Order: PAGE_SETUP.9
+			*Cmd: ""
+		}
+	}
+	*Option: CUSTOMSIZE
+	{
+		*rcNameID: =USER_DEFINED_SIZE_DISPLAY
+		
+		*MinSize: PAIR(104832, 36946)
+		*MaxSize: PAIR(104832, 5824000)
+		*MaxPrintableWidth: 104832
+		*CenterPrintable?: FALSE
+		*CustCursorOriginX: 0
+		*CustCursorOriginY: 0
+		*CustPrintableOriginX: 0
+		*CustPrintableOriginY: 0
+		*CustPrintableSizeX: 104832
+		*CustPrintableSizeY: 5824000
+		*Command: CmdSelect
+		{
+			*Order: PAGE_SETUP.9
+			*Cmd: ""
+		}	
+	}
+}
+
+*%******************PRINT RESOLUTION******************
+*Feature: Resolution
+{
+	*rcNameID: =RESOLUTION_DISPLAY
+	*DefaultOption: Option1
+	*Option: Option1
+	{
+		*Name: "Auto"
+		EXTERN_GLOBAL: *StripBlanks: LIST(LEADING,TRAILING)
+		*MinStripBlankPixels: 48
+		*switch: PaperSize
+		{
+			*case: Option58S
+			{
+				*DPI: PAIR(203, 203)
+				*TextDPI: PAIR(203, 203)
+				*SpotDiameter: 140
+				*XMoveUnit: 203
+				*YMoveUnit: 203
+			}
+			*case: Option58L
+			{
+				*DPI: PAIR(203, 203)
+				*TextDPI: PAIR(203, 203)
+				*SpotDiameter: 140
+				*XMoveUnit: 203
+				*YMoveUnit: 203
+			}
+			*case: Option72S
+			{
+				*DPI: PAIR(203, 203)
+				*TextDPI: PAIR(203, 203)
+				*SpotDiameter: 140
+				*XMoveUnit: 203
+				*YMoveUnit: 203
+			}
+			*case: Option72L
+			{
+				*DPI: PAIR(203, 203)
+				*TextDPI: PAIR(203, 203)
+				*SpotDiameter: 140
+				*XMoveUnit: 203
+				*YMoveUnit: 203
+			}
+			*case: Option80S
+			{
+				*DPI: PAIR(182, 182)
+				*TextDPI: PAIR(182, 182)
+				*SpotDiameter: 140
+				*XMoveUnit: 182
+				*YMoveUnit: 182
+			}	
+			*case: Option80L
+			{
+				*DPI: PAIR(182, 182)
+				*TextDPI: PAIR(182, 182)
+				*SpotDiameter: 140
+				*XMoveUnit: 182
+				*YMoveUnit: 182
+			}		
+			*case: CUSTOMSIZE
+			{
+				*DPI: PAIR(203, 203)
+				*TextDPI: PAIR(203, 203)
+				*SpotDiameter: 140
+				*XMoveUnit: 203
+				*YMoveUnit: 203
+			}
+		}
+		*Command: CmdSendBlockData
+		{
+			*Cmd: ""
+		}
+	}
+}
+
+*Command: CmdEndJob
+{
+	*Order: JOB_FINISH.1
+	*Cmd: ""
+}
+
+*Command: CmdEndPage
+{
+	*Order: PAGE_FINISH.1
+	*Cmd: ""
+}
+
+*RotateCoordinate?: FALSE
+*RotateRaster?: FALSE
+*RotateFont?: FALSE
+*TextCaps: LIST(TC_EA_DOUBLE,TC_IA_ABLE,TC_UA_ABLE,TC_RA_ABLE)
+*CursorXAfterCR: AT_CURSOR_X_ORIGIN
+*ReselectFont: LIST(SEND_CR_FIRST)
+
+*Command: CmdCR { *Cmd : "" }
+*Command: CmdLF { *Cmd : "" }
+*Command: CmdFF { *Cmd : ""  }
+
+*EjectPageWithFF?: TRUE
+*OutputDataFormat: H_BYTE
+*OptimizeLeftBound?: FALSE
+*YMoveAttributes: LIST(SEND_CR_FIRST)
+*CursorXAfterSendBlockData: AT_CURSOR_X_ORIGIN
+*CursorYAfterSendBlockData: AUTO_INCREMENT

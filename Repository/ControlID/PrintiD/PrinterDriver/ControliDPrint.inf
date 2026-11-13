@@ -1,0 +1,62 @@
+﻿;Copyright Controlid Industria e Comercio de Hardware e Servicos de Tecnologia Ltda. 2018
+[Version]
+Signature="$Windows NT$"
+Class=Printer
+ClassGuid={4D36E979-E325-11CE-BFC1-08002BE10318}
+Provider=%ManufacturerName%
+CatalogFile=Controlidcat.cat
+DriverVer=03/10/2020,1.1.10.2
+
+[DestinationDirs]
+DefaultDestDir=66000
+
+[SourceDisksNames]
+1 = %location%,,,
+
+[SourceDisksFiles.x86]
+PrintiD.gpd = 1,\Common
+Controlid-manifest.ini = 1,\Common
+ControlidRes.dll = 1,\WINx86
+ControlidDrvUni.dll = 1,\WINx86
+
+[SourceDisksFiles.amd64]
+PrintiD.gpd = 1,\Common
+Controlid-manifest.ini = 1,\Common
+ControlidRes.dll = 1,\WINx64
+ControlidDrvUni.dll = 1,\WINx64
+
+[Manufacturer]
+%ManufacturerName% = Models,NTx86, NTAMD64
+
+[Models]
+"Print iD" = PrintiD, USBPRINT\CONTROLID_IDPRINTB5DE, CONTROLID_IDPRINTB5DE
+
+[Models.NTx86]
+"Print iD" = PrintiD, USBPRINT\CONTROLID_IDPRINTB5DE, CONTROLID_IDPRINTB5DE
+
+[Models.NTAMD64]
+"Print iD" = PrintiD, USBPRINT\CONTROLID_IDPRINTB5DE, CONTROLID_IDPRINTB5DE
+
+[PrintiD.NTx86]
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM, UNIDRV_DATA
+CopyFiles=Files
+DataSection=UNIDRV_DATA
+DataFile=PrintiD.gpd
+
+[PrintiD.NTAMD64]
+Include=NTPRINT.INF
+Needs=UNIDRV.OEM, UNIDRV_DATA
+CopyFiles=Files
+DataSection=UNIDRV_DATA
+DataFile=PrintiD.gpd
+
+[Files]
+PrintiD.gpd
+Controlid-manifest.ini
+ControlidRes.dll
+ControlidDrvUni.dll
+
+[Strings]
+ManufacturerName ="Control iD"
+location="Control iD Driver Location"
