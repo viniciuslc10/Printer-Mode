@@ -210,7 +210,17 @@ public partial class SimpleViewModel : ObservableObject
     [RelayCommand]
     private void UseManualConnection()
     {
+        // Confirmed in the field: clicking this while a search is still running used to
+        // leave it going in the background — the manual section appeared, but the ongoing
+        // detection would later overwrite StatusText/targets out from under it, making it
+        // feel like manual selection was blocked until the search finished. Cancel the
+        // in-flight RunAutoDetectAsync (it runs as part of InstallCommand's execution, so
+        // its own generated cancel command stops exactly that token) before switching modes.
+        if (InstallCommand.IsRunning)
+            InstallCancelCommand.Execute(null);
+
         UseAutoDetect = false;
+        IsDetecting = false;
         DetectedTargets.Clear();
         SelectedTarget = null;
         NotifyDetectionStateChanged();
@@ -475,6 +485,15 @@ public partial class SimpleViewModel : ObservableObject
             if (driver == null) return;
 
             var found = await _autoDetect.DetectAsync(driver, ct);
+
+            // The user may have clicked "Selecionar manualmente" while this was running —
+            // UseManualConnection() already cancelled ct (so DetectAsync above should have
+            // thrown before reaching here in that case) and set its own status/targets.
+            // This check is the belt-and-suspenders for the rare window where DetectAsync
+            // returns normally just as cancellation is requested: never stomp on a mode the
+            // user already left.
+            if (!UseAutoDetect) return;
+
             foreach (var t in found)
                 DetectedTargets.Add(t);
 
@@ -487,11 +506,11 @@ public partial class SimpleViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Busca cancelada.";
+            if (UseAutoDetect) StatusText = "Busca cancelada.";
         }
         catch (Exception ex)
         {
-            StatusText = $"Erro ao detectar automaticamente: {ex.Message}";
+            if (UseAutoDetect) StatusText = $"Erro ao detectar automaticamente: {ex.Message}";
             _log.Error("Auto-detect error", ex);
         }
         finally
