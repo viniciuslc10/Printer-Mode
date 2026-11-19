@@ -1330,13 +1330,17 @@ public class DriverInstaller : IDriverInstaller
             if (remoteMatch != null) return remoteMatch;
         }
 
-        // 3. First non-system driver as last resort
+        // 3. First non-system driver as last resort — but only if it's at least plausibly
+        // related to the model being connected (same guard as the main install path:
+        // confirmed in the field — a Bematech MP-4200 shared connection, with no physical
+        // USB device on this client to disambiguate, ran the vendor's own multi-model EXE
+        // locally just to register a driver, which silently registered "ELGIN i7(USB)"
+        // instead — and this fallback accepted it with zero correlation to what was
+        // actually requested, same underlying bug class as the Epson/Bematech one fixed in
+        // the main install path).
         var nonSystem = allInstalled.FirstOrDefault(d =>
-            !d.Contains("Microsoft", StringComparison.OrdinalIgnoreCase) &&
-            !d.Contains("OneNote", StringComparison.OrdinalIgnoreCase) &&
-            !d.Contains("Fax", StringComparison.OrdinalIgnoreCase) &&
-            !d.Contains("XPS", StringComparison.OrdinalIgnoreCase) &&
-            !d.Contains("PDF", StringComparison.OrdinalIgnoreCase));
+            !IsSystemDriver(d) &&
+            (request.Driver == null || LooksRelatedToDriver(d, request.Driver)));
 
         return nonSystem ?? "Generic / Text Only";
     }
@@ -1650,6 +1654,43 @@ public class DriverInstaller : IDriverInstaller
         var (registeredName, registerError) = await _printerService.TryRegisterPrintDriverFromInfWithReasonAsync(
             repoInfPath, driver.AllDriverNames().ToList(), ct);
         var repoRegisteredDriverName = registeredName;
+
+        // Confirmed in the field (Bematech MP-4200): pnputil can stage the package
+        // successfully (exit 0, "Pacote de driver adicionado com êxito") and yet
+        // Add-PrinterDriver -InfPath <original path> still fails for every candidate name
+        // with the same generic "invalid parameter" error — not a signature issue (pnputil
+        // already accepted it), so the unsigned fallback below never even triggers. pnputil
+        // itself reports the DriverStore-published inf name ("Published name: oemNN.inf" /
+        // "Nome Publicado: oemNN.inf" depending on Windows locale); retrying
+        // Add-PrinterDriver against THAT canonical staged path — instead of the original
+        // Program Files path — is a one-line, purely additive retry: it only runs when the
+        // first attempt already failed, so it can't regress the (already working, on other
+        // machines) direct-path case.
+        if (repoRegisteredDriverName == null && pnpOk)
+        {
+            var publishedMatch = System.Text.RegularExpressions.Regex.Match(
+                pnpOutput, @"(?:Published [Nn]ame|Nome Publicado)\s*:\s*(oem\d+\.inf)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (publishedMatch.Success)
+            {
+                var stagedInfPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.Windows), "INF", publishedMatch.Groups[1].Value);
+                if (File.Exists(stagedInfPath))
+                {
+                    _log.Info($"Add-PrinterDriver failed against the original path; retrying against the staged DriverStore copy '{stagedInfPath}'.");
+                    var (retryName, retryError) = await _printerService.TryRegisterPrintDriverFromInfWithReasonAsync(
+                        stagedInfPath, driver.AllDriverNames().ToList(), ct);
+                    if (retryName != null)
+                    {
+                        repoRegisteredDriverName = retryName;
+                        _log.Info($"Registered '{retryName}' using the staged inf path.");
+                    }
+                    else
+                    {
+                        registerError = retryError ?? registerError;
+                    }
+                }
+            }
+        }
 
         // Confirmed root cause (real Windows text, not a guess): this specific package
         // has no digital signature at all, and pnputil/Add-PrinterDriver refuse that
