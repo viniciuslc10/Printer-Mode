@@ -153,7 +153,8 @@ public class DriverInstaller : IDriverInstaller
                         await Task.Delay(4000, ct);
                         var driversAfterSfx = await _printerService.GetInstalledDriversAsync(ct);
                         var resolvedSfx = ResolveActualDriverName(request.Driver, driversAfterSfx)
-                            ?? driversAfterSfx.Except(driversAtInstallStart, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+                            ?? driversAfterSfx.Except(driversAtInstallStart, StringComparer.OrdinalIgnoreCase)
+                                              .FirstOrDefault(d => !IsSystemDriver(d) && LooksRelatedToDriver(d, request.Driver));
                         if (resolvedSfx != null)
                         {
                             detectedDriverName = resolvedSfx;
@@ -259,7 +260,7 @@ public class DriverInstaller : IDriverInstaller
                     var quickList = await _printerService.GetInstalledDriversAsync(ct);
                     resolvedSilent = ResolveActualDriverName(request.Driver, quickList)
                         ?? quickList.Except(driversBefore, StringComparer.OrdinalIgnoreCase)
-                                    .FirstOrDefault(d => !IsSystemDriver(d));
+                                    .FirstOrDefault(d => !IsSystemDriver(d) && LooksRelatedToDriver(d, request.Driver));
                     if (resolvedSilent != null)
                         _log.Info($"Quick driver-list check found: '{resolvedSilent}'");
 
@@ -307,7 +308,7 @@ public class DriverInstaller : IDriverInstaller
                             driversAfterSilent = await _printerService.GetInstalledDriversAsync(ct);
                             resolvedSilent ??= ResolveActualDriverName(request.Driver, driversAfterSilent)
                                 ?? driversAfterSilent.Except(driversBefore, StringComparer.OrdinalIgnoreCase)
-                                                     .FirstOrDefault(d => !IsSystemDriver(d));
+                                                     .FirstOrDefault(d => !IsSystemDriver(d) && LooksRelatedToDriver(d, request.Driver));
                             if (resolvedSilent != null)
                                 _log.Info($"Phase2 poll {poll + 1}: driver='{resolvedSilent}'");
 
@@ -382,7 +383,7 @@ public class DriverInstaller : IDriverInstaller
                         var driversAfterStore = await _printerService.GetInstalledDriversAsync(ct);
                         resolvedSilent ??= ResolveActualDriverName(request.Driver, driversAfterStore)
                             ?? driversAfterStore.Except(driversBefore, StringComparer.OrdinalIgnoreCase)
-                                               .FirstOrDefault(d => !IsSystemDriver(d));
+                                               .FirstOrDefault(d => !IsSystemDriver(d) && LooksRelatedToDriver(d, request.Driver));
 
                         var (storeAutoDriver, storeAutoPort) = await _printerService.FindAutoInstalledPrinterInfoAsync(
                             request.Driver.Manufacturer, request.Driver.Model, ct);
@@ -441,7 +442,8 @@ public class DriverInstaller : IDriverInstaller
 
                     var driversAfterUi = await _printerService.GetInstalledDriversAsync(ct);
                     var resolvedUi = ResolveActualDriverName(request.Driver, driversAfterUi)
-                        ?? driversAfterUi.Except(driversBeforeUi, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+                        ?? driversAfterUi.Except(driversBeforeUi, StringComparer.OrdinalIgnoreCase)
+                                        .FirstOrDefault(d => !IsSystemDriver(d));
 
                     if (resolvedUi == null)
                     {
@@ -770,21 +772,31 @@ public class DriverInstaller : IDriverInstaller
                     }
                     else
                     {
-                        // Any non-system driver that appeared after install (unknown name) goes first,
-                        // then all known candidate names.
-                        // System/Microsoft drivers are explicitly excluded — they can appear as
-                        // "new" when the pre-install snapshot was incomplete due to a slow spooler.
+                        // Confirmed root cause of a Bematech install ending up with an Epson
+                        // driver: this list used to try "any non-system driver that appeared
+                        // since the snapshot" BEFORE our own known candidate names — and
+                        // Add-Printer doesn't care whether a driver name "sounds right" for the
+                        // hardware, so the very first candidate that happens to succeed wins,
+                        // even if it's a completely unrelated brand's driver that appeared new
+                        // for an unrelated reason (a slow spooler, a pending unrelated driver
+                        // install finishing at the same time, etc.). Known candidates — exact
+                        // aliases from our own catalog for THIS model — are always tried first
+                        // now; the unverified "freshly appeared" names are only a last resort
+                        // once every known name has failed.
+                        var knownCandidates = request.Driver.AllDriverNames()
+                            .Where(n => !string.IsNullOrWhiteSpace(n) && !IsSystemDriver(n))
+                            .ToList();
                         var freshNew = driversAtInstallStart.Count > 0
                             ? freshDrivers
                                 .Except(driversAtInstallStart, StringComparer.OrdinalIgnoreCase)
                                 .Where(d => !IsSystemDriver(d))
+                                .Except(knownCandidates, StringComparer.OrdinalIgnoreCase)
                                 .ToList()
-                            : freshDrivers.Where(d => !IsSystemDriver(d)).ToList();
-                        var knownCandidates = request.Driver.AllDriverNames()
-                            .Where(n => !string.IsNullOrWhiteSpace(n) && !IsSystemDriver(n))
-                            .ToList();
-                        driverNamesToTry = [..freshNew, ..knownCandidates];
-                        _log.Info($"Probing {driverNamesToTry.Count} driver names ({freshNew.Count} newly detected + {knownCandidates.Count} known): [{string.Join(", ", driverNamesToTry)}]");
+                            : freshDrivers.Where(d => !IsSystemDriver(d))
+                                .Except(knownCandidates, StringComparer.OrdinalIgnoreCase)
+                                .ToList();
+                        driverNamesToTry = [..knownCandidates, ..freshNew];
+                        _log.Info($"Probing {driverNamesToTry.Count} driver names ({knownCandidates.Count} known + {freshNew.Count} newly detected, as last resort): [{string.Join(", ", driverNamesToTry)}]");
                     }
                 }
 
@@ -1893,6 +1905,18 @@ public class DriverInstaller : IDriverInstaller
         name.Contains("XPS",           StringComparison.OrdinalIgnoreCase) ||
         name.Contains("PDF",           StringComparison.OrdinalIgnoreCase) ||
         name.Contains("Remote Desktop", StringComparison.OrdinalIgnoreCase);
+
+    // Confirmed root cause of a Bematech install ending up bound to an unrelated Epson
+    // driver: several "diff since snapshot" fallbacks picked the first non-system driver
+    // that newly appeared, with no check at all that it had anything to do with the model
+    // actually being installed — a completely different brand's driver finishing an
+    // unrelated pending install in that same window was accepted just as readily as the
+    // real one. ResolveActualDriverName (exact alias / model-substring match) is always
+    // tried first wherever this is used; this is only the minimum sanity net for when that
+    // already failed and the code is about to grab something by pure "it's new" timing.
+    private static bool LooksRelatedToDriver(string installedDriverName, DriverInfo driver) =>
+        driver.Manufacturer.Length >= 4 &&
+        installedDriverName.Contains(driver.Manufacturer, StringComparison.OrdinalIgnoreCase);
 
     private static string ToShareName(string printerName)
     {
