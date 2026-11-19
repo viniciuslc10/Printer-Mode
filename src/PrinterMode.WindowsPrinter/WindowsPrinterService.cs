@@ -200,6 +200,8 @@ public class WindowsPrinterService : IWindowsPrinterService
                     var psi = new ProcessStartInfo
                     {
                         FileName = "powershell.exe",
+                        StandardOutputEncoding = System.Text.Encoding.UTF8,
+                        StandardErrorEncoding = System.Text.Encoding.UTF8,
                         Arguments = $"-NoProfile -NonInteractive -EncodedCommand {enc}",
                         UseShellExecute = false, CreateNoWindow = true,
                         RedirectStandardOutput = true, RedirectStandardError = true
@@ -360,6 +362,8 @@ public class WindowsPrinterService : IWindowsPrinterService
                 var psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
                     Arguments = $"-NoProfile -NonInteractive -EncodedCommand {enc}",
                     UseShellExecute = false, CreateNoWindow = true,
                     RedirectStandardOutput = true, RedirectStandardError = true
@@ -433,6 +437,8 @@ public class WindowsPrinterService : IWindowsPrinterService
                 var psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
                     Arguments = "-NoProfile -NonInteractive -Command " +
                         "\"Get-PrinterPort | Where-Object { $_.Name -like 'USB*' -or $_.Name -like 'DOT4*' -or $_.Name -like 'WSD*' } " +
                         "| Select-Object -First 1 -ExpandProperty Name\"",
@@ -780,6 +786,8 @@ public class WindowsPrinterService : IWindowsPrinterService
                 var psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
                     Arguments = $"-NoProfile -NonInteractive -EncodedCommand {enc}",
                     UseShellExecute = false, CreateNoWindow = true,
                     RedirectStandardOutput = true, RedirectStandardError = true
@@ -857,6 +865,8 @@ public class WindowsPrinterService : IWindowsPrinterService
                 var psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
                     Arguments = $"-NoProfile -NonInteractive -EncodedCommand {enc}",
                     UseShellExecute = false, CreateNoWindow = true,
                     RedirectStandardOutput = true, RedirectStandardError = true
@@ -930,6 +940,8 @@ public class WindowsPrinterService : IWindowsPrinterService
             var psi = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
                 Arguments = $"-NoProfile -NonInteractive -EncodedCommand {enc}",
                 UseShellExecute = false, CreateNoWindow = true,
                 RedirectStandardOutput = true, RedirectStandardError = true
@@ -1239,6 +1251,8 @@ public class WindowsPrinterService : IWindowsPrinterService
                 var psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
                     Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
                     UseShellExecute = false,
                     CreateNoWindow = true,
@@ -1360,6 +1374,8 @@ public class WindowsPrinterService : IWindowsPrinterService
                 var psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
                     Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
                     UseShellExecute = false, CreateNoWindow = true,
                     RedirectStandardOutput = true, RedirectStandardError = true
@@ -1450,6 +1466,8 @@ public class WindowsPrinterService : IWindowsPrinterService
                 var psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
                     Arguments = $"-NoProfile -NonInteractive -EncodedCommand {enc}",
                     UseShellExecute = false, CreateNoWindow = true
                 };
@@ -1524,6 +1542,8 @@ public class WindowsPrinterService : IWindowsPrinterService
             var psi = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
                 Arguments = "-NoProfile -NonInteractive -Command \"Get-PrinterDriver | Select-Object -ExpandProperty Name\"",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
@@ -1597,6 +1617,8 @@ public class WindowsPrinterService : IWindowsPrinterService
                 var psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
                     Arguments = "-NoProfile -NonInteractive -Command \"(Get-PrinterPort).Name\"",
                     UseShellExecute = false, CreateNoWindow = true,
                     RedirectStandardOutput = true
@@ -1664,6 +1686,8 @@ public class WindowsPrinterService : IWindowsPrinterService
             var psi = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
                 Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -1695,6 +1719,8 @@ public class WindowsPrinterService : IWindowsPrinterService
             var psi = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
                 Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -2004,6 +2030,8 @@ public class WindowsPrinterService : IWindowsPrinterService
                 var psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
                     Arguments = $"-NoProfile -NonInteractive -EncodedCommand {enc}",
                     UseShellExecute = false, CreateNoWindow = true,
                     RedirectStandardOutput = true
@@ -2449,6 +2477,8 @@ public class WindowsPrinterService : IWindowsPrinterService
             var psi = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
                 Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -2525,6 +2555,8 @@ public class WindowsPrinterService : IWindowsPrinterService
             var psi = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
                 Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -2627,6 +2659,8 @@ public class WindowsPrinterService : IWindowsPrinterService
                     var psPsi = new ProcessStartInfo
                     {
                         FileName = "powershell.exe",
+                        StandardOutputEncoding = System.Text.Encoding.UTF8,
+                        StandardErrorEncoding = System.Text.Encoding.UTF8,
                         Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
                         UseShellExecute = false,
                         CreateNoWindow = true
@@ -2716,6 +2750,8 @@ public class WindowsPrinterService : IWindowsPrinterService
                 var psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
                     Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
                     UseShellExecute = false,
                     CreateNoWindow = true,
@@ -2800,6 +2836,8 @@ public class WindowsPrinterService : IWindowsPrinterService
                 using (var removeProc = Process.Start(new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
                     Arguments = $"-NoProfile -NonInteractive -EncodedCommand {removeEnc}",
                     UseShellExecute = false, CreateNoWindow = true
                 })!)
@@ -2818,6 +2856,8 @@ public class WindowsPrinterService : IWindowsPrinterService
                 var psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
                     Arguments = $"-NoProfile -NonInteractive -EncodedCommand {enc}",
                     UseShellExecute = false, CreateNoWindow = true,
                     RedirectStandardOutput = true, RedirectStandardError = true
