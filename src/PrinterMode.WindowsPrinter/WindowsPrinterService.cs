@@ -937,7 +937,29 @@ public class WindowsPrinterService : IWindowsPrinterService
             using var proc = Process.Start(psi)!;
             var outTask = proc.StandardOutput.ReadToEndAsync();
             var errTask = proc.StandardError.ReadToEndAsync();
-            proc.WaitForExit(30_000);
+
+            // WaitForExit(30_000) blocked synchronously with NO cancellation awareness at
+            // all — confirmed root cause of "Instalar fica travado" when the user clicks
+            // "Selecionar manualmente" mid-search: this PowerShell round-trip (the first
+            // thing auto-detect runs) kept blocking the Task.Run thread for however long it
+            // took regardless of the caller's ct, so InstallCommand.IsRunning (which the
+            // Instalar button's CanExecute also depends on, beyond our own CanInstall check)
+            // stayed true — and the button disabled — until it happened to finish on its
+            // own. WaitForExitAsync(ct) actually observes cancellation; a 30s safety timeout
+            // (linked, independent of the caller's ct) still guards against a genuinely hung
+            // subprocess either way.
+            using var safetyCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, safetyCts.Token);
+            try
+            {
+                proc.WaitForExitAsync(linkedCts.Token).GetAwaiter().GetResult();
+            }
+            finally
+            {
+                if (!proc.HasExited)
+                    try { proc.Kill(entireProcessTree: true); } catch { }
+            }
+
             var stdout = outTask.GetAwaiter().GetResult();
             errTask.GetAwaiter().GetResult();
 
