@@ -732,6 +732,27 @@ public class DriverInstaller : IDriverInstaller
             // Step 3: Create the printer (always fresh — delete any existing ghost first)
             progress?.Report("Configurando impressora no Windows...");
 
+            // Confirmed in the field (Epson TM-T20X, log 2026-11-24): when the user re-runs
+            // Install for a USB printer that's already installed and working, and this time
+            // around the physical device can't be (re-)detected at all (RestartSpooler +
+            // ReEnumerateDeviceByVidPid both come back empty — "Device diagnostics: ... NÃO
+            // detectado pelo Windows"), discoveredUsbPort stays null and portName falls back
+            // to the blind, unverified "USB001" guess below. The unconditional delete-then-
+            // recreate further down then deleted the user's existing, WORKING printer and
+            // failed to recreate it for every driver candidate (the guessed port genuinely
+            // didn't exist in the Spooler this time) — leaving the user with NO printer at
+            // all. If a printer with this exact name already exists, it's presumably the one
+            // actually working right now, so abort BEFORE deleting anything rather than
+            // gambling it away on an unconfirmed port guess.
+            if (request.ConnectionType == ConnectionType.USB && discoveredUsbPort == null &&
+                await _printerService.PrinterExistsAsync(request.PrinterName, ct))
+            {
+                return InstallResult.Fail(
+                    $"Não foi possível confirmar a conexão USB da impressora, e já existe uma impressora chamada '{request.PrinterName}'. " +
+                    "Para não apagar uma impressora que já está funcionando, a instalação foi cancelada.",
+                    "Verifique o cabo/conexão USB da impressora e tente instalar novamente.", steps);
+            }
+
             // The user explicitly clicked Install, so we always want a clean printer with the
             // correct driver and port. Any existing printer with this name is either a ghost
             // (in the spooler but invisible in the UI) or an old install with possibly wrong
